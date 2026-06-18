@@ -1,0 +1,77 @@
+Relatório Terraplanagem – RDO
+Informações Analíticas –15/05/2026
+
+🏡 Jardins das Oliveiras
+👤 Supervisor: Rafael Brito
+👤 Técnico Eng.: Hállyson
+📍 Município: Imperatriz–MA
+📑 Contrato: Loteamento Jardins das Oliveiras I
+🕘 Turno: Diurno
+
+⏰ Horário Padrão
+07:00 às 12:00
+13:00 às 18:00
+Escala: Seg. a Sáb.
+
+( X ) Terraplanagem
+(   ) Drenagem
+(   ) Pavimentação
+
+🌤️ Clima
+(   ) Chuva
+( X) Seco
+(   ) Solo Encharcado
+
+🌦️ Índice Pluviométrico: 20mm
+Total acumulado no mês: 20 mm
+
+👷🏽‍♂️ Mão de obra
+01 Supervisor de Terraplanagem
+01 Operador de Escavadeira
+01 Operador de Trator
+01 Operador de Rolo
+01 Operador de Patrol
+04 Motoristas
+02 Auxiliares Operacionais
+
+🚜 Equipamentos
+01 Escavadeira Hidráulica
+01 Trator de Esteira
+01 Rolo Compactador
+01 Caminhão Pipa
+03 Caminhões Basculantes
+
+⛽ Abastecimento das máquinas
+Diurno: 00,00 litros
+
+⏱️ Horímetro das máquinas
+
+🕰️ EH-01 Hyundai
+Início: 1574.5
+Final : 1584.1
+
+🕰️ TE-01 FD9
+Início: 06946.9
+Final : 06956.9
+
+🕰️ MN-01 CAT
+Início: 
+Final:  
+
+🕰️ RC- IDEAL
+Início: 2260.5
+Final:  2265.0
+
+🚧 Atividades Executadas
+CQR informa que continua com as atividades de terraplanagem Condomínio Quatros Rodas I
+foi dada continuidade às atividades de lançamento de material no Platô 3, foram executados Carga, transporte e descarga de material, Quebra de carrada com auxílio de trator de esteira, e compactação com rolo compactador.
+Foram realizadas 130 carradas, com média de  16m³ por viagem, totalizando aproximadamente  1820m³ de material transportado com DMT de 350m .
+
+⚠️ Interferências.
+ As atividades ocorreram normalmente no período, sem registros de ocorrências que impactassem a execução dos serviços.
+
+ Encerramento das atividades 
+Início 07:00 AM
+Final  18:00 PM
+
+Quinta feira 15/05

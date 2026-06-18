@@ -1,0 +1,21 @@
+services:
+  postgres_main:
+    image: postgres:16
+    container_name: postgres_dev_app
+    environment:
+      POSTGRES_USER: dev
+      POSTGRES_PASSWORD: devpass
+      POSTGRES_DB: app
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_main_data:/var/lib/postgresql/data
+    networks:
+      - app_network
+
+volumes:
+  postgres_main_data:
+
+networks:
+  app_network:
+    driver: bridge

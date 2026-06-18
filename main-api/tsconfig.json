@@ -1,0 +1,25 @@
+{
+  "$schema": "https://www.schemastore.org/tsconfig",
+  "display": "Node 22",
+  "_version": "22.0.0",
+
+  "compilerOptions": {
+    "lib": ["es2024", "ESNext.Array", "ESNext.Collection", "ESNext.Iterator"],
+    "module": "nodenext",
+    "target": "es2022",
+
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "moduleResolution": "node16",
+    "types": ["node"],
+    "forceConsistentCasingInFileNames": true,
+    "paths": {
+      "@plugins/*": ["./src/lib/plugins/*"],
+      "@utils/*": ["./src/lib/utils/*"],
+      "@modules/*": ["./src/modules/*"],
+      "@db/*": ["./src/db/*"]
+    }
+  },
+  "include": ["src/**/*.ts", "prisma/**/*.ts", "tests/**/*.ts", "vitest.config.ts"]
+}

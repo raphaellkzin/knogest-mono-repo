@@ -1,0 +1,11 @@
+node_modules
+.env
+!.env.example
+
+dist
+coverage
+.vitest
+.cache
+*.log
+
+/src/db/generated/prisma

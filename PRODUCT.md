@@ -1,0 +1,49 @@
+# Product
+
+## Register
+
+product
+
+## Users
+
+KnoGest is for companies that manage earthmoving construction projects and need a web application for operational control, project visibility, and administrative setup.
+
+Primary users are company admins and project managers. Admins sign in, choose a company or workspace, and manage employees, projects, suppliers, machines, and equipment. Project managers use project dashboards to monitor progress, production, equipment allocation, labor, suppliers, and project status.
+
+The first product focus is the web application. Users may still access parts of it from tablets or phones in field conditions, so the interface needs strong legibility, clear hierarchy, and controls that remain usable under bright outdoor light.
+
+## Product Purpose
+
+KnoGest is a multi-tenant SaaS for managing earthmoving operations. It gives each corporation a controlled environment where users belong to one corporation, can work across one or more companies inside that corporation, and can access the projects they are responsible for.
+
+The initial product should support login with company/workspace selection, a company admin panel for managing employees, projects, suppliers, machines, and equipment, and a project dashboard that summarizes the operational state of an obra.
+
+Success means users can understand the state of a project quickly, keep core operational records organized, and make decisions without fighting generic ERP complexity.
+
+## Brand Personality
+
+Reliable, robust, direct.
+
+The product should feel like a serious operations tool for real construction work: practical, grounded, and confident. It should avoid decorative cleverness and instead earn trust through clarity, density, readable data, and predictable workflows.
+
+## Anti-references
+
+KnoGest must not look like a generic ERP with lifeless tables, vague gray panels, and administrative sprawl.
+
+It must not look like a dark crypto dashboard, trading terminal, or speculative finance interface. Dark surfaces can be used only if they serve a concrete task and preserve outdoor readability; they are not the default brand mood.
+
+It must not rely on fragile, low-contrast UI, tiny labels, decorative gradients, or visuals that fail in bright field conditions.
+
+## Design Principles
+
+1. Put field clarity first. Data, controls, and status indicators must remain legible on desktop, tablet, and phone, including outdoor use under strong light.
+2. Make operational hierarchy obvious. The app should always help users understand corporation, company, project, equipment, supplier, and labor context without confusion.
+3. Prefer confident density over ERP clutter. Dashboards and admin screens may be information-rich, but every table, filter, card, and chart must have a clear job.
+4. Use familiar product patterns. Workspace selection, admin navigation, forms, filters, tables, tabs, and project dashboards should behave predictably.
+5. Show project truth quickly. The project dashboard should surface progress, production, equipment, labor, suppliers, and alerts in a way that supports decisions, not decoration.
+
+## Accessibility & Inclusion
+
+Target WCAG AA. Body text and controls must use strong contrast, with extra care for muted text, placeholder text, chart labels, and status colors.
+
+The interface must support responsive layouts for desktop, tablet, and mobile use. Touch targets should be comfortable on mobile and tablet. Motion should be restrained, communicate state, and respect reduced-motion preferences.
