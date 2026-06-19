@@ -22,7 +22,7 @@ const loginFormSchema = z.object({
   password: z.string().min(1, "Informe a senha").max(255),
 });
 
-const workspaces = [
+const companies = [
   {
     id: "terraplanagem-norte",
     name: "Terraplanagem Norte",
@@ -41,7 +41,7 @@ export function LoginForm() {
   const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [selectedWorkspace, setSelectedWorkspace] = useState(workspaces[0].id);
+  const [selectedCompany, setSelectedCompany] = useState(companies[0].id);
   const callbackUrl = useMemo(
     () => searchParams.get("callbackUrl") || "/home",
     [searchParams],
@@ -85,14 +85,14 @@ export function LoginForm() {
     <form onSubmit={handleSubmit} className="w-full space-y-5">
       <fieldset className="space-y-2">
         <legend className="text-sm font-semibold">Empresa</legend>
-        <input type="hidden" name="workspace" value={selectedWorkspace} />
+        <input type="hidden" name="company" value={selectedCompany} />
         <div className="space-y-2">
-          {workspaces.map((workspace) => {
-            const isSelected = workspace.id === selectedWorkspace;
+          {companies.map((company) => {
+            const isSelected = company.id === selectedCompany;
 
             return (
               <button
-                key={workspace.id}
+                key={company.id}
                 type="button"
                 className={cn(
                   "flex w-full items-center gap-3 rounded-md border px-3 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/30",
@@ -101,17 +101,17 @@ export function LoginForm() {
                     : "border-border bg-background hover:bg-muted",
                 )}
                 aria-pressed={isSelected}
-                onClick={() => setSelectedWorkspace(workspace.id)}
+                onClick={() => setSelectedCompany(company.id)}
               >
                 <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-card text-primary">
                   <Building2 className="size-4" />
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-bold">
-                    {workspace.name}
+                    {company.name}
                   </span>
                   <span className="mt-0.5 block text-xs font-medium text-muted-foreground">
-                    {workspace.detail}
+                    {company.detail}
                   </span>
                 </span>
                 {isSelected && (

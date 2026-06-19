@@ -10,7 +10,7 @@ import {
   UsersRound,
 } from "lucide-react";
 
-const workspaces = [
+const companies = [
   {
     name: "Terraplanagem Norte",
     region: "Minas Gerais e interior de SP",
@@ -78,9 +78,9 @@ export function WorkspaceSelection() {
         className="grid gap-4 xl:grid-cols-3"
         aria-label="Empresas disponíveis"
       >
-        {workspaces.map((workspace) => (
+        {companies.map((company) => (
           <article
-            key={workspace.name}
+            key={company.name}
             className="rounded-lg border border-border bg-card"
           >
             <div className="border-b border-border px-4 py-4">
@@ -90,13 +90,13 @@ export function WorkspaceSelection() {
                     <Building2 className="size-5" />
                   </span>
                   <div>
-                    <h3 className="text-base font-bold">{workspace.name}</h3>
+                    <h3 className="text-base font-bold">{company.name}</h3>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      {workspace.region}
+                      {company.region}
                     </p>
                   </div>
                 </div>
-                {workspace.selected && (
+                {company.selected && (
                   <CheckCircle2 className="size-5 shrink-0 text-primary" />
                 )}
               </div>
@@ -106,33 +106,27 @@ export function WorkspaceSelection() {
               <WorkspaceFact
                 icon={Map}
                 label="Projetos"
-                value={workspace.projects}
+                value={company.projects}
               />
               <WorkspaceFact
                 icon={UsersRound}
                 label="Equipe"
-                value={workspace.crew}
+                value={company.crew}
               />
-              <WorkspaceFact
-                icon={Truck}
-                label="Frota"
-                value={workspace.fleet}
-              />
+              <WorkspaceFact icon={Truck} label="Frota" value={company.fleet} />
               <WorkspaceFact
                 icon={Fuel}
                 label="Fornecedor"
-                value={workspace.supplier}
+                value={company.supplier}
               />
             </div>
 
             <div className="border-t border-border px-4 py-4">
               <Link
-                href={workspace.selected ? "/home" : "/home/company"}
+                href="/home"
                 className="flex min-h-11 items-center justify-between gap-3 rounded-md bg-primary px-3 text-sm font-bold text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/30"
               >
-                {workspace.selected
-                  ? "Entrar no projeto ativo"
-                  : "Ver administração"}
+                Abrir painel da empresa
                 <ArrowRight className="size-4" />
               </Link>
             </div>

@@ -13,7 +13,7 @@ export default async function Page() {
   }
 
   return (
-    <AppShell userId={userId} currentArea="workspaces">
+    <AppShell userId={userId} currentArea="dashboard">
       <WorkspaceSelection />
     </AppShell>
   );

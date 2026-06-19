@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
 
+import { AppShell } from "@/components/layout/app-shell";
+import { CompanyResourcePage } from "@/components/pages/company/company-resource-page";
 import { requireAuthenticatedSession } from "@/lib/auth/session";
 
 export default async function Page() {
@@ -10,5 +12,9 @@ export default async function Page() {
     redirect("/auth/login");
   }
 
-  redirect("/home");
+  return (
+    <AppShell userId={userId} currentArea="machines">
+      <CompanyResourcePage resource="machines" />
+    </AppShell>
+  );
 }

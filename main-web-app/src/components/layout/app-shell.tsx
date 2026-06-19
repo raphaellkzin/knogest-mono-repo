@@ -1,65 +1,139 @@
+"use client";
+
+import { useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import {
   Building2,
   ChevronDown,
+  Fuel,
+  Gauge,
+  LayoutDashboard,
   Map,
+  Settings,
   ShieldCheck,
   SunMedium,
-  Warehouse,
+  Truck,
+  UsersRound,
 } from "lucide-react";
 
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { cn } from "@/lib/utils";
 
-type AppArea = "project" | "company" | "workspaces";
+export type AppArea =
+  | "dashboard"
+  | "employees"
+  | "machines"
+  | "works"
+  | "suppliers"
+  | "settings";
 
 const areaMeta: Record<
   AppArea,
   { label: string; title: string; subtitle: string }
 > = {
-  project: {
-    label: "Projeto",
-    title: "BR-381 Lote 07",
-    subtitle: "Frente Norte · terraplanagem em execução",
-  },
-  company: {
-    label: "Administração",
+  dashboard: {
+    label: "Visão geral",
     title: "Terraplanagem Norte",
-    subtitle: "Funcionários, máquinas, fornecedores e projetos",
+    subtitle: "Indicadores da empresa, operação ativa e pendências do dia",
   },
-  workspaces: {
-    label: "Workspace",
-    title: "Selecionar empresa",
-    subtitle: "Corporação GTR · 3 empresas disponíveis",
+  employees: {
+    label: "Funcionários",
+    title: "Equipe e permissões",
+    subtitle: "Cadastro, função, disponibilidade e vínculo com obras",
+  },
+  machines: {
+    label: "Máquinas",
+    title: "Frota da empresa",
+    subtitle: "Cadastro, horímetro, alocação e condição operacional",
+  },
+  works: {
+    label: "Obras",
+    title: "Obras da empresa",
+    subtitle: "Listagem administrativa sem abrir a página da obra",
+  },
+  suppliers: {
+    label: "Fornecedores",
+    title: "Fornecedores e contratos",
+    subtitle: "Combustível, transporte, ensaios e serviços de campo",
+  },
+  settings: {
+    label: "Configurações",
+    title: "Configurações",
+    subtitle: "Preferências da empresa e regras corporativas",
   },
 };
 
-const navItems = [
-  { href: "/home", label: "Projeto", icon: Map, area: "project" },
-  { href: "/home/company", label: "Empresa", icon: Building2, area: "company" },
+const companies = [
   {
-    href: "/home/workspaces",
-    label: "Workspaces",
-    icon: Warehouse,
-    area: "workspaces",
+    name: "Terraplanagem Norte",
+    region: "Minas Gerais e interior de SP",
+    detail: "3 obras ativas · 42 máquinas",
+    selected: true,
+  },
+  {
+    name: "Mineração Serra Azul",
+    region: "Quadrilátero Ferrífero",
+    detail: "1 obra ativa · 16 máquinas",
+    selected: false,
+  },
+  {
+    name: "Base Sul",
+    region: "Paraná e Santa Catarina",
+    detail: "Sem obra em execução · 9 máquinas",
+    selected: false,
+  },
+];
+
+const navItems = [
+  {
+    href: "/home",
+    label: "Visão geral",
+    icon: LayoutDashboard,
+    area: "dashboard",
+  },
+  {
+    href: "/home/funcionarios",
+    label: "Funcionários",
+    icon: UsersRound,
+    area: "employees",
+  },
+  {
+    href: "/home/maquinas",
+    label: "Máquinas",
+    icon: Truck,
+    area: "machines",
+  },
+  { href: "/home/obras", label: "Obras", icon: Map, area: "works" },
+  {
+    href: "/home/fornecedores",
+    label: "Fornecedores",
+    icon: Fuel,
+    area: "suppliers",
+  },
+  {
+    href: "/home/configuracoes",
+    label: "Configurações",
+    icon: Settings,
+    area: "settings",
   },
 ] satisfies Array<{
   href: string;
   label: string;
-  icon: typeof Map;
+  icon: typeof LayoutDashboard;
   area: AppArea;
 }>;
 
 export function AppShell({
   children,
   userId,
-  currentArea = "project",
+  currentArea = "dashboard",
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
   userId: string;
   currentArea?: AppArea;
 }) {
   const meta = areaMeta[currentArea];
+  const [activeCompanyName, setActiveCompanyName] = useState(companies[0].name);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -76,21 +150,11 @@ export function AppShell({
           </span>
         </Link>
 
-        <Link
-          href="/home/workspaces"
-          className="mt-6 block rounded-lg border border-sidebar-border bg-card px-3 py-3 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/30"
-        >
-          <span className="flex items-center justify-between gap-3 text-xs font-medium text-muted-foreground">
-            Empresa ativa
-            <ChevronDown className="size-4" />
-          </span>
-          <span className="mt-2 block text-sm font-semibold">
-            Terraplanagem Norte
-          </span>
-          <span className="mt-1 block text-xs text-muted-foreground">
-            3 projetos ativos · 42 máquinas
-          </span>
-        </Link>
+        <CompanySelector
+          activeCompanyName={activeCompanyName}
+          onCompanyChange={setActiveCompanyName}
+          className="mt-6"
+        />
 
         <nav className="mt-6 space-y-1" aria-label="Navegação principal">
           {navItems.map((item) => {
@@ -152,15 +216,24 @@ export function AppShell({
             </div>
 
             <div className="flex items-center gap-2">
-              <span className="hidden rounded-md border border-border bg-card px-3 py-2 text-xs font-semibold text-muted-foreground lg:inline-flex">
+              <span className="hidden items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-xs font-semibold text-muted-foreground lg:inline-flex">
+                <Gauge className="size-3.5 text-primary" />
                 Atualizado 09:42
               </span>
               <SignOutButton />
             </div>
           </div>
 
+          <div className="border-t border-border px-3 py-2 md:hidden">
+            <CompanySelector
+              activeCompanyName={activeCompanyName}
+              onCompanyChange={setActiveCompanyName}
+              compact
+            />
+          </div>
+
           <nav
-            className="grid grid-cols-3 gap-2 border-t border-border px-3 py-2 md:hidden"
+            className="grid grid-cols-3 gap-2 border-t border-border px-3 py-2 sm:grid-cols-6 md:hidden"
             aria-label="Navegação principal"
           >
             {navItems.map((item) => {
@@ -172,7 +245,7 @@ export function AppShell({
                   key={item.href}
                   href={item.href}
                   className={cn(
-                    "flex min-h-11 items-center justify-center gap-2 rounded-md px-2 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/30",
+                    "flex min-h-11 items-center justify-center gap-1.5 rounded-md px-2 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/30",
                     isActive
                       ? "bg-primary text-primary-foreground"
                       : "bg-card text-muted-foreground hover:bg-accent hover:text-accent-foreground",
@@ -180,7 +253,7 @@ export function AppShell({
                   aria-current={isActive ? "page" : undefined}
                 >
                   <Icon className="size-4" />
-                  {item.label}
+                  <span className="truncate">{item.label}</span>
                 </Link>
               );
             })}
@@ -192,5 +265,87 @@ export function AppShell({
         </main>
       </div>
     </div>
+  );
+}
+
+function CompanySelector({
+  activeCompanyName,
+  className,
+  compact = false,
+  onCompanyChange,
+}: {
+  activeCompanyName: string;
+  className?: string;
+  compact?: boolean;
+  onCompanyChange: (companyName: string) => void;
+}) {
+  const detailsRef = useRef<HTMLDetailsElement>(null);
+  const activeCompany =
+    companies.find((company) => company.name === activeCompanyName) ??
+    companies[0];
+
+  return (
+    <details ref={detailsRef} className={cn("group relative", className)}>
+      <summary
+        className={cn(
+          "flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg border border-sidebar-border bg-card text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/30",
+          compact ? "px-3 py-2" : "px-3 py-3",
+        )}
+      >
+        <span className="min-w-0">
+          <span className="block text-xs font-medium text-muted-foreground">
+            Seletor de empresas
+          </span>
+          <span className="mt-1 block truncate text-sm font-semibold">
+            {activeCompany?.name}
+          </span>
+          {!compact && (
+            <span className="mt-1 block truncate text-xs text-muted-foreground">
+              {activeCompany?.detail}
+            </span>
+          )}
+        </span>
+        <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+      </summary>
+
+      <div className="absolute left-0 right-0 z-30 mt-2 rounded-lg border border-border bg-popover p-1 text-popover-foreground ring-1 ring-foreground/10">
+        {companies.map((company) => (
+          <button
+            key={company.name}
+            type="button"
+            onClick={() => {
+              onCompanyChange(company.name);
+              detailsRef.current?.removeAttribute("open");
+            }}
+            className={cn(
+              "flex w-full items-start gap-3 rounded-md px-3 py-2.5 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/30",
+              company.name === activeCompany.name && "bg-accent",
+            )}
+          >
+            <span
+              className={cn(
+                "mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md border",
+                company.name === activeCompany.name
+                  ? "border-primary/30 bg-primary text-primary-foreground"
+                  : "border-border bg-background text-muted-foreground",
+              )}
+            >
+              <Building2 className="size-4" />
+            </span>
+            <span className="min-w-0">
+              <span className="block truncate text-sm font-bold">
+                {company.name}
+              </span>
+              <span className="mt-0.5 block truncate text-xs font-medium text-muted-foreground">
+                {company.region}
+              </span>
+              <span className="mt-1 block truncate text-xs text-muted-foreground">
+                {company.detail}
+              </span>
+            </span>
+          </button>
+        ))}
+      </div>
+    </details>
   );
 }

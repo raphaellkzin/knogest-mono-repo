@@ -1,5 +1,5 @@
 import { AppShell } from "@/components/layout/app-shell";
-import { HomeDashboard } from "@/components/pages/home/home-dashboard";
+import { CompanyOverview } from "@/components/pages/company/company-overview";
 import { requireAuthenticatedSession } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
 
@@ -12,8 +12,8 @@ export default async function Page() {
   }
 
   return (
-    <AppShell userId={userId} currentArea="project">
-      <HomeDashboard userId={userId} />
+    <AppShell userId={userId} currentArea="dashboard">
+      <CompanyOverview />
     </AppShell>
   );
 }
