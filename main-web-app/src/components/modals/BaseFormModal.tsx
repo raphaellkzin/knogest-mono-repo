@@ -1,251 +1,357 @@
+"use client";
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState } from "react";
-import {
-  useForm,
-  UseFormReturn,
-  DefaultValues,
-  FieldValues,
-  Path, // Importado para tipagem estrita dos campos do Wizard
-} from "react-hook-form";
+import * as React from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
-import { Check, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
-
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { Progress } from "../ui/progress";
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Loader2,
+  type LucideIcon,
+} from "lucide-react";
+import {
+  type DefaultValues,
+  type FieldValues,
+  type Path,
+  type UseFormReturn,
+  useForm,
+} from "react-hook-form";
 import { toast } from "sonner";
+import { z } from "zod";
 
-// Definição da estrutura de cada passo do Wizard
-export interface WizardStep<TData extends FieldValues> {
-  title?: string;
-  description?: string;
-  // Diz ao form quais campos validar antes de ir para o próximo step
-  fields: Path<TData>[];
-  component: (form: UseFormReturn<TData>) => React.ReactNode;
-  maxWidth?: string;
+import { Button } from "@/components/ui/button";
+import {
+  OperationsModal,
+  type OperationsModalSize,
+} from "@/components/ui/operations-modal";
+import { Progress } from "@/components/ui/progress";
+import { cn } from "@/lib/utils";
+
+export interface BaseFormModalRenderHelpers {
+  closeModal: () => void;
+  currentStep: number;
+  goToStep: (step: number) => void;
 }
 
-interface BaseFormModalRenderHelpers {
-  closeModal: () => void;
+export interface WizardStep<TData extends FieldValues> {
+  title: string;
+  fields: Path<TData>[];
+  component: (
+    form: UseFormReturn<TData>,
+    helpers: BaseFormModalRenderHelpers,
+  ) => React.ReactNode;
 }
 
 interface BaseFormModalProps<TData extends FieldValues> {
-  trigger: React.ReactNode;
+  trigger: React.ReactElement;
   title: string;
   description?: string;
+  icon?: LucideIcon;
   schema: z.ZodType<TData>;
-  maxWidth?: string;
+  size?: OperationsModalSize;
   defaultValues?: DefaultValues<TData>;
   onSubmit: (data: TData) => Promise<void>;
-
-  // Modo Simples: renderiza o children direto
+  submitLabel?: string;
   children?: (
     form: UseFormReturn<TData>,
     helpers: BaseFormModalRenderHelpers,
   ) => React.ReactNode;
-
-  // Modo Wizard: renderiza através da lista de steps
   steps?: WizardStep<TData>[];
 }
 
 export function BaseFormModal<TData extends FieldValues>({
-  trigger,
-  title,
-  description,
-  schema,
-  defaultValues,
-  onSubmit,
   children,
+  defaultValues,
+  description,
+  icon,
+  onSubmit,
+  schema,
+  size = "lg",
   steps,
-  maxWidth,
+  submitLabel = "Salvar",
+  title,
+  trigger,
 }: BaseFormModalProps<TData>) {
-  const [open, setOpen] = useState(false);
-  const [currentStep, setCurrentStep] = useState(0);
+  const [open, setOpen] = React.useState(false);
+  const [currentStep, setCurrentStep] = React.useState(0);
+  const [isAdvancing, setIsAdvancing] = React.useState(false);
+  const advancingRef = React.useRef(false);
+  const stepHeadingRef = React.useRef<HTMLHeadingElement>(null);
 
   const form = useForm<TData>({
     resolver: zodResolver(schema as any),
     defaultValues,
   });
 
-  const isWizard = steps && steps.length > 0;
-  const isLastStep = isWizard ? currentStep === steps.length - 1 : true;
+  const isWizard = Boolean(steps?.length);
+  const activeStep = isWizard ? steps?.[currentStep] : undefined;
+  const isLastStep = isWizard
+    ? currentStep === (steps?.length ?? 1) - 1
+    : true;
+  const isSubmitting = form.formState.isSubmitting;
+  const navigationDisabled = isSubmitting || isAdvancing;
+
+  React.useEffect(() => {
+    if (open && isWizard) {
+      stepHeadingRef.current?.focus();
+    }
+  }, [currentStep, isWizard, open]);
+
+  const goToStep = (step: number) => {
+    if (!steps || navigationDisabled || step < 0 || step >= steps.length)
+      return;
+    setCurrentStep(step);
+  };
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (isSubmitting && !nextOpen) return;
+
+    if (nextOpen) {
+      form.reset(defaultValues);
+      setCurrentStep(0);
+      advancingRef.current = false;
+      setIsAdvancing(false);
+    }
+
+    setOpen(nextOpen);
+  };
+
+  const helpers: BaseFormModalRenderHelpers = {
+    closeModal: () => {
+      if (!isSubmitting) setOpen(false);
+    },
+    currentStep,
+    goToStep,
+  };
 
   const handleSubmitWrapper = async (data: TData) => {
     try {
       await onSubmit(data);
-      handleOpenChange(false);
-    } catch (error: any) {
-      const message = error.message || "Erro no envio do formulário";
+      setOpen(false);
+      form.reset(defaultValues);
+      setCurrentStep(0);
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error ? error.message : "Não foi possível salvar.";
       toast.error(message, { position: "top-center" });
     }
   };
 
-  const handleNextStep = async (e?: React.MouseEvent) => {
-    if (e) e.preventDefault();
-    if (!steps) return;
+  const handleNextStep = async () => {
+    if (!steps || navigationDisabled || advancingRef.current) return;
 
-    // Dispara a validação APENAS dos campos que pertencem a este step
-    const fieldsToValidate = steps[currentStep].fields;
-    const isStepValid = await form.trigger(fieldsToValidate);
+    advancingRef.current = true;
+    setIsAdvancing(true);
 
-    if (isStepValid) {
-      setCurrentStep((prev) => prev + 1);
+    try {
+      const isStepValid = await form.trigger(steps[currentStep].fields, {
+        shouldFocus: true,
+      });
+
+      if (isStepValid) {
+        setCurrentStep((previous) =>
+          Math.min(previous + 1, steps.length - 1),
+        );
+      }
+    } finally {
+      advancingRef.current = false;
+      setIsAdvancing(false);
     }
   };
 
-  const handlePreviousStep = () => {
-    setCurrentStep((prev) => prev - 1);
-  };
-
-  const handleOpenChange = (isOpen: boolean) => {
-    setOpen(isOpen);
-
-    if (!isOpen) {
-      setTimeout(() => {
-        form.reset();
-        setCurrentStep(0); // Reseta o wizard para o começo ao fechar
-      }, 300);
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLFormElement>) => {
+    if (
+      event.key === "Enter" &&
+      !event.nativeEvent.isComposing &&
+      isWizard &&
+      !isLastStep &&
+      (event.target as HTMLElement).tagName === "INPUT"
+    ) {
+      event.preventDefault();
+      void handleNextStep();
     }
   };
 
-  // Impede que apertar "Enter" num input dispare o envio final prematuramente em um wizard
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLFormElement>) => {
-    if (e.key === "Enter" && isWizard && !isLastStep) {
-      e.preventDefault();
-      handleNextStep();
-    }
-  };
-
-  // Título e descrição dinâmicos (permite sobrescrever no step atual)
-  const currentTitle =
-    isWizard && steps[currentStep].title ? steps[currentStep].title : title;
-  const currentDescription =
-    isWizard && steps[currentStep].description
-      ? steps[currentStep].description
-      : description;
-
-  const progressValue = steps ? ((currentStep + 1) / steps.length) * 100 : 0;
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger>{trigger}</DialogTrigger>
-
-      <DialogContent
-        className={`w-full ${
-          isWizard && steps?.[currentStep]?.maxWidth
-            ? steps[currentStep].maxWidth
-            : maxWidth
-              ? maxWidth
-              : "sm:max-w-160"
-        }`}
+    <OperationsModal
+      bodyClassName="overflow-hidden p-0"
+      description={description}
+      icon={icon}
+      onOpenChange={handleOpenChange}
+      open={open}
+      size={size}
+      title={title}
+      trigger={trigger}
+    >
+      <form
+        className="flex max-h-[calc(100vh-9rem)] min-h-0 flex-col"
+        onKeyDown={handleKeyDown}
+        onSubmit={form.handleSubmit(handleSubmitWrapper)}
       >
-        <DialogHeader>
-          <DialogTitle className="text-xl font-bold">
-            {currentTitle}
-          </DialogTitle>
-          {currentDescription && (
-            <DialogDescription>{currentDescription}</DialogDescription>
-          )}
-          {isWizard && (
-            <div className="mt-4">
-              <Progress value={progressValue} className="h-2 w-full" />
-            </div>
-          )}
-        </DialogHeader>
-
-        <form
-          onSubmit={form.handleSubmit(handleSubmitWrapper)}
-          onKeyDown={handleKeyDown}
-          className="space-y-4"
-        >
-          {/* RENDERIZAÇÃO CONDICIONAL: WIZARD VS NORMAL */}
-          {isWizard && steps ? (
-            <div key={`step-${currentStep}`} className="py-2">
-              {steps[currentStep].component(form)}
-            </div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+          {isWizard && steps && activeStep ? (
+            <>
+              <h2 ref={stepHeadingRef} tabIndex={-1} className="sr-only">
+                Etapa {currentStep + 1} de {steps.length}: {activeStep.title}
+              </h2>
+              <WizardProgress steps={steps} currentStep={currentStep} />
+              <div className="mt-5 min-h-52">
+                {activeStep.component(form, helpers)}
+              </div>
+            </>
           ) : (
-            children &&
-            children(form, { closeModal: () => handleOpenChange(false) })
+            children?.(form, helpers)
           )}
+        </div>
 
-          <DialogFooter className="pt-4 flex justify-between sm:justify-between w-full">
-            {isWizard ? (
-              <>
-                <div className="flex w-full justify-between">
-                  {/* Botão de Cancelar/Voltar na esquerda */}
-                  {currentStep === 0 ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => handleOpenChange(false)}
-                      disabled={form.formState.isSubmitting}
-                    >
-                      Cancelar
-                    </Button>
-                  ) : (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={handlePreviousStep}
-                      disabled={form.formState.isSubmitting}
-                    >
-                      <ChevronLeft className="mr-2 h-4 w-4" /> Voltar
-                    </Button>
-                  )}
-
-                  {/* Botão de Próximo/Salvar na direita */}
-                  {!isLastStep ? (
-                    <Button
-                      className="bg-primary-500 hover:bg-primary-600"
-                      type="button"
-                      onClick={handleNextStep}
-                    >
-                      Próximo <ChevronRight className="ml-2 h-4 w-4" />
-                    </Button>
-                  ) : (
-                    <Button
-                      className="w-[120px] bg-green-600 hover:bg-green-700 px-4"
-                      type="submit"
-                      disabled={form.formState.isSubmitting}
-                    >
-                      {form.formState.isSubmitting && (
-                        <Loader2 className=" h-4 w-4 animate-spin" />
-                      )}
-                      Finalizar <Check className=" h-4 w-4" />
-                    </Button>
-                  )}
-                </div>
-              </>
-            ) : (
-              // Botoes do modo de form simples (Comportamento original)
-              <div className="flex w-full justify-end space-x-2">
+        <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-border bg-popover px-5 py-4">
+          {isWizard ? (
+            <>
+              {currentStep === 0 ? (
                 <Button
                   type="button"
                   variant="outline"
+                  size="lg"
+                  className="min-h-11"
                   onClick={() => handleOpenChange(false)}
-                  disabled={form.formState.isSubmitting}
+                  disabled={navigationDisabled}
                 >
                   Cancelar
                 </Button>
-                <Button type="submit" disabled={form.formState.isSubmitting}>
-                  {form.formState.isSubmitting && (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  )}
-                  Salvar
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="lg"
+                  className="min-h-11"
+                  onClick={() => goToStep(currentStep - 1)}
+                  disabled={navigationDisabled}
+                >
+                  <ChevronLeft className="size-4" />
+                  Voltar
                 </Button>
-              </div>
-            )}
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+              )}
+
+              {!isLastStep ? (
+                <Button
+                  type="button"
+                  size="lg"
+                  className="min-h-11"
+                  onClick={() => void handleNextStep()}
+                  disabled={navigationDisabled}
+                >
+                  Avançar
+                  <ChevronRight className="size-4" />
+                </Button>
+              ) : (
+                <Button
+                  type="submit"
+                  size="lg"
+                  className="min-h-11"
+                  disabled={navigationDisabled}
+                >
+                  {isSubmitting ? (
+                    <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
+                  ) : (
+                    <Check className="size-4" />
+                  )}
+                  {submitLabel}
+                </Button>
+              )}
+            </>
+          ) : (
+            <div className="ml-auto flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => handleOpenChange(false)}
+                disabled={isSubmitting}
+              >
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting && (
+                  <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
+                )}
+                {submitLabel}
+              </Button>
+            </div>
+          )}
+        </footer>
+      </form>
+    </OperationsModal>
+  );
+}
+
+function WizardProgress<TData extends FieldValues>({
+  currentStep,
+  steps,
+}: {
+  currentStep: number;
+  steps: WizardStep<TData>[];
+}) {
+  const progressValue = ((currentStep + 1) / steps.length) * 100;
+
+  return (
+    <nav aria-label="Progresso do formulário">
+      <ol className="hidden sm:flex">
+        {steps.map((step, index) => {
+          const isComplete = index < currentStep;
+          const isCurrent = index === currentStep;
+
+          return (
+            <li
+              key={step.title}
+              className="relative flex flex-1 flex-col items-center gap-2 text-center"
+              aria-current={isCurrent ? "step" : undefined}
+            >
+              {index < steps.length - 1 && (
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "absolute top-4 left-[calc(50%+1.25rem)] right-[calc(-50%+1.25rem)] h-px bg-border",
+                    isComplete && "bg-primary",
+                  )}
+                />
+              )}
+              <span
+                className={cn(
+                  "relative z-10 flex size-8 items-center justify-center rounded-full border-2 border-input bg-popover text-sm font-bold text-muted-foreground",
+                  isCurrent && "border-primary text-primary",
+                  isComplete &&
+                    "border-primary bg-primary text-primary-foreground",
+                )}
+              >
+                {isComplete ? <Check className="size-4" /> : index + 1}
+              </span>
+              <span
+                className={cn(
+                  "text-sm font-medium text-muted-foreground",
+                  (isCurrent || isComplete) && "font-bold text-foreground",
+                )}
+              >
+                {step.title}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+
+      <div className="sm:hidden">
+        <div className="mb-2 flex items-center justify-between gap-3 text-sm">
+          <span className="font-bold text-foreground">
+            Etapa {currentStep + 1} de {steps.length}
+          </span>
+          <span className="truncate text-muted-foreground">
+            {steps[currentStep].title}
+          </span>
+        </div>
+        <Progress
+          value={progressValue}
+          aria-label={`Etapa ${currentStep + 1} de ${steps.length}`}
+        />
+      </div>
+    </nav>
   );
 }

@@ -2,7 +2,9 @@
 
 import * as React from "react";
 import type { FormEvent } from "react";
+import { Controller, type UseFormReturn } from "react-hook-form";
 import type { ColumnDef } from "@tanstack/react-table";
+import { z } from "zod";
 import {
   Building2,
   CheckCircle2,
@@ -16,6 +18,10 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import {
+  BaseFormModal,
+  type WizardStep,
+} from "@/components/modals/BaseFormModal";
 import { Input } from "@/components/ui/input";
 import { OperationsModal } from "@/components/ui/operations-modal";
 import { OperationsTable } from "@/components/ui/operations-table";
@@ -67,6 +73,70 @@ type SummaryCard = {
   tone: string;
   icon: typeof UsersRound;
 };
+
+const workFormSchema = z.object({
+  name: z.string().trim().min(1, "Informe o nome da obra."),
+  location: z.string().trim().min(1, "Informe o local da obra."),
+  manager: z.string().trim(),
+  phase: z.string().trim(),
+  progress: z
+    .string()
+    .trim()
+    .refine(
+      (value) =>
+        value === "" ||
+        (Number.isFinite(Number(value)) &&
+          Number(value) >= 0 &&
+          Number(value) <= 100),
+      "Informe um avanço entre 0 e 100.",
+    ),
+  status: z.string().trim().min(1, "Selecione o status da obra."),
+});
+
+type WorkFormValues = z.infer<typeof workFormSchema>;
+
+const workDefaultValues: WorkFormValues = {
+  name: "",
+  location: "",
+  manager: "",
+  phase: "",
+  progress: "",
+  status: "",
+};
+
+const workPhaseOptions = [
+  "Mobilização",
+  "Terraplanagem",
+  "Medição",
+  "Encerramento",
+];
+
+const workStatusOptions = [
+  "Em execução",
+  "Mobilização",
+  "Medição",
+  "Pausada",
+];
+
+const workWizardSteps: WizardStep<WorkFormValues>[] = [
+  {
+    title: "Identificação",
+    fields: ["name", "location"],
+    component: (form) => <WorkIdentificationStep form={form} />,
+  },
+  {
+    title: "Situação inicial",
+    fields: ["manager", "phase", "progress", "status"],
+    component: (form) => <WorkInitialSituationStep form={form} />,
+  },
+  {
+    title: "Revisar e criar",
+    fields: [],
+    component: (form, helpers) => (
+      <WorkReviewStep form={form} onEdit={helpers.goToStep} />
+    ),
+  },
+];
 
 const resourceConfigs: Record<CompanyResource, ResourceConfig> = {
   employees: {
@@ -563,7 +633,7 @@ export function CompanyResourcePage({
           }
 
           if (column.key === "progress") {
-            return `${value}%`;
+            return value === "Não informado" ? value : `${value}%`;
           }
 
           if (column.key === "hourmeter") {
@@ -599,6 +669,20 @@ export function CompanyResourcePage({
     setRows((currentRows) => [nextRecord, ...currentRows]);
     setOpen(false);
     event.currentTarget.reset();
+  };
+
+  const handleCreateWork = async (data: WorkFormValues) => {
+    const nextRecord: ResourceRecord = {
+      id: `works-${Date.now()}`,
+      name: data.name,
+      location: data.location,
+      manager: data.manager || "Não informado",
+      phase: data.phase || "Não informado",
+      progress: data.progress || "Não informado",
+      status: data.status,
+    };
+
+    setRows((currentRows) => [nextRecord, ...currentRows]);
   };
 
   return (
@@ -666,41 +750,318 @@ export function CompanyResourcePage({
           </Select>
         }
         actions={
-          <OperationsModal
-            open={open}
-            onOpenChange={setOpen}
-            title={config.newLabel}
-            description={config.modalDescription}
-            icon={config.icon}
-            trigger={
-              <Button type="button" size="lg">
-                <Plus className="size-4" />
-                {config.newLabel}
-              </Button>
-            }
-          >
-            <form id={formId} onSubmit={handleCreate} className="space-y-5">
-              <div className="grid gap-3 sm:grid-cols-2">
-                {config.fields.map((field) => (
-                  <FieldControl key={field.key} field={field} />
-                ))}
-              </div>
-
-              <div className="flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setOpen(false)}
-                >
-                  Cancelar
+          resource === "works" ? (
+            <BaseFormModal
+              title="Nova obra"
+              description="Cadastre os dados essenciais para iniciar o acompanhamento da obra."
+              icon={HardHat}
+              schema={workFormSchema}
+              defaultValues={workDefaultValues}
+              onSubmit={handleCreateWork}
+              steps={workWizardSteps}
+              submitLabel="Criar obra"
+              trigger={
+                <Button type="button" size="lg">
+                  <Plus className="size-4" />
+                  Nova obra
                 </Button>
-                <Button type="submit">Salvar {config.singular}</Button>
-              </div>
-            </form>
-          </OperationsModal>
+              }
+            />
+          ) : (
+            <OperationsModal
+              open={open}
+              onOpenChange={setOpen}
+              title={config.newLabel}
+              description={config.modalDescription}
+              icon={config.icon}
+              trigger={
+                <Button type="button" size="lg">
+                  <Plus className="size-4" />
+                  {config.newLabel}
+                </Button>
+              }
+            >
+              <form id={formId} onSubmit={handleCreate} className="space-y-5">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {config.fields.map((field) => (
+                    <FieldControl key={field.key} field={field} />
+                  ))}
+                </div>
+
+                <div className="flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setOpen(false)}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button type="submit">Salvar {config.singular}</Button>
+                </div>
+              </form>
+            </OperationsModal>
+          )
         }
       />
     </div>
+  );
+}
+
+function WorkIdentificationStep({
+  form,
+}: {
+  form: UseFormReturn<WorkFormValues>;
+}) {
+  return (
+    <div className="grid gap-4 sm:grid-cols-2">
+      <WorkTextField
+        form={form}
+        name="name"
+        label="Nome da obra"
+        autoFocus
+      />
+      <WorkTextField
+        form={form}
+        name="location"
+        label="Local"
+        placeholder="Cidade, UF"
+      />
+    </div>
+  );
+}
+
+function WorkInitialSituationStep({
+  form,
+}: {
+  form: UseFormReturn<WorkFormValues>;
+}) {
+  return (
+    <div className="grid gap-4 sm:grid-cols-2">
+      <WorkTextField
+        form={form}
+        name="manager"
+        label="Responsável"
+        placeholder="Nome do responsável"
+      />
+      <WorkSelectField
+        form={form}
+        name="phase"
+        label="Fase"
+        options={workPhaseOptions}
+      />
+      <WorkTextField
+        form={form}
+        name="progress"
+        label="Avanço inicial (%)"
+        type="number"
+        inputMode="numeric"
+        min={0}
+        max={100}
+        step="any"
+      />
+      <WorkSelectField
+        form={form}
+        name="status"
+        label="Status"
+        options={workStatusOptions}
+        required
+      />
+    </div>
+  );
+}
+
+function WorkTextField({
+  form,
+  label,
+  name,
+  required = false,
+  ...inputProps
+}: {
+  form: UseFormReturn<WorkFormValues>;
+  label: string;
+  name: "name" | "location" | "manager" | "progress";
+  required?: boolean;
+} & Omit<React.ComponentProps<typeof Input>, "form" | "name">) {
+  const error = form.formState.errors[name]?.message;
+  const inputId = `work-${name}`;
+  const errorId = `${inputId}-error`;
+  const isRequired = required || name === "name" || name === "location";
+
+  return (
+    <div>
+      <label
+        htmlFor={inputId}
+        className="mb-1.5 block text-sm font-bold text-foreground"
+      >
+        {label}
+        {isRequired && (
+          <span className="text-destructive" aria-hidden="true">
+            {" "}*
+          </span>
+        )}
+      </label>
+      <Input
+        id={inputId}
+        className="h-11"
+        aria-invalid={Boolean(error)}
+        aria-required={isRequired}
+        aria-describedby={error ? errorId : undefined}
+        {...form.register(name)}
+        {...inputProps}
+      />
+      {error && (
+        <p id={errorId} role="alert" className="mt-1.5 text-sm text-destructive">
+          {String(error)}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function WorkSelectField({
+  form,
+  label,
+  name,
+  options,
+  required = false,
+}: {
+  form: UseFormReturn<WorkFormValues>;
+  label: string;
+  name: "phase" | "status";
+  options: string[];
+  required?: boolean;
+}) {
+  const selectId = `work-${name}`;
+  const errorId = `${selectId}-error`;
+
+  return (
+    <Controller
+      control={form.control}
+      name={name}
+      render={({ field, fieldState }) => (
+        <div>
+          <span
+            id={`${selectId}-label`}
+            className="mb-1.5 block text-sm font-bold text-foreground"
+          >
+            {label}
+            {required && (
+              <span className="text-destructive" aria-hidden="true">
+                {" "}*
+              </span>
+            )}
+          </span>
+          <Select
+            value={field.value || null}
+            onValueChange={(value) => field.onChange(value ?? "")}
+          >
+            <SelectTrigger
+              id={selectId}
+              className="h-11"
+              aria-labelledby={`${selectId}-label`}
+              aria-invalid={Boolean(fieldState.error)}
+              aria-required={required}
+              aria-describedby={fieldState.error ? errorId : undefined}
+              onBlur={field.onBlur}
+              ref={field.ref}
+            >
+              <SelectValue placeholder="Selecionar" />
+            </SelectTrigger>
+            <SelectContent>
+              {options.map((option) => (
+                <SelectItem key={option} value={option}>
+                  {option}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {fieldState.error && (
+            <p
+              id={errorId}
+              role="alert"
+              className="mt-1.5 text-sm text-destructive"
+            >
+              {fieldState.error.message}
+            </p>
+          )}
+        </div>
+      )}
+    />
+  );
+}
+
+function WorkReviewStep({
+  form,
+  onEdit,
+}: {
+  form: UseFormReturn<WorkFormValues>;
+  onEdit: (step: number) => void;
+}) {
+  const values = form.getValues();
+
+  return (
+    <div className="divide-y divide-border">
+      <ReviewSection
+        title="Identificação"
+        onEdit={() => onEdit(0)}
+        items={[
+          ["Nome da obra", values.name],
+          ["Local", values.location],
+        ]}
+      />
+      <ReviewSection
+        title="Situação inicial"
+        onEdit={() => onEdit(1)}
+        items={[
+          ["Responsável", values.manager],
+          ["Fase", values.phase],
+          [
+            "Avanço inicial",
+            values.progress ? `${values.progress}%` : values.progress,
+          ],
+          ["Status", values.status],
+        ]}
+      />
+    </div>
+  );
+}
+
+function ReviewSection({
+  items,
+  onEdit,
+  title,
+}: {
+  items: [string, string][];
+  onEdit: () => void;
+  title: string;
+}) {
+  return (
+    <section className="py-4 first:pt-0 last:pb-0">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h3 className="text-base font-bold text-foreground">{title}</h3>
+        <Button
+          type="button"
+          variant="link"
+          size="sm"
+          className="min-h-11 px-3"
+          onClick={onEdit}
+        >
+          Editar
+        </Button>
+      </div>
+      <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
+        {items.map(([label, value]) => (
+          <div key={label} className="min-w-0">
+            <dt className="text-sm font-medium text-muted-foreground">
+              {label}
+            </dt>
+            <dd className="mt-0.5 break-words text-sm font-bold text-foreground">
+              {value.trim() || "Não informado"}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </section>
   );
 }
 

@@ -67,3 +67,5 @@ Equipamentos da Obra.
   - Alimentação (valor).
   - Manuntenção de Canteiro (valor).
   - Diesel (por máquina/Geral)
+
+rotina de ajuste histórico fica para outra

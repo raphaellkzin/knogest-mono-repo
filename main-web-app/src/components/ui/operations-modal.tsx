@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
-type OperationsModalSize = "md" | "lg" | "xl";
+export type OperationsModalSize = "md" | "lg" | "xl";
 
 const modalSizeClasses: Record<OperationsModalSize, string> = {
   md: "sm:max-w-xl",
@@ -29,6 +29,7 @@ const modalSizeClasses: Record<OperationsModalSize, string> = {
  * dimensões previsíveis para uso em desktop, tablet e celular em campo.
  */
 export function OperationsModal({
+  bodyClassName,
   children,
   className,
   description,
@@ -39,6 +40,7 @@ export function OperationsModal({
   title,
   trigger,
 }: {
+  bodyClassName?: string;
   children: ReactNode;
   className?: string;
   description?: string;
@@ -79,7 +81,12 @@ export function OperationsModal({
           </div>
         </DialogHeader>
 
-        <div className="max-h-[calc(100vh-9rem)] overflow-y-auto px-5 py-4">
+        <div
+          className={cn(
+            "max-h-[calc(100vh-9rem)] overflow-y-auto px-5 py-4",
+            bodyClassName,
+          )}
+        >
           {children}
         </div>
       </DialogContent>

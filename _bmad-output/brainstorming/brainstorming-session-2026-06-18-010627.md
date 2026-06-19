@@ -1,5 +1,5 @@
 ---
-stepsCompleted: [1, 2]
+stepsCompleted: [1, 2, 3, 4]
 inputDocuments:
   - app.md
 session_topic: 'Define the Knogest product, prioritize the backend and web MVP, and establish the initial multi-tenant architecture'
@@ -10,8 +10,14 @@ techniques_used:
   - 'Ecosystem Thinking'
   - 'Solution Matrix'
   - 'Decision Tree Mapping'
-ideas_generated: []
+ideas_generated: 100
 context_file: 'app.md'
+session_continued: true
+continuation_date: '2026-06-19'
+technique_execution_complete: true
+facilitation_notes: 'The user consistently refined operational invariants, reduced premature scope, and favored explicit temporal history over mutable state.'
+session_active: false
+workflow_completed: true
 ---
 
 # Brainstorming Session Results
@@ -272,6 +278,402 @@ _Novelty_: An active project cannot exist without explicit technical accountabil
 _Concept_: Every endpoint that powers an application table or returns an unbounded collection uses a shared cursor contract with validated `limit`, opaque `cursor`, optional search and allowlisted filters/sorting. Responses return `data` plus `pageInfo.hasNextPage` and `pageInfo.nextCursor` inside the standard API envelope; corporation and selected company always come from JWT context.
 _Novelty_: A single documented contract aligns backend handlers, Swagger schemas, and frontend pagination behavior while binding cursors to deterministic ordering and the filters that created them.
 
+**[Labor Model #52]: Stable Employee Identity and Allocation Terms**
+_Concept_: An employee's CPF, name, and registration number are stable company-owned identity fields. Job role, expected daily workload, compensation mode, compensation value, and overtime rate belong to each dated operational allocation period rather than to the employee record itself.
+_Novelty_: The employee remains the same person across projects while every assignment preserves the exact operational and economic terms effective during that period, preventing later transfers or compensation changes from rewriting historical labor data.
+
+**[Employee Lifecycle #53]: Employment Status Independent of Allocation**
+_Concept_: An active employee may remain registered with the company without any project allocation and is then available for future assignment. Company termination deactivates the employee, ends any current operational allocation, removes the employee from future selections, and preserves the employee identity and every project, cost, event, and responsibility history; an employee with no current project is simply deactivated without an allocation closure.
+_Novelty_: Employment status and project participation are separate lifecycles, so being unallocated does not imply termination and leaving the company does not erase the employee's historical contribution.
+
+**[Employee Lifecycle #54]: Responsibility-Safe Termination**
+_Concept_: Employee termination is rejected when the employee is the current project manager or when removing the employee's technical responsibility would leave an active project without a technical engineer. The administrator must first appoint a replacement; after all responsibility invariants are satisfied, termination transactionally closes any operational allocation and deactivates the employee.
+_Novelty_: Offboarding cannot silently invalidate active projects, and replacement histories remain explicit instead of being inferred from destructive relationship removal.
+
+**[Employee Lifecycle #55]: Rehire Through New Employment Period**
+_Concept_: Rehiring a former employee in the same company reactivates the existing employee identity and creates a new dated employment period rather than creating a duplicate employee record. Previous admission, termination, allocation, responsibility, and compensation histories remain closed and unchanged.
+_Novelty_: A stable employee identity connects multiple employment tenures while preserving each tenure as a distinct historical fact, avoiding duplicate CPF records and retroactive changes to prior work.
+
+**[Labor Boundary #56]: Corporation-Wide Physical Work Exclusivity**
+_Concept_: A person identified by CPF may hold separate active employment registrations and registration numbers in multiple companies of the same corporation. However, that person may have only one active operational project allocation across the entire corporation, even when the competing projects belong to different companies; allocations in another corporation are independent and do not conflict.
+_Novelty_: Operational exclusivity follows the physical person within the tenant rather than an individual company employee record, while corporation isolation prevents one customer's workforce policy from constraining another customer's records.
+
+**[Labor Architecture #57]: Corporation Person with Company Employment**
+_Concept_: Labor identity is modeled in layers: a corporation-scoped person stores CPF and name; each company-owned employment stores its registration number and current status; dated employment periods preserve admission, termination, and rehire; operational allocations reference the applicable employment while enforcing one open allocation per corporation person. The same CPF in another corporation resolves to an independent tenant-owned person.
+_Novelty_: The model supports multiple legitimate company employments without duplicating identity inside a corporation, and it gives the database a stable key for corporation-wide physical work exclusivity without crossing tenant boundaries.
+
+**[Equipment Lifecycle #58]: Effective-Dated Intercompany Ownership Transfer**
+_Concept_: A machine may be permanently transferred between companies of the same corporation. Ownership is represented by immutable dated periods rather than an overwritten company field; prior project allocations and ownership periods continue referencing the original company, while only the current owning company may select the machine for new operations.
+_Novelty_: Corporate assets can move between legal or operational companies without falsifying the ownership context of historical projects, costs, meter readings, maintenance, or future RDO events.
+
+**[Equipment Invariant #59]: Operationally Clean Ownership Transfer**
+_Concept_: Intercompany machine transfer requires the machine to have no active project allocation, no open operational shift, and no pending final hour-meter reading. Existing participation must be explicitly closed under normal allocation and meter rules before ownership can change; the ownership command never performs an implicit operational closure.
+_Novelty_: Asset ownership and field movement remain separate domain operations, preventing administrative transfer from bypassing RDO evidence, allocation history, or meter continuity.
+
+**[Equipment Lifecycle #60]: Irreversible Asset Retirement**
+_Concept_: A machine that permanently leaves the corporation through sale, loss, disposal, or another patrimonial reason is retired with a required reason and effective date. Retirement requires no active allocation, open shift, or pending final meter, permanently removes the machine from operational selection, and preserves all ownership, project, cost, maintenance, meter, and RDO history.
+_Novelty_: External asset exit is represented as a terminal business event rather than deletion, distinguishing it from an internal ownership transfer while retaining complete historical evidence.
+
+**[MVP Boundary #61]: Audit-Ready Without Full Audit Log**
+_Concept_: A general-purpose administrative audit log is deferred beyond the MVP. The MVP architecture nevertheless keeps consequential state changes behind explicit domain commands and preserves dated lifecycle records and reasons so a future audit mechanism can observe operations without redesigning core workflows.
+_Novelty_: Audit scope is controlled without sacrificing future traceability; the system avoids premature event infrastructure while preventing opaque direct updates from becoming entrenched.
+
+**[Governance Foundation #62]: Actor Attribution on Critical History**
+_Concept_: Critical lifecycle records created in the MVP store the authenticated actor through `createdByUserId`; records that are explicitly closed also store `endedByUserId` and a domain-appropriate reason. A generic event table and before/after snapshots remain deferred.
+_Novelty_: The minimum useful chain of responsibility is captured at the source of each transition, allowing future auditing to build on trustworthy actor data without forcing an event-sourcing or universal logging subsystem into the MVP.
+
+**[Commercial Registry #63]: Individual and Legal-Entity Partners**
+_Concept_: Both clients and suppliers may be registered as either individuals or legal entities. Each record carries an explicit entity type and a normalized, validated CPF or CNPJ appropriate to that type, while remaining owned and selectable only within its company.
+_Novelty_: Commercial relationships reflect real contracting scenarios without weakening company isolation or forcing individual counterparties into legal-entity-shaped data.
+
+**[Commercial Architecture #64]: Separate Client and Supplier Aggregates**
+_Concept_: Client and supplier remain independent company-owned aggregates even when the same CPF or CNPJ appears in both registries. Identity and contact data may therefore exist once in each context; project ownership references a client, while fuel offerings and supplier-project participation reference a supplier.
+_Novelty_: The MVP favors explicit domain boundaries over a generalized business-partner abstraction, allowing client and supplier rules to evolve independently without role polymorphism or cross-context lifecycle coupling.
+
+**[Commercial Integrity #65]: Active Document Uniqueness per Registry**
+_Concept_: Normalized CPF or CNPJ is unique among active records within the same company and commercial registry. The same document may independently identify one active client and one active supplier, may be registered by another company, and may be reused by a replacement record after an older historical record is irreversibly soft-deleted.
+_Novelty_: Partial uniqueness prevents accidental duplicates where they are operationally ambiguous while respecting independent business roles, company ownership, and historical identifier reuse.
+
+**[Commercial Scope #66]: Minimal Counterparty Registration**
+_Concept_: Client and supplier creation requires only entity type, a valid normalized CPF or CNPJ, and the corresponding full name or legal name. Trade name, phone, email, and address are optional in the MVP.
+_Novelty_: The commercial registry captures sufficient legal identity for project and supplier operations without blocking setup on secondary contact information that may be completed later.
+
+**[Supplier Model #67]: Project-Specific Supply Agreements**
+_Concept_: A supplier registration declares the categories of products or services it can offer, such as fuel, parts, or mechanical workshop services, including newly registered offering types. Linking the supplier to a project creates a project-specific supply agreement that selects the actual products available to that project and stores their effective prices; the same supplier may therefore provide S10 diesel to one project and S500 diesel to another. This supersedes the supplier-level price ownership described in decision #26.
+_Novelty_: Supplier capability is separated from negotiated project scope and pricing, reflecting that availability and commercial terms vary by project without duplicating the supplier identity.
+
+**[Supplier Reference Data #68]: Extensible Company Supply Types**
+_Concept_: The system seeds common supply types such as fuel, parts, and mechanical workshop services, while each company may create additional types for its own suppliers. Every supplier requires at least one active supply type; company-created types remain company-scoped and, once referenced, may be deactivated but not deleted.
+_Novelty_: Familiar defaults reduce setup effort while company-owned extensions accommodate local procurement models without fragmenting other companies' terminology or breaking historical agreements.
+
+**[MVP Scope Correction #69]: Fuel Suppliers Only**
+_Concept_: The MVP supplier domain supports only fuel suppliers. Generic supply types, custom company types, parts suppliers, workshops, and other product or service catalogs are deferred; decisions #67 and #68 remain future design direction only where they describe non-fuel extensibility.
+_Novelty_: Narrowing the aggregate to the only supplier workflow needed by the first operational release avoids generalized procurement infrastructure before RDO and cost flows can use it.
+
+**[Fuel Supply Model #70]: Project-Owned Fuel Availability and Pricing**
+_Concept_: An MVP supplier has no category or product configuration beyond its commercial identity because every supplier is implicitly a fuel supplier. A project-supplier agreement selects one or more entries from the fixed system fuel catalog and keeps an effective-dated price history for each selection; fuel availability and price may differ for the same supplier across projects.
+_Novelty_: Product scope and negotiated terms live at the point where they are operationally true, while the reusable supplier record remains stable and free of project-specific assumptions.
+
+**[Project Wizard #71]: Optional Initial Operational Resources**
+_Concept_: Project creation does not require fuel suppliers, operational employee allocations, or machine allocations. Their wizard steps may be completed or skipped, and each resource can be linked later; the client, one current manager, and at least one technical engineer remain mandatory project responsibilities but do not consume exclusive operational allocations.
+_Novelty_: A project can be established before mobilization or procurement is complete without weakening its commercial and technical accountability requirements.
+
+**[Project Wizard #72]: Required Weekly Schedule Baseline**
+_Concept_: Atomic project finalization requires a valid standard weekly schedule. The schedule defines the project's default working days and time intervals before the project becomes active, while future RDOs may record different actual shift times without mutating that baseline.
+_Novelty_: Every active project begins with an operational time reference even when mobilization resources are added later, enabling consistent defaults without confusing planned and actual work.
+
+**[Work Schedule #73]: Optional Break Templates**
+_Concept_: A required weekly project schedule may contain zero break templates. Named default breaks and their durations can be configured when useful, but their absence does not block project finalization or activation.
+_Novelty_: Operational hours remain a mandatory baseline while break defaults stay proportional to the project's reality and do not invent pauses for schedules that manage them differently.
+
+**[Future RDO Time Model #74]: Intraday Defaults and Cross-Midnight Actual Shifts**
+_Concept_: Every interval in the project's standard weekly schedule starts and ends on the same calendar day. An actual RDO shift stores full start and end timestamps and may cross midnight, such as 07:00 to 01:00 the next day; confirmed break instances occur within that real interval and are commonly entered after the break has ended. Worked time and overtime use actual shift duration minus confirmed breaks, compared with the employee allocation's effective daily workload.
+_Novelty_: Simple planning constraints do not distort field reality: overnight work is represented as one continuous operational shift instead of being split at midnight, and retrospectively confirmed breaks remain part of the same defensible time calculation.
+
+**[Time Convention #75]: Fixed Brazil Business Time Zone**
+_Concept_: The MVP interprets every company, project schedule, RDO business date, shift, and break using the IANA time zone `America/Sao_Paulo`, regardless of the company's or project's physical Brazilian location. Real instants are stored in UTC and converted at application boundaries; configurable company time zones are deferred.
+_Novelty_: One explicit business-time convention avoids implicit server-local behavior and premature configuration while UTC persistence preserves a migration path if international or regional time-zone requirements emerge.
+
+**[Work Schedule #76]: Seven-Day Schedule Without Mandatory Rest Day**
+_Concept_: A valid project weekly schedule may mark all seven days as working days; the system does not require or infer a weekly rest day. In the current scope, weekend work alone does not create overtime: future overtime remains based on confirmed net worked time compared with the daily workload effective in each employee allocation.
+_Novelty_: The schedule describes the project's operating pattern without imposing a labor-policy assumption that may differ among companies, keeping compensation calculations tied to explicit allocation terms.
+
+**[Work Schedule #77]: One Daily Window with Suggested Breaks**
+_Concept_: Each working day in the standard weekly schedule has exactly one start time and one end time on that same day, superseding the multiple-daily-interval possibility in decision #40. Preconfigured breaks do not split or constrain that window: at RDO closure, the operator may confirm, change, remove, or add break instances according to what actually occurred.
+_Novelty_: A simple daily operating window keeps project setup predictable while suggested breaks reduce repetitive entry without becoming false operational evidence.
+
+**[Future RDO Model #78]: Multiple Project Shifts per Business Date**
+_Concept_: A project may create and close multiple distinct RDO shifts for the same business date, including parallel or sequential day and night operations. Each shift stores its own actual timestamps, confirmed breaks, participating employees, machines, meter evidence, and closure state; the project's single daily schedule window remains only a default.
+_Novelty_: The planning model stays compact while actual operations can represent multi-shift projects without merging separate crews, equipment usage, or field confirmations into one oversized daily record.
+
+**[Future Labor Calculation #79]: Daily Aggregation Across Shifts**
+_Concept_: When the same corporation person participates in multiple project shifts assigned to one business date, the system sums net confirmed worked time across those shifts and compares the aggregate once against the daily workload effective in the person's operational allocation. A shift crossing midnight belongs to the business date on which it started.
+_Novelty_: Splitting field work among RDOs cannot suppress overtime, and overnight operations retain one stable accounting date instead of dividing labor at the calendar boundary.
+
+**[Future RDO Invariant #80]: One Open Project Shift at a Time**
+_Concept_: A project may have multiple shifts assigned to the same business date only sequentially. At most one shift can be open for a project at any instant, the next shift may begin only after the current one is closed, and overlapping or parallel project shifts are deferred; this refines decision #78 by removing its parallel-shift possibility.
+_Novelty_: A single open operational context simplifies field responsibility, resource participation, meter continuity, and closure while retaining the ability to record distinct day and night shifts on one date.
+
+**[Authorization Roadmap #81]: Master Admin MVP with Scoped Future Roles**
+_Concept_: Each corporation has a master administrator with unrestricted corporation access and the future ability to create other users. Planned roles include additional corporation administrators, managers with write access to selected companies and projects, read-only managers scoped to selected companies and projects, and project-specific field reporters who operate only through the mobile application. The MVP implements only master-administrator operation; user management and the additional roles are deferred, but authorization boundaries must not assume every future user has corporation-wide access.
+_Novelty_: Immediate authentication stays narrow while the access model anticipates both company and project grants, preventing today's all-powerful administrator shortcut from becoming tomorrow's authorization architecture.
+
+**[Authentication Scope #82]: CLI-Only Master Password Recovery**
+_Concept_: The MVP does not implement public forgot-password, email delivery, or password-reset controllers. An authorized operator resets the corporation master administrator's credentials through the administrative CLI, using the same application validation and password-hashing services as normal authentication.
+_Novelty_: The critical account remains recoverable without introducing an email subsystem or public recovery attack surface before end-user account management enters product scope.
+
+**[Authentication Architecture #83]: Rotating Session with Selected Company**
+_Concept_: The MVP uses a short-lived access token carrying `userId`, `corporationId`, current `companyId` when selected, and role claims, plus a rotating refresh token held in a secure `HttpOnly` cookie and bound to a persisted server-side session. Company selection or change updates the session and issues replacement tokens; logout revokes the session, and password change or administrative reset revokes every session for that user.
+_Novelty_: Company context survives secure renewal without trusting browser-supplied tenant scope, while rotation and server-side revocation contain stolen tokens and support immediate account recovery controls.
+
+**[Authentication Identity #84]: Corporation-Scoped User Email**
+_Concept_: A normalized login email is unique within a corporation rather than across the entire platform. Host resolution first establishes the corporation, after which authentication resolves the user by the composite identity `corporationId + normalizedEmail`; the same email may belong to independent accounts in other corporations.
+_Novelty_: Login identity follows the tenant boundary and avoids coupling unrelated customers through a global email namespace.
+
+**[Canonical Provisioning Correction #85]: Empty Corporation Remains Valid**
+_Concept_: Decision #23, which permits an authenticated corporation with no company, remains canonical. The later duplicated statement titled `Corporation Starts with a Company` is explicitly superseded: MVP provisioning does not require an initial company, and the corporation-scoped session may display an empty company-selection state until operators provision one through the CLI.
+_Novelty_: The session record now resolves its internal contradiction without forcing placeholder operational data or exposing end-user company creation prematurely.
+
+**[MVP Boundary #86]: No Company Deactivation Workflow**
+_Concept_: The administrative CLI provisions corporations, domains, master administrators, and companies for the MVP but does not implement company deactivation, restoration, or closure workflows. Their effects on active projects, selected-company sessions, and historical access are deferred to a later product decision.
+_Novelty_: Provisioning enables the required operating state without prematurely defining a high-impact company lifecycle that the first release does not need.
+
+**[Equipment Invariant #87]: Mandatory Hour Meter**
+_Concept_: Every machine or equipment item supported by the MVP is hour-metered. A machine cannot opt out of meter tracking, and its allocation, shift participation, reassignment, ownership transfer, and retirement follow the shared meter continuity rules.
+_Novelty_: One mandatory evidence model removes ambiguous unmetered branches and establishes consistent foundations for utilization, fueling, maintenance, and cost calculations.
+
+**[Equipment Integrity #88]: Initial and Monotonic Meter History**
+_Concept_: Machine creation requires a confirmed initial hour-meter reading that becomes the first immutable meter-history record. Each later valid reading must be greater than or equal to the latest confirmed value; exceptional meter replacement or correction workflows are deferred and cannot be simulated through ordinary updates.
+_Novelty_: Utilization begins from an explicit baseline and normal operations cannot silently move cumulative machine time backward.
+
+**[Equipment Registration #89]: Plate-or-Tag Operational Identity**
+_Concept_: Machine creation requires a name, description, type, manufacturer, model, and initial hour-meter reading, plus at least one company-unique operational identifier: plate or tag. A machine may carry both identifiers; each supplied identifier is normalized and unique among active machines of the owning company, while year and serial number remain optional.
+_Novelty_: The registry supports both road-registered and internally tagged equipment without inventing a universal code, while preserving unambiguous field selection and meter provenance.
+
+**[Equipment Reference Data #90]: Embedded Two-Value Machine Type**
+_Concept_: The MVP machine type is a closed model enum with exactly two values representing `Linha Amarela` and `Linha Branca`. Companies cannot create additional machine types in this phase; manufacturer and model remain required textual machine fields.
+_Novelty_: The classification reflects the immediate fleet distinction without introducing catalog administration before the product needs finer equipment taxonomy.
+
+**[Equipment Semantics #91]: Specific Equipment Form in Model**
+_Concept_: Within the fixed yellow-line or white-line classification, the required free-text `model` field identifies the specific equipment form, such as excavator, wheel loader, motor grader, truck, or another description. The MVP does not maintain a separate catalog of equipment forms.
+_Novelty_: Broad fleet classification remains consistent while the model field accommodates operational vocabulary without adding another reference-data workflow.
+
+**[Equipment Transfer #92]: Optional Destination-Side Registration Review**
+_Concept_: Temporary reallocation between projects never changes machine registration data. During a permanent intercompany ownership transfer, the administrator is offered an optional review of identifiers and other machine fields for the destination company; destination uniqueness rules still apply. An entered hour-meter value creates a new confirmed reading greater than or equal to the latest reading and never overwrites meter history.
+_Novelty_: Operational movement stays lightweight, while permanent ownership change can adapt company-specific identification and capture an updated meter checkpoint without falsifying prior registration or utilization evidence.
+
+**[Equipment Correction #93]: Unreferenced Meter Correction Window**
+_Concept_: An erroneous initial or ownership-transfer meter reading may be corrected only while no allocation, shift, subsequent reading, or other operational record references or follows it. The correction records actor, reason, old value, and new value; once depended upon, the reading is immutable and later historical adjustment requires a future dedicated workflow.
+_Novelty_: Early data-entry mistakes remain recoverable without allowing corrections to invalidate an established chain of utilization evidence.
+
+**[Temporal Scope #94]: Immediate Server-Timestamped Lifecycle Commands**
+_Concept_: MVP employee reallocations and terminations, machine reallocations, ownership transfers, and asset retirements take effect when their commands successfully commit, using server-generated timestamps. Future scheduling and ordinary backdating are not supported; retrospective correction requires a separately designed exceptional workflow.
+_Novelty_: Temporal exclusivity is enforced against one authoritative present, avoiding ambiguous races and historical rewrites while preserving dated periods for future reporting.
+
+**[Project Lifecycle #95]: Explicit Planned State Before Activation**
+_Concept_: Successful project-wizard finalization creates the project as `PLANNED`, superseding the direct-to-`ACTIVE` rule in decision #35. `PLANNED` represents an operationally configured project that has not begun execution; activation is an explicit domain command rather than an automatic consequence of the planned start date.
+_Novelty_: Future projects remain distinguishable from work in progress, while administrators retain control over the real operational start instead of relying on calendar automation.
+
+**[Project Mobilization #96]: Resource Reservation During Planning**
+_Concept_: A `PLANNED` project may open operational employee and machine allocations, and those resources remain unavailable to every other project under the normal exclusivity rules. Premature or prolonged reservation is treated as an operational management decision rather than a system error. Activating the project records its actual production start timestamp, regardless of the planned start date, and means production is expected to begin immediately.
+_Novelty_: The system supports real pre-start mobilization without weakening resource guarantees, while separating contractual planning dates from the administrator's explicit declaration that productive execution has begun.
+
+**[Project Activation #97]: No Minimum Operational Resource Count**
+_Concept_: Transition from `PLANNED` to `ACTIVE` does not require an operational employee or machine allocation. The project must retain its mandatory client, current manager, technical engineer, and valid weekly schedule, but activation may proceed with zero exclusive resources and records the administrator-declared actual production start.
+_Novelty_: Activation expresses business commencement without embedding assumptions about whether production starts through owned labor, machines, third parties, or resources allocated immediately afterward.
+
+**[Project Baseline #98]: Revision History After Activation**
+_Concept_: While a project is `PLANNED`, its approved budget and planned start and end dates may be edited normally. Once `ACTIVE`, changing those values requires a reason and creates a new effective baseline revision rather than overwriting the prior one; future production and trajectory calculations use the revision effective for their intended analysis while preserving the original plan and every amendment.
+_Novelty_: Contractual or planning changes remain possible without erasing the target against which earlier operational decisions and performance were understood.
+
+**[Project Commercial History #99]: Effective Client Replacement**
+_Concept_: While a project remains `PLANNED` and has no operational history, an incorrectly selected client may be replaced as setup correction. Once `ACTIVE`, a legitimate contracting-client change requires a reason, closes the current company-client period, and creates a new immediately effective period; prior client relationships remain immutable and visible historically.
+_Novelty_: The project exposes one current owner without erasing contractual succession or treating a substantive post-start change as a harmless field edit.
+
+**[Project Schedule History #100]: Effective Operational Baseline Revisions**
+_Concept_: While a project is `PLANNED`, its weekly schedule and suggested break templates may be edited as setup data. Once `ACTIVE`, a change creates a new effective operational-baseline revision for future shifts; previously created or closed RDOs remain associated with the schedule and break defaults effective when their operational context was created.
+_Novelty_: Administrators can evolve normal working patterns without retroactively changing the defaults, confirmations, or labor calculations that shaped earlier field records.
+
+## Technique Execution Results
+
+**First Principles Thinking:**
+
+- **Interactive Focus:** Product value and the central decision problem around progress, budget, and remaining time.
+- **Key Breakthroughs:** Knogest is an operational decision system rather than a cadastral application, while production intelligence remains downstream of RDO data.
+
+**Ecosystem Thinking:**
+
+- **Building on Previous:** Mapped corporation, company, project, people, machines, clients, and suppliers as distinct ownership and participation boundaries.
+- **Key Breakthroughs:** Company-owned resources, corporation-wide person identity, temporal allocations, and reusable but isolated commercial records.
+
+**Solution Matrix:**
+
+- **Interactive Focus:** Compared and refined multi-tenancy, authentication, lifecycle, wizard, scheduling, supplier, and historical-integrity alternatives.
+- **Key Breakthroughs:** Shared-schema isolation, token-scoped selected company, rotating sessions, atomic project creation, explicit state machines, and effective-dated histories.
+
+**Decision Tree Mapping Preparation:**
+
+- **Developed Foundation:** Defined prerequisites, conflicts, terminal states, deferred capabilities, and implementation boundaries needed to construct an executable MVP sequence.
+
+**Overall Creative Journey:** The session moved from product purpose into precise domain invariants and architectural consequences. The user repeatedly narrowed generalized ideas to the smallest operationally truthful MVP while preserving paths for RDO, production intelligence, broader authorization, and auditability.
+
+### Creative Facilitation Narrative
+
+The collaboration was strongest when an apparently simple field exposed a temporal or ownership rule. Employee identity became corporation person plus company employment; machine movement separated project reallocation, company transfer, and retirement; and project setup evolved into a planned-state aggregate with explicit activation and versioned baselines.
+
+### Session Highlights
+
+**User Creative Strengths:** Clear operational intuition, willingness to revise earlier decisions, and strong preference for preserving historical truth.
+**AI Facilitation Approach:** One decision at a time, alternating product, architecture, lifecycle, security, UX, and edge-case perspectives.
+**Breakthrough Moments:** Corporation-wide physical-work exclusivity, project-specific fuel pricing, single-open-shift semantics, and `PLANNED` resource reservation.
+**Energy Flow:** Sustained and decisive through 100 collaboratively accepted ideas.
+
+## Idea Organization and Prioritization
+
+### Thematic Organization
+
+1. **Product and MVP Boundary:** Knogest begins as the trustworthy operational foundation for future progress, cost, and remaining-time intelligence. RDO, production, calculated cost, and forecasting remain downstream capabilities.
+2. **Tenant and Session Foundation:** A shared PostgreSQL schema isolates corporations through trusted host resolution and signed request context. The selected company belongs to a rotating server-side session rather than route parameters or browser state.
+3. **Workforce Identity and History:** Corporation people, company employments, employment periods, responsibilities, and exclusive operational allocations represent distinct lifecycles.
+4. **Fleet Integrity:** Mandatory meter history, company ownership periods, project allocations, intercompany transfer, and retirement preserve machine identity without overwriting evidence.
+5. **Project Aggregate:** Atomic wizard finalization creates a `PLANNED` project with required commercial, managerial, technical, address, schedule, budget, and date baselines; resources and fuel suppliers remain optional.
+6. **Commercial and Fuel Context:** Clients and fuel suppliers are separate company-owned registries. Fuel availability and effective pricing belong to each project-supplier agreement.
+7. **Future RDO Time Model:** One open shift per project, sequential shifts on the same business date, actual cross-midnight timestamps, confirmed breaks, and person-day labor aggregation guide later mobile work.
+8. **Reliability and Historical Truth:** Transactions, database constraints, idempotency, structured conflicts, cursor pagination, irreversible historical soft deletion, and actor attribution protect shared behavior.
+
+### Breakthrough Concepts
+
+- **Corporation person plus company employment:** permits legitimate multi-company employment while enforcing one physical operational allocation per corporation.
+- **`PLANNED` as mobilization:** planned projects may reserve resources; activation explicitly records the real production start.
+- **Three machine movements:** project reallocation, intercompany ownership transfer, and terminal retirement are separate commands.
+- **Project-owned fuel terms:** the supplier is reusable, while products and price histories vary by project.
+- **Versioned truth after activation:** budget, dates, client, schedule, and break defaults evolve through effective revisions rather than destructive updates.
+
+### Canonical Conflict Resolutions
+
+- A corporation may exist with zero companies; the duplicated `Corporation Starts with a Company` fragment is superseded by decision #85.
+- Clients remain company-scoped and are not exposed through corporation-wide aggregate client access in the MVP; the duplicated corporation-visible client fragment is superseded by the strict company boundary.
+- Supplier-level fuel pricing is superseded by project-supplier fuel pricing.
+- Project creation now produces `PLANNED`, not `ACTIVE`.
+- Standard schedules use one daily window, not multiple daily intervals.
+- Multiple shifts may occur on one business date only sequentially, never in parallel for one project.
+
+### Prioritization Results
+
+**P0 - Platform Foundation**
+
+- Shared-schema tenant enforcement and trusted request context.
+- Host-resolved login, persisted rotating sessions, company selection/change, refresh, logout, and revocation.
+- Administrative provisioning and master-password-reset CLI.
+- Standard API envelope, cursor pagination, validation, conflict, and idempotency contracts.
+
+**P1 - Company Registries**
+
+- Corporation people, company employments, and employment periods.
+- Company clients and fuel suppliers.
+- Fixed fuel catalog.
+- Machines, ownership periods, and meter readings.
+- Cursor-paginated CRUD and active-record selection behavior for each registry.
+
+**P2 - Project Aggregate and Mobilization**
+
+- Project wizard and `PLANNED` lifecycle.
+- Client, manager, technical engineers, address, contract reference, budget, dates, schedule, and optional break defaults.
+- Optional employee, machine, and fuel-supplier project setup.
+- Exclusive allocations, project-specific fuel products and prices, activation, pause, reactivation, completion, and cancellation guards.
+
+**P3 - Historical Lifecycle Operations**
+
+- Employee rehire, responsibility-safe termination, and reallocation.
+- Machine reallocation, transfer, retirement, and safe meter correction.
+- Manager/client tenure changes and post-activation baseline revisions.
+- Operational schedule revisions and historical selection reads.
+
+**Deferred Beyond the MVP**
+
+- RDO/mobile implementation, production, calculated costs, progress, forecasting, maintenance, fueling events, generic suppliers, full audit log, end-user company lifecycle, public password recovery, and non-master user management.
+
+## Initial Architecture
+
+### Runtime Boundaries
+
+- **Auth and Tenant Context:** resolves corporation from host, authenticates the user, loads the persisted session, and exposes trusted `userId`, `corporationId`, `companyId`, role, and session identifiers.
+- **Organization:** owns corporations, domains, companies, master users, and administrative CLI workflows.
+- **Workforce:** owns corporation people, company employments, employment periods, responsibilities, and operational employee allocations.
+- **Fleet:** owns machines, company ownership periods, meter readings, operational allocations, transfers, and retirement.
+- **Commercial:** owns clients, fuel suppliers, the fixed fuel catalog, and project-supplier fuel terms.
+- **Projects:** owns project identity, state transitions, baseline revisions, schedules, breaks, manager tenures, technical responsibilities, wizard finalization, and aggregate orchestration.
+
+### Persistence Rules
+
+- Every tenant record carries `corporationId`; every company-owned record also carries `companyId`.
+- Composite foreign keys and indexes include ownership scope where practical so foreign-company relationships cannot be persisted accidentally.
+- Partial unique indexes enforce active identifiers and one open temporal period where PostgreSQL can express the invariant directly.
+- Cross-aggregate commands use database transactions; expected exclusivity races become structured `409 Conflict` responses.
+- Historical periods are closed and replaced, never reopened or overwritten.
+- Real instants are stored in UTC and interpreted with `America/Sao_Paulo` business time in the MVP.
+
+### Application Rules
+
+- Controllers own transport parsing and the outer HTTP envelope.
+- Handlers/use cases own authorization decisions, domain validation, transactions, and response data.
+- Repositories receive trusted scope explicitly and never infer tenant or company from client payloads.
+- Domain commands replace generic field updates for activation, pause, allocation, reassignment, termination, transfer, retirement, and revision creation.
+- The project wizard submits one idempotent aggregate command; no project or allocation draft is persisted before finalization.
+
+## Action Planning
+
+### Phase P0 - Platform Foundation
+
+1. Reconcile the schema and auth implementation with the canonical tenant/session decisions.
+2. Implement host resolution, login bootstrap, rotating refresh sessions, company selection/change, logout, and global session revocation.
+3. Implement idempotent provisioning and password-reset CLI commands.
+4. Align validation, error envelopes, cursor pagination, Swagger, and idempotency primitives.
+5. Add tenant-isolation, company-scope, refresh-reuse, revocation, and pagination contract tests.
+
+**Completion Criteria:** No authenticated company operation can execute without trusted corporation and selected-company context; cross-tenant probes fail; session rotation and revocation are tested; CLI provisioning is repeatable.
+
+### Phase P1 - Company Registries
+
+1. Add corporation-person, company-employment, and employment-period schema and handlers.
+2. Add client and fuel-supplier registries with normalized active CPF/CNPJ uniqueness.
+3. Seed the fixed fuel catalog.
+4. Add machine, ownership-period, and immutable meter-reading schema and handlers.
+5. Deliver cursor-paginated list, create, update, history-aware delete, and selection endpoints with Swagger coverage.
+
+**Completion Criteria:** Every registry is isolated by corporation and company, deleted historical records are unselectable, identifier conflicts are deterministic, and machine meters cannot move backward.
+
+### Phase P2 - Project Aggregate
+
+1. Add project state, baseline, schedule, break, manager, technical-responsibility, allocation, supplier-agreement, and fuel-price structures.
+2. Implement wizard validation and atomic idempotent finalization into `PLANNED`.
+3. Implement employee and machine availability queries and conflict-safe allocation commands.
+4. Implement project supplier/product/price configuration.
+5. Implement activation, pause, reactivation, completion, and cancellation commands with transition guards.
+
+**Completion Criteria:** A valid wizard either creates the entire planned aggregate once or creates nothing; concurrent resource conflicts return actionable `409` details; project transitions preserve every allocation and responsibility invariant.
+
+### Phase P3 - Historical Operations
+
+1. Implement employee rehire, termination, manager replacement, technical-responsibility changes, and reassignment.
+2. Implement machine reassignment, ownership transfer, retirement, and unreferenced meter correction.
+3. Implement client changes and effective budget/date/schedule baseline revisions.
+4. Add historical read models needed by the dashboard without making deleted records operationally selectable.
+
+**Completion Criteria:** Every consequential change preserves prior periods, records actor and reason where required, and cannot create overlapping ownership, employment, responsibility, or operational allocation state.
+
+### Recommended Delivery Rhythm
+
+- Build each phase as a vertical backend slice: migration, domain command, handler, controller, Swagger contract, unit tests, and integration tests.
+- Connect the already implemented dashboard after each P1/P2 module stabilizes rather than waiting for every backend module.
+- Run explicit concurrency tests for allocation and idempotency paths before considering P2 complete.
+
+## Critical Open Questions
+
+Resolve these immediately before their owning phase rather than blocking P0 as a whole:
+
+1. Access-token lifetime, refresh-token lifetime, idle expiration, absolute session expiration, and cookie host/domain policy.
+2. Exact company, corporation-domain, and master-administrator fields required by CLI provisioning.
+3. CPF/CNPJ validation library, encryption or masking policy, and LGPD retention/access expectations.
+4. Allowed compensation modes, monetary currency/precision, and overtime-rate representation in employee allocation terms.
+5. Job-role representation: free text, fixed system values, or company-owned catalog.
+6. Exact fixed fuel catalog entries, units, decimal precision, and price effective-time granularity.
+7. Maximum wizard collection sizes and API payload limits for initial employees, machines, engineers, and suppliers.
+8. Which dashboard historical views are required in the MVP versus data preservation only.
+
+## Session Summary and Insights
+
+### Key Achievements
+
+- Converted an initially broad earthworks-management idea into a bounded backend and dashboard MVP.
+- Established a multi-tenant architecture with a second strict company ownership boundary.
+- Defined temporal domain models for labor, fleet, project responsibility, commercial ownership, and baselines.
+- Produced a prioritized implementation path with measurable completion criteria.
+
+### Session Reflection
+
+The strongest organizing principle is that current operational state must be easy to query while historical truth must never depend on mutable current fields. The MVP should therefore invest first in trusted scope, explicit commands, temporal periods, and relational constraints; future RDO and production intelligence can then consume stable operational facts instead of forcing a data-model rewrite.
+
 **[Provisioning Invariant #23]: Corporation Starts with a Company**
 _Concept_: A corporation cannot enter operational use without at least one company. Provisioning creates the corporation, its initial domain mapping, its administrator, and its first company as one atomic onboarding operation before the first login is possible.
 _Novelty_: This eliminates an unusable authenticated state in which the restricted corporation token has no company to select and no permission to create one.
@@ -279,3 +681,17 @@ _Novelty_: This eliminates an unusable authenticated state in which the restrict
 **[Architecture Decision #10]: Company-Owned, Corporation-Visible Clients**
 _Concept_: Each client belongs to exactly one company and may be linked only to projects owned by that company. Corporation-level overview endpoints may aggregate clients across all companies in the authenticated corporation for read-only visibility, but sibling companies gain no ownership or association rights.
 _Novelty_: Authorization distinguishes aggregate visibility from resource ownership, allowing corporate insight without weakening company-level domain boundaries or enabling accidental cross-company reuse.
+
+## Session Completion
+
+The brainstorming workflow is complete with 100 collaboratively accepted decisions organized into eight architectural themes and four prioritized delivery phases. Canonical conflict resolutions in the organization section supersede the two legacy fragments immediately above.
+
+**Final Outcomes:**
+
+- Prioritized backend and dashboard MVP scope.
+- Explicit product and lifecycle decisions.
+- Initial shared-schema multi-tenant architecture.
+- Critical open questions assigned to their owning phases.
+- Executable P0-P3 delivery plan with completion criteria.
+
+**Recommended Continuation:** Begin P0 by reconciling the existing backend schema and authentication implementation against the tenant/session contract, then convert the resulting gap analysis into implementation stories.

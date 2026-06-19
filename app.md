@@ -109,3 +109,8 @@ pra frente.
 - Checklist das máquinas com orímetro final com valor e foto
 - Horário fechamento do turno (padrão da obra com a opção de selecionar horas extras)
 - Horas extras (caso passe da horário padrão)
+
+// SPECS RDO
+
+// FUTURO
+RLS
