@@ -9,6 +9,7 @@ Antes de criar modulos ou alterar fluxo de dados, leia:
 - `docs/MODULE_PATTERN.md`
 - `docs/VALIDATION.md`
 - `docs/TENANCY.md`
+- `docs/PAGINATION.md`
 - `docs/ERRORS.md`
 
 ## Setup

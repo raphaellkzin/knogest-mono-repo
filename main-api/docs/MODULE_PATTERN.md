@@ -41,4 +41,15 @@ src/modules/orders/
 - Nome: `<action>-<entity>.handler.ts`
 - Recebe `HandlerContext`.
 - E a unica camada que usa `context.prisma`.
-- Deve retornar `successHandlerResponse(data)` ou lancar erro normalizado.
+- Deve retornar `successHandlerResponse(data)` ou lancar erro normalizado. Listagens paginadas usam o formato especifico abaixo.
+
+## Paginated List Endpoints
+
+Every endpoint that powers a table or returns a potentially unbounded collection must follow `PAGINATION.md`.
+
+- Add a `list-<entity>.handler.ts` handler.
+- Validate cursor, limit, search, filters, `sortBy`, and `sortDirection` in a strict module DTO.
+- Apply every authenticated scope defined by the module; tenant-aware modules also follow `TENANCY.md`.
+- Use deterministic cursor ordering with `id` as the final tie-breaker.
+- Return `successHandlerResponse({ data, pageInfo })` from the handler. The controller alone applies the standard HTTP envelope.
+- Do not implement a paginated module until the shared implementation gate in `PAGINATION.md` is complete.

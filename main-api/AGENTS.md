@@ -13,6 +13,7 @@ Leia este arquivo antes de alterar o projeto.
 - Regra de negocio fica nos services.
 - Persistencia e filtros de banco ficam nos handlers.
 - Em dados tenant-aware, `tenantId` vem do contexto autenticado, nunca do body livre.
+- Todas as listagens potencialmente ilimitadas usam paginacao por cursor conforme `docs/PAGINATION.md`.
 - Nao vaze detalhes internos de erro em respostas HTTP.
 
 ## Antes de criar codigo novo
@@ -21,7 +22,8 @@ Leia este arquivo antes de alterar o projeto.
 2. Siga `docs/MODULE_PATTERN.md` para novos modulos.
 3. Use `docs/VALIDATION.md` para DTOs e preHandlers.
 4. Use `docs/TENANCY.md` se o dado pertencer a um tenant.
-5. Use `docs/ERRORS.md` para status HTTP e mensagens.
+5. Use `docs/PAGINATION.md` para toda listagem paginada.
+6. Use `docs/ERRORS.md` para status HTTP e mensagens.
 
 ## Verificacao
 
