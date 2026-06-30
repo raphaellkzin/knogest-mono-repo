@@ -2,6 +2,10 @@
   "name": "main-web-app",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": "22.22.3"
+  },
+  "packageManager": "pnpm@10.33.0",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -9,7 +13,11 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "generate:api": "kubb generate",
-    "validate:api": "cd api_docs && kubb validate --input openapi.json"
+    "validate:api": "kubb validate --input \"$PWD/../main-api/artifacts/openapi.json\"",
+    "format:check": "prettier --check .",
+    "check:api": "node scripts/check-api-drift.mjs",
+    "test": "vitest run",
+    "test:e2e": "docker compose -f ../main-api/docker-compose.dev.yml up -d --wait postgres_test && playwright test"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
@@ -19,11 +27,8 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns-tz": "^3.2.0",
-    "jwt-decode": "^4.0.0",
-    "kubb": "^3.1.1",
     "lucide-react": "^1.21.0",
     "next": "16.2.9",
-    "next-auth": "4.24.14",
     "next-themes": "^0.4.6",
     "react": "19.2.4",
     "react-dom": "19.2.4",
@@ -37,12 +42,13 @@
     "zustand": "5.0.14"
   },
   "devDependencies": {
-    "@kubb/cli": "^4.38.1",
-    "@kubb/core": "^4.38.1",
-    "@kubb/plugin-client": "^4.38.1",
-    "@kubb/plugin-oas": "^4.38.1",
-    "@kubb/plugin-ts": "^4.38.1",
-    "@kubb/plugin-zod": "^4.38.1",
+    "@kubb/cli": "4.38.1",
+    "@kubb/core": "4.38.1",
+    "@kubb/plugin-client": "4.38.1",
+    "@kubb/plugin-oas": "4.38.1",
+    "@kubb/plugin-ts": "4.38.1",
+    "@kubb/plugin-zod": "4.38.1",
+    "@playwright/test": "1.61.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
@@ -51,6 +57,7 @@
     "eslint-config-next": "16.2.9",
     "prettier": "^3.8.4",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "4.1.9"
   }
 }

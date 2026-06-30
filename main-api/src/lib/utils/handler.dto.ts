@@ -1,7 +1,10 @@
-import { PrismaClient } from "../../db/generated/prisma/client";
+import { Prisma, PrismaClient } from "../../db/generated/prisma/client";
+
+export type DatabaseClient = PrismaClient | Prisma.TransactionClient;
 
 export interface HandlerContext {
-  prisma: PrismaClient;
+  prisma: DatabaseClient;
+  transaction<T>(work: (context: HandlerContext) => Promise<T>): Promise<T>;
 }
 
 export interface ICreateEntityHandler<T> {

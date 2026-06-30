@@ -1,14 +1,13 @@
 import { redirect } from "next/navigation";
 
-import { requireAuthenticatedSession } from "@/lib/auth/session";
+import { CompanySelectionEmpty } from "@/features/company-selection/components/company-selection-empty";
+import { CompanySelectionPage } from "@/features/company-selection/components/company-selection-page";
+import { getCompanySelectionViewModel } from "@/features/company-selection/company-selection.server";
 
 export default async function Page() {
-  const session = await requireAuthenticatedSession();
-  const userId = session.user?.id;
+  const { companies, selectedCompany } = await getCompanySelectionViewModel();
 
-  if (!userId) {
-    redirect("/auth/login");
-  }
-
-  redirect("/home");
+  if (selectedCompany) redirect("/home");
+  if (companies.length === 0) return <CompanySelectionEmpty />;
+  return <CompanySelectionPage companies={companies} />;
 }

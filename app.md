@@ -113,4 +113,5 @@ pra frente.
 // SPECS RDO
 
 // FUTURO
-RLS
+
+RLS para o futuro

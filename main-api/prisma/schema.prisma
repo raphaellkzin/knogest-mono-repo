@@ -1,8 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider = "prisma-client"
   output   = "../src/db/generated/prisma"
@@ -12,9 +7,92 @@ datasource db {
   provider = "postgresql"
 }
 
-model User {
-  id String @id @default(uuid())
+enum UserRole {
+  MASTER_ADMIN
 
-  username String @unique
-  password String
+  @@map("user_role")
+}
+
+model Corporation {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String   @db.VarChar(160)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  domains   Domain[]
+  companies Company[]
+  users     User[]
+  sessions  Session[]
+
+  @@map("corporations")
+}
+
+model Domain {
+  id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId String      @map("corporation_id") @db.Uuid
+  host          String      @unique @db.VarChar(253)
+  isActive      Boolean     @default(true) @map("is_active")
+  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+  corporation   Corporation @relation(fields: [corporationId], references: [id], onDelete: Restrict)
+
+  @@index([corporationId])
+  @@map("domains")
+}
+
+model Company {
+  id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId String      @map("corporation_id") @db.Uuid
+  name          String      @db.VarChar(160)
+  isActive      Boolean     @default(true) @map("is_active")
+  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+  corporation   Corporation @relation(fields: [corporationId], references: [id], onDelete: Restrict)
+  sessions      Session[]
+
+  @@unique([corporationId, id])
+  @@unique([corporationId, name])
+  @@map("companies")
+}
+
+model User {
+  id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId String      @map("corporation_id") @db.Uuid
+  email         String      @db.VarChar(254)
+  passwordHash  String      @map("password_hash")
+  role          UserRole    @default(MASTER_ADMIN)
+  isActive      Boolean     @default(true) @map("is_active")
+  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+  corporation   Corporation @relation(fields: [corporationId], references: [id], onDelete: Restrict)
+  sessions      Session[]
+
+  @@unique([corporationId, id])
+  @@unique([corporationId, email])
+  @@map("users")
+}
+
+model Session {
+  id                       String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId            String      @map("corporation_id") @db.Uuid
+  userId                   String      @map("user_id") @db.Uuid
+  companyId                String?     @map("company_id") @db.Uuid
+  refreshTokenHash         String?     @map("refresh_token_hash")
+  consumedRefreshTokenHash String?     @map("consumed_refresh_token_hash")
+  refreshVersion           Int         @default(0) @map("refresh_version")
+  refreshConsumedAt        DateTime?   @map("refresh_consumed_at") @db.Timestamptz(3)
+  createdAt                DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  lastUsedAt               DateTime    @default(now()) @map("last_used_at") @db.Timestamptz(3)
+  idleExpiresAt            DateTime    @map("idle_expires_at") @db.Timestamptz(3)
+  absoluteExpiresAt        DateTime    @map("absolute_expires_at") @db.Timestamptz(3)
+  revokedAt                DateTime?   @map("revoked_at") @db.Timestamptz(3)
+  revocationReason         String?     @map("revocation_reason") @db.VarChar(120)
+  corporation              Corporation @relation(fields: [corporationId], references: [id], onDelete: Restrict)
+  user                     User        @relation(fields: [corporationId, userId], references: [corporationId, id], onDelete: Restrict)
+  company                  Company?    @relation(fields: [corporationId, companyId], references: [corporationId, id], onDelete: Restrict)
+
+  @@index([corporationId, userId])
+  @@index([corporationId, companyId])
+  @@map("sessions")
 }

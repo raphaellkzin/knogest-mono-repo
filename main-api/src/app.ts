@@ -1,33 +1,73 @@
 import fastifySwagger from "@fastify/swagger";
 import fastifySwaggerUi from "@fastify/swagger-ui";
+import fastifyRateLimit from "@fastify/rate-limit";
+import { randomUUID } from "node:crypto";
 import fastify, { FastifyServerOptions } from "fastify";
 import { v1Routes } from "./routes/v1-routes";
 import { prismaPlugin } from "./lib/plugins/prisma.plugin";
 import { authPlugin } from "./lib/plugins/auth.plugin";
 import { env } from "./lib/config/env";
 import { jsonResponse } from "./lib/utils/jsonResponse";
+import { isAppError } from "./lib/utils/appError";
 
 export const buildApp = async (options: FastifyServerOptions = {}) => {
+  const { logger: configuredLogger, ...restOptions } = options;
   const app = fastify({
-    ...options,
-    logger: options.logger ?? env.NODE_ENV !== "test",
+    ...restOptions,
+    disableRequestLogging: options.disableRequestLogging ?? true,
+    ...(options.loggerInstance
+      ? {}
+      : { logger: configuredLogger ?? env.NODE_ENV !== "test" }),
+    trustProxy:
+      options.trustProxy ??
+      env.TRUST_PROXY.split(",").map((value) => value.trim()),
+    genReqId:
+      options.genReqId ??
+      ((request) => {
+        const incoming = request.headers["x-request-id"];
+        return typeof incoming === "string" && /^[0-9a-f-]{36}$/i.test(incoming)
+          ? incoming
+          : randomUUID();
+      }),
+    ajv: options.ajv ?? { customOptions: { removeAdditional: false } },
   });
 
   app.setErrorHandler((error: unknown, _request, reply) => {
     if (typeof error === "object" && error !== null && "validation" in error) {
       return jsonResponse.error({
         reply,
-        data: error.validation,
+        details: error.validation,
+        code: "VALIDATION_ERROR",
         statusCode: 400,
         message: "Validation error",
       });
     }
 
-    if (error instanceof Error) {
-      app.log.error(error);
-    } else {
-      app.log.error({ error }, "Unhandled request error");
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      (("statusCode" in error && error.statusCode === 429) ||
+        ("code" in error && error.code === "RATE_LIMITED"))
+    ) {
+      return jsonResponse.error({
+        reply,
+        statusCode: 429,
+        code: "RATE_LIMITED",
+        message: "Too many authentication attempts",
+      });
     }
+
+    if (isAppError(error)) {
+      return jsonResponse.fromError({ reply, error });
+    }
+
+    app.log.error(
+      {
+        requestId: reply.request.id,
+        errorType: error instanceof Error ? error.name : "UnknownError",
+      },
+      "Unhandled request error",
+    );
 
     return jsonResponse.fromError({ reply, error });
   });
@@ -59,6 +99,16 @@ export const buildApp = async (options: FastifyServerOptions = {}) => {
 
   await app.register(prismaPlugin);
   await app.register(authPlugin);
+  await app.register(fastifyRateLimit, {
+    global: false,
+    errorResponseBuilder: (request) => ({
+      success: false,
+      code: "RATE_LIMITED",
+      message: "Too many authentication attempts",
+      details: null,
+      requestId: request.id,
+    }),
+  });
 
   await app.register(
     async (instance) => {

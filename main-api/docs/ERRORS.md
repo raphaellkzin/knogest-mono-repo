@@ -1,28 +1,31 @@
 # Errors
 
-Todas as respostas de erro devem usar o formato:
+Canonical API errors use a stable code and correlation identifier:
 
 ```json
 {
   "success": false,
-  "message": "Mensagem segura",
-  "data": null
+  "code": "AUTHENTICATION_FAILED",
+  "message": "Invalid credentials",
+  "details": null,
+  "requestId": "00000000-0000-4000-8000-000000000000"
 }
 ```
 
-## Status HTTP
+## HTTP status
 
-- `400`: entrada invalida ou erro de validacao.
-- `401`: usuario nao autenticado ou token invalido.
-- `403`: usuario autenticado sem permissao ou tenant incorreto.
-- `404`: recurso nao encontrado.
-- `409`: conflito, duplicidade ou unique constraint.
-- `422`: regra de negocio invalida.
-- `500`: erro inesperado.
+- `400`: invalid input or validation failure.
+- `401`: unauthenticated, invalid credentials, or invalid Session.
+- `403`: authenticated without the required trusted scope.
+- `404`: resource not found.
+- `409`: conflict or uniqueness violation.
+- `422`: invalid business transition.
+- `429`: bounded rate limit exceeded.
+- `500`: sanitized unexpected failure.
 
-## Regras
+## Rules
 
-- Nao envie stack trace, query, payload interno ou erro Prisma bruto para o cliente.
-- Handlers convertem erros Prisma com `failedHandlerResponse`.
-- Services lancam `AppError` quando uma regra de negocio falhar.
-- Controllers chamam `jsonResponse.fromError`.
+- Never return stack traces, queries, request bodies, raw Prisma errors, credentials, tokens, hashes, or cookies.
+- Authentication enumeration paths share one code, status, public message, and response shape.
+- Handlers map persistence failures, services raise `AppError`, and the global Fastify error handler owns HTTP formatting.
+- Logs identify operation, request ID, safe host fingerprint, source metadata, outcome, and timing without credential material.

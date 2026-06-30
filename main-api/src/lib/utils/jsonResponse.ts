@@ -1,10 +1,13 @@
-import { FastifyReply } from "fastify";
+import type { FastifyReply } from "fastify";
+
 import { isAppError } from "./appError";
 
 interface JsonResponseBase {
   reply: FastifyReply;
   data?: unknown;
+  details?: unknown;
   statusCode?: number;
+  code?: string;
   message?: string;
 }
 
@@ -15,40 +18,35 @@ export const jsonResponse = {
     statusCode = 200,
     message = "Success",
   }: JsonResponseBase) {
-    const response = {
-      success: true,
-      message,
-      data,
-    };
-
-    return reply.code(statusCode).send(response);
+    return reply.code(statusCode).send({ success: true, message, data });
   },
 
   error({
     reply,
-    data = null,
+    details = null,
     statusCode = 500,
+    code = "INTERNAL_ERROR",
     message = "Internal server error",
   }: JsonResponseBase) {
-    const response = {
+    return reply.code(statusCode).send({
       success: false,
+      code,
       message,
-      data,
-    };
-
-    return reply.code(statusCode).send(response);
+      details,
+      requestId: reply.request.id,
+    });
   },
 
   fromError({ reply, error }: { reply: FastifyReply; error: unknown }) {
     if (isAppError(error)) {
       return this.error({
         reply,
-        data: error.data,
+        details: error.data,
         statusCode: error.statusCode,
+        code: error.code,
         message: error.message,
       });
     }
-
     return this.error({ reply });
   },
 };

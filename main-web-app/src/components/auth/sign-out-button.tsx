@@ -1,20 +1,32 @@
 "use client";
 
 import { LogOut } from "lucide-react";
-import { signOut } from "next-auth/react";
+import { useRouter } from "next/navigation";
+import { useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
+import { forgetBrowserSessionAction } from "@/features/auth/actions/forget-browser-session.action";
 
 export function SignOutButton() {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+
   return (
     <Button
       type="button"
       variant="outline"
       size="sm"
-      onClick={() => signOut({ callbackUrl: "/auth/login" })}
+      disabled={isPending}
+      onClick={() =>
+        startTransition(async () => {
+          await forgetBrowserSessionAction();
+          router.replace("/auth/login");
+          router.refresh();
+        })
+      }
     >
       <LogOut />
-      Sair
+      {isPending ? "Saindo…" : "Sair"}
     </Button>
   );
 }

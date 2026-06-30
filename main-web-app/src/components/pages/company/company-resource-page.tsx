@@ -111,12 +111,7 @@ const workPhaseOptions = [
   "Encerramento",
 ];
 
-const workStatusOptions = [
-  "Em execução",
-  "Mobilização",
-  "Medição",
-  "Pausada",
-];
+const workStatusOptions = ["Em execução", "Mobilização", "Medição", "Pausada"];
 
 const workWizardSteps: WizardStep<WorkFormValues>[] = [
   {
@@ -814,12 +809,7 @@ function WorkIdentificationStep({
 }) {
   return (
     <div className="grid gap-4 sm:grid-cols-2">
-      <WorkTextField
-        form={form}
-        name="name"
-        label="Nome da obra"
-        autoFocus
-      />
+      <WorkTextField form={form} name="name" label="Nome da obra" autoFocus />
       <WorkTextField
         form={form}
         name="location"
@@ -896,7 +886,8 @@ function WorkTextField({
         {label}
         {isRequired && (
           <span className="text-destructive" aria-hidden="true">
-            {" "}*
+            {" "}
+            *
           </span>
         )}
       </label>
@@ -910,7 +901,11 @@ function WorkTextField({
         {...inputProps}
       />
       {error && (
-        <p id={errorId} role="alert" className="mt-1.5 text-sm text-destructive">
+        <p
+          id={errorId}
+          role="alert"
+          className="mt-1.5 text-sm text-destructive"
+        >
           {String(error)}
         </p>
       )}
@@ -947,7 +942,8 @@ function WorkSelectField({
             {label}
             {required && (
               <span className="text-destructive" aria-hidden="true">
-                {" "}*
+                {" "}
+                *
               </span>
             )}
           </span>

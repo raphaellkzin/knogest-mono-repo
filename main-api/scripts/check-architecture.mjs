@@ -2,8 +2,12 @@ import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const rootDir = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+);
 const modulesDir = path.join(rootDir, "src", "modules");
+const adminCliPath = path.join(rootDir, "scripts", "admin-cli.ts");
 
 const forbiddenImportPattern =
   /from\s+["'].*(?:@db|db\/generated\/prisma|db\/prisma\.db|generated\/prisma)["']/;
@@ -32,6 +36,7 @@ async function collectFiles(dir) {
 }
 
 const files = await collectFiles(modulesDir);
+files.push(adminCliPath);
 const violations = [];
 
 for (const file of files) {
@@ -39,15 +44,21 @@ for (const file of files) {
   const relativePath = path.relative(rootDir, file);
 
   if (forbiddenImportPattern.test(source)) {
-    violations.push(`${relativePath}: controllers/services must not import DB modules`);
+    violations.push(
+      `${relativePath}: controllers/services must not import DB modules`,
+    );
   }
 
   if (forbiddenPrismaTypePattern.test(source)) {
-    violations.push(`${relativePath}: controllers/services must not use Prisma types directly`);
+    violations.push(
+      `${relativePath}: controllers/services must not use Prisma types directly`,
+    );
   }
 
   if (forbiddenDirectAccessPattern.test(source)) {
-    violations.push(`${relativePath}: controllers/services must not access Prisma directly`);
+    violations.push(
+      `${relativePath}: controllers/services must not access Prisma directly`,
+    );
   }
 }
 

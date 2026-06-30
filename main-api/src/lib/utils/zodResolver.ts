@@ -12,7 +12,8 @@ export function validateBody<T extends z.ZodTypeAny>(schema: T) {
     if (!result.success) {
       jsonResponse.error({
         reply,
-        data: z.flattenError(result.error).fieldErrors,
+        details: z.flattenError(result.error).fieldErrors,
+        code: "VALIDATION_ERROR",
         message: "Validation error",
         statusCode: 400,
       });
@@ -30,10 +31,12 @@ export function validateParams<T extends z.ZodTypeAny>(schema: T) {
   return async (request: FastifyRequest, reply: FastifyReply) => {
     const result = schema.safeParse(request.params);
     if (!result.success) {
-      reply.code(400).send({
-        success: false,
+      jsonResponse.error({
+        reply,
+        statusCode: 400,
+        code: "VALIDATION_ERROR",
         message: "Validation error",
-        errors: result.error.flatten().fieldErrors,
+        details: result.error.flatten().fieldErrors,
       });
       return;
     }
@@ -48,10 +51,12 @@ export function validateQuery<T extends z.ZodTypeAny>(schema: T) {
   return async (request: FastifyRequest, reply: FastifyReply) => {
     const result = schema.safeParse(request.query);
     if (!result.success) {
-      reply.code(400).send({
-        success: false,
+      jsonResponse.error({
+        reply,
+        statusCode: 400,
+        code: "VALIDATION_ERROR",
         message: "Validation error",
-        errors: result.error.flatten().fieldErrors,
+        details: result.error.flatten().fieldErrors,
       });
       return;
     }

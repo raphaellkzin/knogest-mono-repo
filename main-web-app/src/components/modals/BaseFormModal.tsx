@@ -86,9 +86,7 @@ export function BaseFormModal<TData extends FieldValues>({
 
   const isWizard = Boolean(steps?.length);
   const activeStep = isWizard ? steps?.[currentStep] : undefined;
-  const isLastStep = isWizard
-    ? currentStep === (steps?.length ?? 1) - 1
-    : true;
+  const isLastStep = isWizard ? currentStep === (steps?.length ?? 1) - 1 : true;
   const isSubmitting = form.formState.isSubmitting;
   const navigationDisabled = isSubmitting || isAdvancing;
 
@@ -150,9 +148,7 @@ export function BaseFormModal<TData extends FieldValues>({
       });
 
       if (isStepValid) {
-        setCurrentStep((previous) =>
-          Math.min(previous + 1, steps.length - 1),
-        );
+        setCurrentStep((previous) => Math.min(previous + 1, steps.length - 1));
       }
     } finally {
       advancingRef.current = false;

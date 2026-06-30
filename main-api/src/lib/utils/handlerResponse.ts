@@ -13,7 +13,11 @@ export const successHandlerResponse = sucessHandlerResponse;
 
 const prismaErrorMap: Record<
   string,
-  { code: "CONFLICT" | "NOT_FOUND" | "BAD_REQUEST" | "INTERNAL_ERROR"; message: string; statusCode: number }
+  {
+    code: "CONFLICT" | "NOT_FOUND" | "BAD_REQUEST" | "INTERNAL_ERROR";
+    message: string;
+    statusCode: number;
+  }
 > = {
   P2000: {
     code: "BAD_REQUEST",

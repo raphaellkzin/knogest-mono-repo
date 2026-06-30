@@ -1,18 +1,18 @@
 import { AppShell } from "@/components/layout/app-shell";
 import { CompanyOverview } from "@/components/pages/company/company-overview";
-import { requireAuthenticatedSession } from "@/lib/auth/session";
-import { redirect } from "next/navigation";
+import { requireCompanyWorkspace } from "@/features/company-selection/company-selection.server";
 
 export default async function Page() {
-  const session = await requireAuthenticatedSession();
-  const userId = session.user?.id;
-
-  if (!userId) {
-    redirect("/auth/login");
-  }
+  const { companies, selectedCompany, session } =
+    await requireCompanyWorkspace();
 
   return (
-    <AppShell userId={userId} currentArea="dashboard">
+    <AppShell
+      companies={companies}
+      selectedCompany={selectedCompany}
+      userId={session.user.id}
+      currentArea="dashboard"
+    >
       <CompanyOverview />
     </AppShell>
   );

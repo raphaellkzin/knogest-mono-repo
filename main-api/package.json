@@ -9,20 +9,29 @@
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:integration": "./scripts/run-integration-tests.sh",
     "lint": "eslint . && node scripts/check-architecture.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
-    "db:seed": "tsx prisma/seed.ts"
+    "db:seed": "tsx prisma/seed.ts",
+    "db:fixtures": "NODE_ENV=development tsx prisma/seeds/development-fixtures.ts",
+    "admin": "tsx scripts/admin-cli.ts",
+    "generate:openapi": "tsx scripts/generate-openapi.ts",
+    "check:openapi": "tsx scripts/check-openapi-drift.ts"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
+  "engines": {
+    "node": "22.22.3"
+  },
   "packageManager": "pnpm@10.33.0",
   "dependencies": {
     "@fastify/jwt": "^10.1.0",
+    "@fastify/rate-limit": "11.1.0",
     "@fastify/swagger": "^9.7.0",
     "@fastify/swagger-ui": "^5.2.6",
     "@prisma/adapter-pg": "^7.8.0",

@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { Loader2 } from 'lucide-react';
+import { useState } from "react";
+import { Loader2 } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -11,7 +11,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+} from "@/components/ui/alert-dialog";
 
 interface ConfirmActionModalProps {
   open: boolean;
@@ -20,7 +20,7 @@ interface ConfirmActionModalProps {
   description: string;
   confirmLabel?: string;
   cancelLabel?: string;
-  variant?: 'default' | 'destructive';
+  variant?: "default" | "destructive";
   onConfirm: () => Promise<void>;
 }
 
@@ -29,9 +29,9 @@ export function ConfirmActionModal({
   onOpenChange,
   title,
   description,
-  confirmLabel = 'Confirmar',
-  cancelLabel = 'Cancelar',
-  variant = 'default',
+  confirmLabel = "Confirmar",
+  cancelLabel = "Cancelar",
+  variant = "default",
   onConfirm,
 }: ConfirmActionModalProps) {
   const [isLoading, setIsLoading] = useState(false);
@@ -45,7 +45,9 @@ export function ConfirmActionModal({
       await onConfirm();
       onOpenChange(false);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Ocorreu um erro inesperado.');
+      setErrorMessage(
+        error instanceof Error ? error.message : "Ocorreu um erro inesperado.",
+      );
     } finally {
       setIsLoading(false);
     }
@@ -69,9 +71,11 @@ export function ConfirmActionModal({
           </div>
         )}
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={isLoading}>{cancelLabel}</AlertDialogCancel>
+          <AlertDialogCancel disabled={isLoading}>
+            {cancelLabel}
+          </AlertDialogCancel>
           <AlertDialogAction
-            variant={variant === 'destructive' ? 'destructive' : 'default'}
+            variant={variant === "destructive" ? "destructive" : "default"}
             disabled={isLoading}
             onClick={handleConfirm}
           >

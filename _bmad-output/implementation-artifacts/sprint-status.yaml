@@ -1,0 +1,105 @@
+# generated: 2026-06-19T19:48:27-03:00
+# last_updated: 2026-06-30T16:29:13-03:00
+# project: knogest
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: /home/bigalien/www/knogest-renew/_bmad-output/implementation-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog -> in-progress: Automatically when first story is created (via create-story)
+#   - in-progress -> done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - Developer typically creates next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+
+generated: "2026-06-19T19:48:27-03:00"
+last_updated: "2026-06-30T19:24:54-03:00"
+project: knogest
+project_key: NOKEY
+tracking_system: file-system
+story_location: /home/bigalien/www/knogest-renew/_bmad-output/implementation-artifacts
+
+development_status:
+  epic-1: in-progress
+  1-1-provision-the-pilot-workspace-through-the-cli: review
+  1-2-authenticate-through-the-corporation-domain: review
+  1-3-renew-and-revoke-browser-sessions-safely: in-progress
+  1-4-select-and-change-the-active-company-workspace: in-progress
+  1-5-reset-a-master-administrator-password-administratively: in-progress
+  epic-1-retrospective: optional
+
+  epic-2: backlog
+  2-1-approve-the-pilot-personal-data-gate: backlog
+  2-2-protect-cpf-and-cnpj-technically: backlog
+  2-3-register-and-find-clients: backlog
+  2-4-register-and-find-fuel-suppliers: backlog
+  2-5-remove-clients-and-fuel-suppliers-from-operational-use: backlog
+  2-6-register-persons-and-company-employments: backlog
+  2-7-maintain-admission-and-rehire-periods: backlog
+  epic-2-retrospective: optional
+
+  epic-3: backlog
+  3-1-register-and-find-machines: backlog
+  3-2-maintain-a-monotonic-meter-reading-chain: backlog
+  epic-3-retrospective: optional
+
+  epic-4: backlog
+  4-1-run-a-non-resumable-local-project-wizard: backlog
+  4-2-capture-project-identity-and-commercial-baseline: backlog
+  4-3-select-the-client-and-project-responsibilities: backlog
+  4-4-configure-the-weekly-schedule-and-break-templates: backlog
+  4-5-configure-optional-initial-employee-mobilization: backlog
+  4-6-configure-optional-initial-machine-mobilization: backlog
+  4-7-configure-optional-project-fuel-agreements: backlog
+  4-8-finalize-the-project-aggregate-atomically-and-idempotently: backlog
+  4-9-submit-the-wizard-and-recover-finalization-conflicts: backlog
+  epic-4-retrospective: optional
+
+  epic-5: backlog
+  5-1-allocate-an-employee-with-effective-work-terms: backlog
+  5-2-release-an-employee-from-a-project: backlog
+  5-3-reallocate-an-employee-between-projects: backlog
+  5-4-change-effective-employee-terms-on-the-same-project: backlog
+  5-5-terminate-an-employment-safely: backlog
+  5-6-allocate-a-machine-to-a-project: backlog
+  5-7-reallocate-or-release-a-machine: backlog
+  5-8-transfer-machine-ownership-between-companies: backlog
+  5-9-retire-a-machine-permanently: backlog
+  5-10-activate-a-planned-project-explicitly: backlog
+  5-11-pause-and-reactivate-a-project: backlog
+  5-12-complete-or-cancel-a-project-safely: backlog
+  epic-5-retrospective: optional
+
+  epic-6: backlog
+  6-1-revise-the-project-budget-and-planned-dates: backlog
+  6-2-correct-or-replace-the-current-project-client: backlog
+  6-3-replace-the-current-project-manager: backlog
+  6-4-maintain-technical-responsibilities: backlog
+  6-5-revise-the-weekly-schedule-and-break-templates: backlog
+  6-6-maintain-project-fuel-agreements-and-effective-prices: backlog
+  6-7-inspect-project-history: backlog
+  6-8-inspect-employee-history: backlog
+  6-9-inspect-machine-history: backlog
+  epic-6-retrospective: optional

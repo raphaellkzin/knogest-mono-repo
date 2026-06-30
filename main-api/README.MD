@@ -39,12 +39,13 @@ pnpm format       # formata com Prettier
 pnpm db:generate  # gera Prisma Client
 pnpm db:migrate   # cria/aplica migrations em desenvolvimento
 pnpm db:deploy    # aplica migrations em producao
-pnpm db:seed      # cria usuario local de seed
+pnpm db:seed      # popula dados locais do Épico 1 fora de produção
 ```
 
-Usuario local criado pelo seed:
+Usuário local criado pelo seed de desenvolvimento:
 
-- username: `admin@adm.com`
+- host: `piloto.localhost`
+- email: `master@piloto.localhost`
 - password: `1234`
 
 Use apenas em desenvolvimento.
@@ -52,7 +53,11 @@ Use apenas em desenvolvimento.
 ## Rotas
 
 - `POST /api/v1/auth/login`
-- `GET /api/v1/auth/auth-check`
+- `POST /api/v1/auth/refresh`
+- `POST /api/v1/auth/logout`
+- `GET /api/v1/auth/session`
+- `GET /api/v1/auth/companies`
+- `PUT /api/v1/auth/session/company`
 - Swagger UI: `/docs`
 
 ## Arquitetura
@@ -64,3 +69,66 @@ controller -> validation -> service -> handler -> Prisma -> response
 ```
 
 Somente handlers acessam banco de dados. Controllers registram rotas e respostas HTTP. Services contem regra de negocio e chamam handlers. DTOs contem schemas Zod e tipos inferidos.
+
+# Knogest API
+
+## Isolated integration database
+
+Integration tests never use `prisma db push`. Start the PostgreSQL 16 test service and run the suite; the command terminates active test connections, drops and recreates only a database whose name ends in `_test`, then applies the committed migrations with `prisma migrate deploy`.
+
+```bash
+docker compose -f docker-compose.dev.yml up -d --wait postgres_test
+pnpm test:integration
+```
+
+Override `TEST_DATABASE_URL` when a different isolated PostgreSQL 16 instance is required.
+
+## Administrative provisioning
+
+Passwords are accepted only through stdin so they do not enter shell history or process arguments.
+
+```bash
+printf '%s\n' "$ADMIN_PASSWORD" | pnpm admin -- provision \
+  --corporation-name "Pilot Corporation" \
+  --domain piloto.localhost \
+  --admin-email master@example.com \
+  --company "Company One" \
+  --password-stdin
+
+pnpm admin -- company:add --corporation-id <uuid> --name "Company Two"
+```
+
+## Epic 1 local fixture
+
+`pnpm db:seed` and `pnpm db:fixtures` both prepare a deterministic local
+environment for the browser-authentication epic when `NODE_ENV` is not
+`production`:
+
+- active Corporation domain: `piloto.localhost`
+- Master Administrator email: `master@piloto.localhost`
+- local password: `1234`
+- three active Companies for selection
+- one inactive Company for rejection checks
+- sibling Corporation with the same email for scoped reset/isolation checks
+
+Open the dashboard at `http://piloto.localhost:3000` so host-based Corporation
+resolution matches the seeded domain.
+
+## Administrative password reset
+
+Use the Auth application service through the administrative CLI; do not edit
+database rows directly. The replacement password is read through a hidden TTY
+prompt by default, or through protected stdin for automation.
+
+```bash
+pnpm admin -- password:reset --corporation <uuid> --user <uuid>
+
+printf '%s\n' "$REPLACEMENT_PASSWORD" | pnpm admin -- password:reset \
+  --corporation <uuid> \
+  --email master@example.com \
+  --password-stdin
+```
+
+The command emits only safe identifiers, reset timestamp, and revoked Session
+count. Plaintext passwords, hashes, tokens, cookies, CPF/CNPJ values, and full
+input streams must not be logged or committed in examples.

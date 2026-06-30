@@ -1,19 +1,19 @@
-import { redirect } from "next/navigation";
 import { Settings } from "lucide-react";
 
 import { AppShell } from "@/components/layout/app-shell";
-import { requireAuthenticatedSession } from "@/lib/auth/session";
+import { requireCompanyWorkspace } from "@/features/company-selection/company-selection.server";
 
 export default async function Page() {
-  const session = await requireAuthenticatedSession();
-  const userId = session.user?.id;
-
-  if (!userId) {
-    redirect("/auth/login");
-  }
+  const { companies, selectedCompany, session } =
+    await requireCompanyWorkspace();
 
   return (
-    <AppShell userId={userId} currentArea="settings">
+    <AppShell
+      companies={companies}
+      selectedCompany={selectedCompany}
+      userId={session.user.id}
+      currentArea="settings"
+    >
       <section
         className="rounded-lg border border-border bg-card px-5 py-12 text-center"
         aria-labelledby="settings-title"

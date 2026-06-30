@@ -1,49 +1,17 @@
-# Clients OpenAPI
+# Generated API Clients
 
-O Kubb gera clients a partir de `api_docs/openapi.json`.
-
-## Comandos
+Fastify route schemas generate the canonical `main-api/artifacts/openapi.json`. Kubb consumes that artifact and writes TypeScript models, Zod schemas, and server-only clients under `src/generated`.
 
 ```bash
-pnpm validate:api
+pnpm --dir ../main-api generate:openapi
 pnpm generate:api
+pnpm validate:api
+pnpm check:api
 ```
 
-## Regra server-only
+Never edit generated files or maintain duplicate request/response types. Presentation code adapts generated DTOs inside feature-level Server Actions or queries.
 
-Todos os clients gerados importam `@/lib/api/server-client`. Esse módulo usa `server-only`, então uma tentativa de importar clients gerados em componentes client-side deve falhar no lint ou no build.
-
-Uso correto:
-
-```ts
-"use server";
-
-import { authCheck } from "@/generated/clients/authCheck";
-
-export async function action() {
-  return authCheck();
-}
-```
-
-Uso proibido:
-
-```tsx
-"use client";
-
-import { authCheck } from "@/generated/clients/authCheck";
-```
-
-## Atualização de contratos
-
-1. Atualize `api_docs/openapi.json`.
-2. Rode `pnpm validate:api`.
-3. Rode `pnpm generate:api`.
-4. Ajuste Server Actions e tipos consumidos pela UI.
-5. Rode `pnpm lint`, `pnpm typecheck` e `pnpm build`.
-
-## Contratos atuais
+Current authentication operations are:
 
 - `POST /api/v1/auth/login`
-- `GET /api/v1/auth/auth-check`
-
-`auth-check` é consumido por wrapper server-side para manter a UI isolada de detalhes do contrato.
+- `GET /api/v1/auth/session`

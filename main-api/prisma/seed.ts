@@ -1,31 +1,26 @@
 import { createPrismaClient } from "../src/db/prisma.db";
-import { createSaltHash } from "../src/lib/utils/utils";
+import { seedEpicOneDevelopmentData } from "./seeds/epic-one-development-data";
+import { seedReferenceData } from "./seeds/reference-data";
 
 const { prisma, pool } = createPrismaClient();
 
-export default async function main() {
-  await prisma.user.upsert({
-    where: {
-      username: "admin@adm.com",
-    },
-    update: {},
-    create: {
-      username: "admin@adm.com",
-      password: await createSaltHash("1234"),
-    },
-  });
-}
-
-main()
+seedReferenceData(prisma)
   .then(async () => {
-    await prisma.$disconnect();
-    await pool.end();
+    if (process.env.NODE_ENV !== "production") {
+      const result = await seedEpicOneDevelopmentData(prisma);
+      process.stdout.write(
+        `${JSON.stringify(
+          { success: true, seed: "epic-1-development", data: result },
+          null,
+          2,
+        )}\n`,
+      );
+      return;
+    }
 
-    process.stdout.write("Seed done!\n");
+    process.stdout.write("Reference data seed complete.\n");
   })
-  .catch(async (e) => {
-    console.error(e);
+  .finally(async () => {
     await prisma.$disconnect();
     await pool.end();
-    process.exit(1);
   });

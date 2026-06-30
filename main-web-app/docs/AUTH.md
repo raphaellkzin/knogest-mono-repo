@@ -1,39 +1,28 @@
-# Autenticação
+# Authentication
 
-O template usa NextAuth v4 com Credentials Provider.
+Fastify is the only identity and Session authority. Next.js acts as a same-origin BFF and never creates an independent Session.
 
-## Fluxo
+## Login flow
 
 ```text
-/auth/login -> /api/auth/callback/credentials -> authorize -> login gerado pelo Kubb -> sessão JWT HttpOnly
+Client form -> Server Action -> generated Kubb client -> Fastify login -> persisted Session
+            <- safe result     <- server-confidential credentials
 ```
 
-`/api/auth/*` é a exceção técnica permitida porque o NextAuth v4 depende dessas rotas internas.
+- Corporation scope comes from the normalized incoming host, forwarded server-to-server as `X-Forwarded-Host`.
+- The public credential input is only `{ email, password }`.
+- The Server Action converts the API credential result into host-only `HttpOnly` cookies.
+- Client Components, URLs, DOM, Web Storage, and Server Action results never contain access or refresh values.
+- `proxy.ts` checks cookie presence only for navigation. Server pages and actions inspect the persisted Fastify Session.
 
-## Sessão
+## Cookies
 
-- Estratégia: JWT.
-- Duração padrão: 4 horas.
-- O token da API externa fica apenas no JWT HttpOnly do NextAuth.
-- A sessão exposta ao client contém no máximo `session.user.id`.
+Production uses `__Host-knogest-access` and `__Host-knogest-refresh` with `Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/`, and no `Domain`. Local HTTP uses explicit `AUTH_COOKIE_MODE=local`, relaxing only the names and `Secure` flag.
 
-## Arquivos principais
-
-- `src/lib/auth/options.ts`: configuração do NextAuth.
-- `src/app/api/auth/[...nextauth]/route.ts`: handlers GET/POST do NextAuth.
-- `src/lib/auth/api-token.ts`: leitura server-only do JWT.
-- `src/lib/auth/session.ts`: helpers para sessão atual e proteção de páginas.
-
-## Login e logout
-
-- Login usa `signIn("credentials")` no formulário client-side, chamando somente `/api/auth/*`.
-- Logout usa `signOut`, também restrito ao fluxo interno do NextAuth.
-- Mensagens de erro são genéricas para evitar enumeração de credenciais.
-
-## Variáveis
+## Configuration
 
 ```env
-NEXTAUTH_URL="http://localhost:3000"
-NEXTAUTH_SECRET="replace-with-at-least-32-random-characters"
 API_BASE_URL="http://localhost:3333"
+APP_HOST="piloto.localhost:3000"
+AUTH_COOKIE_MODE="local"
 ```

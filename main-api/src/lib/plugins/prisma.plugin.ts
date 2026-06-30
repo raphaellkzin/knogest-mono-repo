@@ -14,7 +14,18 @@ export const prismaPlugin = fp(async (app) => {
   const { prisma, pool } = createPrismaClient();
 
   app.decorate("prisma", prisma);
-  app.decorate("handlerContext", { prisma });
+  const handlerContext: HandlerContext = {
+    prisma,
+    transaction: (work) =>
+      prisma.$transaction((transaction) => {
+        const transactionContext: HandlerContext = {
+          prisma: transaction,
+          transaction: (nestedWork) => nestedWork(transactionContext),
+        };
+        return work(transactionContext);
+      }),
+  };
+  app.decorate("handlerContext", handlerContext);
 
   app.addHook("onClose", async (app) => {
     await app.prisma.$disconnect();

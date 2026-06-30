@@ -20,17 +20,20 @@ const eslintConfig = defineConfig([
           paths: [
             {
               name: "axios",
-              message: "Use Server Actions e o client server-only em src/lib/api/server-client.ts.",
+              message:
+                "Use Server Actions e o client server-only em src/lib/api/server-client.ts.",
             },
             {
               name: "@/lib/api/server-client",
-              message: "O client da API externa é server-only e não deve ser usado em componentes.",
+              message:
+                "O client da API externa é server-only e não deve ser usado em componentes.",
             },
           ],
           patterns: [
             {
               group: ["@/generated/clients", "@/generated/clients/*"],
-              message: "Clients gerados pelo Kubb só podem ser usados em Server Actions ou código server-only.",
+              message:
+                "Clients gerados pelo Kubb só podem ser usados em Server Actions ou código server-only.",
             },
           ],
         },

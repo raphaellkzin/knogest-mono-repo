@@ -18,16 +18,18 @@ describe("app", () => {
     expect(app.server.listening).toBe(false);
   });
 
-  it("returns 401 when auth-check has no token", async () => {
+  it("returns the canonical 401 when session inspection has no token", async () => {
     const response = await app.inject({
       method: "GET",
-      url: "/api/v1/auth/auth-check",
+      url: "/api/v1/auth/session",
     });
 
     expect(response.statusCode).toBe(401);
     expect(response.json()).toMatchObject({
       success: false,
-      message: "Token invalido ou ausente.",
+      code: "SESSION_INVALID",
+      message: "Invalid or expired session",
+      requestId: expect.any(String),
     });
   });
 
