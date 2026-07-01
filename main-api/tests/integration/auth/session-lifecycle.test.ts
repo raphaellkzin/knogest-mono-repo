@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { buildApp } from "../../../src/app";
 import { OrganizationService } from "../../../src/modules/organization/organization.service";
+import { resetIntegrationData } from "../reset-integration-data";
 
 import type { FastifyInstance } from "fastify";
 
@@ -21,11 +22,7 @@ describe("browser Session lifecycle", () => {
   });
 
   beforeEach(async () => {
-    await app.prisma.session.deleteMany();
-    await app.prisma.company.deleteMany();
-    await app.prisma.user.deleteMany();
-    await app.prisma.domain.deleteMany();
-    await app.prisma.corporation.deleteMany();
+    await resetIntegrationData(app.prisma);
     await organization.provision({
       corporationName: "Lifecycle",
       domainHost: "life.localhost",

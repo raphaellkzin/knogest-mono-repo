@@ -20,6 +20,20 @@ enum SensitiveDocumentType {
   @@map("sensitive_document_type")
 }
 
+enum CommercialEntityType {
+  INDIVIDUAL
+  LEGAL_ENTITY
+
+  @@map("commercial_entity_type")
+}
+
+enum EmploymentState {
+  ACTIVE
+  TERMINATED
+
+  @@map("employment_state")
+}
+
 model Corporation {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name      String   @db.VarChar(160)
@@ -32,6 +46,10 @@ model Corporation {
   users     User[]
   sessions  Session[]
   sensitiveDocumentHarnessRows SensitiveDocumentProtectionHarness[]
+  clients   Client[]
+  fuelSuppliers FuelSupplier[]
+  persons   Person[]
+  employments Employment[]
 
   @@map("corporations")
 }
@@ -59,6 +77,9 @@ model Company {
   corporation   Corporation @relation(fields: [corporationId], references: [id], onDelete: Restrict)
   sessions      Session[]
   sensitiveDocumentHarnessRows SensitiveDocumentProtectionHarness[]
+  clients       Client[]
+  fuelSuppliers FuelSupplier[]
+  employments   Employment[]
 
   @@unique([corporationId, id])
   @@unique([corporationId, name])
@@ -76,6 +97,8 @@ model User {
   updatedAt     DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
   corporation   Corporation @relation(fields: [corporationId], references: [id], onDelete: Restrict)
   sessions      Session[]
+  removedClients Client[] @relation("ClientRemovedBy")
+  removedFuelSuppliers FuelSupplier[] @relation("FuelSupplierRemovedBy")
 
   @@unique([corporationId, id])
   @@unique([corporationId, email])
@@ -126,4 +149,156 @@ model SensitiveDocumentProtectionHarness {
   @@index([corporationId, companyId, registryType])
   @@index([documentDigest])
   @@map("sensitive_document_protection_harness")
+}
+
+model Client {
+  id                   String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId        String                 @map("corporation_id") @db.Uuid
+  companyId            String                 @map("company_id") @db.Uuid
+  entityType           CommercialEntityType   @map("entity_type")
+  documentType         SensitiveDocumentType  @map("document_type")
+  ciphertext           String                 @db.Text
+  iv                   String                 @db.VarChar(64)
+  authTag              String                 @map("auth_tag") @db.VarChar(64)
+  encryptionKeyVersion String                 @map("encryption_key_version") @db.VarChar(64)
+  documentDigest       String                 @map("document_digest") @db.VarChar(96)
+  displayName          String                 @map("display_name") @db.VarChar(180)
+  fullName             String?                @map("full_name") @db.VarChar(180)
+  legalName            String?                @map("legal_name") @db.VarChar(180)
+  tradeName            String?                @map("trade_name") @db.VarChar(180)
+  phone                String?                @db.VarChar(32)
+  email                String?                @db.VarChar(254)
+  addressLine          String?                @map("address_line") @db.VarChar(220)
+  city                 String?                @db.VarChar(120)
+  state                String?                @db.VarChar(80)
+  postalCode           String?                @map("postal_code") @db.VarChar(24)
+  isActive             Boolean                @default(true) @map("is_active")
+  inactivatedAt        DateTime?              @map("inactivated_at") @db.Timestamptz(3)
+  removedAt            DateTime?              @map("removed_at") @db.Timestamptz(3)
+  removedByUserId      String?                @map("removed_by_user_id") @db.Uuid
+  createdAt            DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
+  corporation          Corporation            @relation(fields: [corporationId], references: [id], onDelete: Restrict)
+  company              Company                @relation(fields: [corporationId, companyId], references: [corporationId, id], onDelete: Restrict)
+  removedBy            User?                  @relation("ClientRemovedBy", fields: [corporationId, removedByUserId], references: [corporationId, id], onDelete: Restrict)
+
+  @@index([corporationId, companyId, isActive])
+  @@index([corporationId, companyId, createdAt, id])
+  @@index([corporationId, companyId, displayName, id])
+  @@index([documentDigest])
+  @@map("clients")
+}
+
+model FuelSupplier {
+  id                   String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId        String                 @map("corporation_id") @db.Uuid
+  companyId            String                 @map("company_id") @db.Uuid
+  entityType           CommercialEntityType   @map("entity_type")
+  documentType         SensitiveDocumentType  @map("document_type")
+  ciphertext           String                 @db.Text
+  iv                   String                 @db.VarChar(64)
+  authTag              String                 @map("auth_tag") @db.VarChar(64)
+  encryptionKeyVersion String                 @map("encryption_key_version") @db.VarChar(64)
+  documentDigest       String                 @map("document_digest") @db.VarChar(96)
+  displayName          String                 @map("display_name") @db.VarChar(180)
+  fullName             String?                @map("full_name") @db.VarChar(180)
+  legalName            String?                @map("legal_name") @db.VarChar(180)
+  tradeName            String?                @map("trade_name") @db.VarChar(180)
+  phone                String?                @db.VarChar(32)
+  email                String?                @db.VarChar(254)
+  addressLine          String?                @map("address_line") @db.VarChar(220)
+  city                 String?                @db.VarChar(120)
+  state                String?                @db.VarChar(80)
+  postalCode           String?                @map("postal_code") @db.VarChar(24)
+  isActive             Boolean                @default(true) @map("is_active")
+  inactivatedAt        DateTime?              @map("inactivated_at") @db.Timestamptz(3)
+  removedAt            DateTime?              @map("removed_at") @db.Timestamptz(3)
+  removedByUserId      String?                @map("removed_by_user_id") @db.Uuid
+  createdAt            DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
+  corporation          Corporation            @relation(fields: [corporationId], references: [id], onDelete: Restrict)
+  company              Company                @relation(fields: [corporationId, companyId], references: [corporationId, id], onDelete: Restrict)
+  removedBy            User?                  @relation("FuelSupplierRemovedBy", fields: [corporationId, removedByUserId], references: [corporationId, id], onDelete: Restrict)
+
+  @@index([corporationId, companyId, isActive])
+  @@index([corporationId, companyId, createdAt, id])
+  @@index([corporationId, companyId, displayName, id])
+  @@index([documentDigest])
+  @@map("fuel_suppliers")
+}
+
+model FuelType {
+  id        String   @id @db.VarChar(32)
+  name      String   @db.VarChar(80)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("fuel_types")
+}
+
+model Person {
+  id                   String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId        String                @map("corporation_id") @db.Uuid
+  documentType         SensitiveDocumentType @map("document_type")
+  ciphertext           String                @db.Text
+  iv                   String                @db.VarChar(64)
+  authTag              String                @map("auth_tag") @db.VarChar(64)
+  encryptionKeyVersion String                @map("encryption_key_version") @db.VarChar(64)
+  documentDigest       String                @map("document_digest") @db.VarChar(96)
+  displayName          String                @map("display_name") @db.VarChar(180)
+  fullName             String                @map("full_name") @db.VarChar(180)
+  isActive             Boolean               @default(true) @map("is_active")
+  createdAt            DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime              @updatedAt @map("updated_at") @db.Timestamptz(3)
+  corporation          Corporation           @relation(fields: [corporationId], references: [id], onDelete: Restrict)
+  employments          Employment[]
+
+  @@unique([corporationId, id])
+  @@unique([corporationId, documentDigest])
+  @@index([corporationId, displayName, id])
+  @@index([documentDigest])
+  @@map("persons")
+}
+
+model Employment {
+  id                        String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId             String             @map("corporation_id") @db.Uuid
+  companyId                 String             @map("company_id") @db.Uuid
+  personId                  String             @map("person_id") @db.Uuid
+  companyRegistrationNumber String             @map("company_registration_number") @db.VarChar(80)
+  state                     EmploymentState    @default(ACTIVE)
+  isActive                  Boolean            @default(true) @map("is_active")
+  terminatedAt              DateTime?          @map("terminated_at") @db.Timestamptz(3)
+  createdAt                 DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                 DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
+  corporation               Corporation        @relation(fields: [corporationId], references: [id], onDelete: Restrict)
+  company                   Company            @relation(fields: [corporationId, companyId], references: [corporationId, id], onDelete: Restrict)
+  person                    Person             @relation(fields: [corporationId, personId], references: [corporationId, id], onDelete: Restrict)
+  periods                   EmploymentPeriod[]
+
+  @@unique([corporationId, companyId, id])
+  @@index([corporationId, companyId, isActive])
+  @@index([corporationId, companyId, createdAt, id])
+  @@index([corporationId, companyId, companyRegistrationNumber])
+  @@index([corporationId, personId])
+  @@map("employments")
+}
+
+model EmploymentPeriod {
+  id                String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId     String      @map("corporation_id") @db.Uuid
+  companyId         String      @map("company_id") @db.Uuid
+  employmentId      String      @map("employment_id") @db.Uuid
+  admissionDate     DateTime    @map("admission_date") @db.Date
+  effectiveFrom     DateTime    @map("effective_from") @db.Date
+  effectiveTo       DateTime?   @map("effective_to") @db.Date
+  terminationReason String?     @map("termination_reason") @db.VarChar(240)
+  createdAt         DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+  employment        Employment  @relation(fields: [corporationId, companyId, employmentId], references: [corporationId, companyId, id], onDelete: Restrict)
+
+  @@index([corporationId, companyId, employmentId])
+  @@index([corporationId, companyId, effectiveFrom, id])
+  @@map("employment_periods")
 }

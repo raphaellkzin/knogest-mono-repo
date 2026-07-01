@@ -1,0 +1,16 @@
+import type { PrismaClient } from "../../src/db/generated/prisma/client";
+
+export async function resetIntegrationData(prisma: PrismaClient) {
+  await prisma.employmentPeriod.deleteMany();
+  await prisma.employment.deleteMany();
+  await prisma.person.deleteMany();
+  await prisma.fuelSupplier.deleteMany();
+  await prisma.client.deleteMany();
+  await prisma.sensitiveDocumentProtectionHarness.deleteMany();
+  await prisma.fuelType.deleteMany();
+  await prisma.session.deleteMany();
+  await prisma.company.deleteMany();
+  await prisma.user.deleteMany();
+  await prisma.domain.deleteMany();
+  await prisma.corporation.deleteMany();
+}

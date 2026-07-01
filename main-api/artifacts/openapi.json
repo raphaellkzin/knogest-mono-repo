@@ -548,6 +548,2602 @@
           }
         }
       }
+    },
+    "/api/v1/clients": {
+      "post": {
+        "summary": "Create a Client in the selected Company",
+        "tags": ["Commercial"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["entityType", "document"],
+                "properties": {
+                  "entityType": {
+                    "type": "string",
+                    "enum": ["individual", "legal_entity"]
+                  },
+                  "document": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32,
+                    "writeOnly": true
+                  },
+                  "fullName": { "type": "string", "maxLength": 180 },
+                  "legalName": { "type": "string", "maxLength": 180 },
+                  "tradeName": { "type": "string", "maxLength": 180 },
+                  "phone": { "type": "string", "maxLength": 32 },
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "maxLength": 254
+                  },
+                  "addressLine": { "type": "string", "maxLength": 220 },
+                  "city": { "type": "string", "maxLength": 120 },
+                  "state": { "type": "string", "maxLength": 80 },
+                  "postalCode": { "type": "string", "maxLength": 24 }
+                }
+              }
+            }
+          }
+        },
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "201": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["success", "message", "data"],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [true] },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "entityType",
+                        "name",
+                        "document",
+                        "isActive",
+                        "createdAt",
+                        "updatedAt"
+                      ],
+                      "properties": {
+                        "id": { "type": "string", "format": "uuid" },
+                        "entityType": {
+                          "type": "string",
+                          "enum": ["individual", "legal_entity"]
+                        },
+                        "name": { "type": "string" },
+                        "fullName": { "type": "string", "nullable": true },
+                        "legalName": { "type": "string", "nullable": true },
+                        "tradeName": { "type": "string", "nullable": true },
+                        "phone": { "type": "string", "nullable": true },
+                        "email": { "type": "string", "nullable": true },
+                        "addressLine": { "type": "string", "nullable": true },
+                        "city": { "type": "string", "nullable": true },
+                        "state": { "type": "string", "nullable": true },
+                        "postalCode": { "type": "string", "nullable": true },
+                        "document": {
+                          "type": "object",
+                          "required": [
+                            "documentType",
+                            "maskedDocument",
+                            "plaintextDocument"
+                          ],
+                          "properties": {
+                            "documentType": {
+                              "type": "string",
+                              "enum": ["CPF", "CNPJ"]
+                            },
+                            "maskedDocument": {
+                              "type": "string",
+                              "example": "***.***.247-25"
+                            },
+                            "plaintextDocument": {
+                              "type": "string",
+                              "example": "52998224725"
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "isActive": { "type": "boolean" },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "updatedAt": { "type": "string", "format": "date-time" }
+                      },
+                      "additionalProperties": false
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "List Clients in the selected Company",
+        "tags": ["Commercial"],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 25
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          },
+          {
+            "schema": { "type": "string", "minLength": 1, "maxLength": 2048 },
+            "in": "query",
+            "name": "cursor",
+            "required": false
+          },
+          {
+            "schema": { "type": "string", "maxLength": 120 },
+            "in": "query",
+            "name": "search",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": ["individual", "legal_entity"]
+            },
+            "in": "query",
+            "name": "entityType",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": ["name", "createdAt"],
+              "default": "createdAt"
+            },
+            "in": "query",
+            "name": "sortBy",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": ["asc", "desc"],
+              "default": "desc"
+            },
+            "in": "query",
+            "name": "sortDirection",
+            "required": false
+          }
+        ],
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["success", "message", "data"],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [true] },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "required": ["data", "pageInfo"],
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "id",
+                              "entityType",
+                              "name",
+                              "document",
+                              "isActive",
+                              "createdAt",
+                              "updatedAt"
+                            ],
+                            "properties": {
+                              "id": { "type": "string", "format": "uuid" },
+                              "entityType": {
+                                "type": "string",
+                                "enum": ["individual", "legal_entity"]
+                              },
+                              "name": { "type": "string" },
+                              "fullName": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "legalName": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "tradeName": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "phone": { "type": "string", "nullable": true },
+                              "email": { "type": "string", "nullable": true },
+                              "addressLine": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "city": { "type": "string", "nullable": true },
+                              "state": { "type": "string", "nullable": true },
+                              "postalCode": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "document": {
+                                "type": "object",
+                                "required": ["documentType", "maskedDocument"],
+                                "properties": {
+                                  "documentType": {
+                                    "type": "string",
+                                    "enum": ["CPF", "CNPJ"]
+                                  },
+                                  "maskedDocument": {
+                                    "type": "string",
+                                    "example": "***.***.247-25"
+                                  }
+                                },
+                                "additionalProperties": false
+                              },
+                              "isActive": { "type": "boolean" },
+                              "createdAt": {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              "updatedAt": {
+                                "type": "string",
+                                "format": "date-time"
+                              }
+                            },
+                            "additionalProperties": false
+                          }
+                        },
+                        "pageInfo": {
+                          "type": "object",
+                          "required": ["hasNextPage", "nextCursor"],
+                          "properties": {
+                            "hasNextPage": { "type": "boolean" },
+                            "nextCursor": { "type": "string", "nullable": true }
+                          },
+                          "additionalProperties": false
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/clients/{clientId}": {
+      "get": {
+        "summary": "Get an authorized Client detail",
+        "tags": ["Commercial"],
+        "parameters": [
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "in": "path",
+            "name": "clientId",
+            "required": true
+          }
+        ],
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["success", "message", "data"],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [true] },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "entityType",
+                        "name",
+                        "document",
+                        "isActive",
+                        "createdAt",
+                        "updatedAt"
+                      ],
+                      "properties": {
+                        "id": { "type": "string", "format": "uuid" },
+                        "entityType": {
+                          "type": "string",
+                          "enum": ["individual", "legal_entity"]
+                        },
+                        "name": { "type": "string" },
+                        "fullName": { "type": "string", "nullable": true },
+                        "legalName": { "type": "string", "nullable": true },
+                        "tradeName": { "type": "string", "nullable": true },
+                        "phone": { "type": "string", "nullable": true },
+                        "email": { "type": "string", "nullable": true },
+                        "addressLine": { "type": "string", "nullable": true },
+                        "city": { "type": "string", "nullable": true },
+                        "state": { "type": "string", "nullable": true },
+                        "postalCode": { "type": "string", "nullable": true },
+                        "document": {
+                          "type": "object",
+                          "required": [
+                            "documentType",
+                            "maskedDocument",
+                            "plaintextDocument"
+                          ],
+                          "properties": {
+                            "documentType": {
+                              "type": "string",
+                              "enum": ["CPF", "CNPJ"]
+                            },
+                            "maskedDocument": {
+                              "type": "string",
+                              "example": "***.***.247-25"
+                            },
+                            "plaintextDocument": {
+                              "type": "string",
+                              "example": "52998224725"
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "isActive": { "type": "boolean" },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "updatedAt": { "type": "string", "format": "date-time" }
+                      },
+                      "additionalProperties": false
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Remove a Client from operational use",
+        "tags": ["Commercial"],
+        "parameters": [
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "in": "path",
+            "name": "clientId",
+            "required": true
+          }
+        ],
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["success", "message", "data"],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [true] },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "required": ["id", "isActive", "removedAt"],
+                      "properties": {
+                        "id": { "type": "string", "format": "uuid" },
+                        "isActive": { "type": "boolean", "enum": [false] },
+                        "removedAt": { "type": "string", "format": "date-time" }
+                      },
+                      "additionalProperties": false
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/fuel-suppliers": {
+      "post": {
+        "summary": "Create a Fuel Supplier in the selected Company",
+        "tags": ["Commercial"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["entityType", "document"],
+                "properties": {
+                  "entityType": {
+                    "type": "string",
+                    "enum": ["individual", "legal_entity"]
+                  },
+                  "document": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32,
+                    "writeOnly": true
+                  },
+                  "fullName": { "type": "string", "maxLength": 180 },
+                  "legalName": { "type": "string", "maxLength": 180 },
+                  "tradeName": { "type": "string", "maxLength": 180 },
+                  "phone": { "type": "string", "maxLength": 32 },
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "maxLength": 254
+                  },
+                  "addressLine": { "type": "string", "maxLength": 220 },
+                  "city": { "type": "string", "maxLength": 120 },
+                  "state": { "type": "string", "maxLength": 80 },
+                  "postalCode": { "type": "string", "maxLength": 24 }
+                }
+              }
+            }
+          }
+        },
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "201": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["success", "message", "data"],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [true] },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "entityType",
+                        "name",
+                        "document",
+                        "isActive",
+                        "createdAt",
+                        "updatedAt"
+                      ],
+                      "properties": {
+                        "id": { "type": "string", "format": "uuid" },
+                        "entityType": {
+                          "type": "string",
+                          "enum": ["individual", "legal_entity"]
+                        },
+                        "name": { "type": "string" },
+                        "fullName": { "type": "string", "nullable": true },
+                        "legalName": { "type": "string", "nullable": true },
+                        "tradeName": { "type": "string", "nullable": true },
+                        "phone": { "type": "string", "nullable": true },
+                        "email": { "type": "string", "nullable": true },
+                        "addressLine": { "type": "string", "nullable": true },
+                        "city": { "type": "string", "nullable": true },
+                        "state": { "type": "string", "nullable": true },
+                        "postalCode": { "type": "string", "nullable": true },
+                        "document": {
+                          "type": "object",
+                          "required": [
+                            "documentType",
+                            "maskedDocument",
+                            "plaintextDocument"
+                          ],
+                          "properties": {
+                            "documentType": {
+                              "type": "string",
+                              "enum": ["CPF", "CNPJ"]
+                            },
+                            "maskedDocument": {
+                              "type": "string",
+                              "example": "***.***.247-25"
+                            },
+                            "plaintextDocument": {
+                              "type": "string",
+                              "example": "52998224725"
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "isActive": { "type": "boolean" },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "updatedAt": { "type": "string", "format": "date-time" }
+                      },
+                      "additionalProperties": false
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "List Fuel Suppliers in the selected Company",
+        "tags": ["Commercial"],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 25
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          },
+          {
+            "schema": { "type": "string", "minLength": 1, "maxLength": 2048 },
+            "in": "query",
+            "name": "cursor",
+            "required": false
+          },
+          {
+            "schema": { "type": "string", "maxLength": 120 },
+            "in": "query",
+            "name": "search",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": ["individual", "legal_entity"]
+            },
+            "in": "query",
+            "name": "entityType",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": ["name", "createdAt"],
+              "default": "createdAt"
+            },
+            "in": "query",
+            "name": "sortBy",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": ["asc", "desc"],
+              "default": "desc"
+            },
+            "in": "query",
+            "name": "sortDirection",
+            "required": false
+          }
+        ],
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["success", "message", "data"],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [true] },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "required": ["data", "pageInfo"],
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "id",
+                              "entityType",
+                              "name",
+                              "document",
+                              "isActive",
+                              "createdAt",
+                              "updatedAt"
+                            ],
+                            "properties": {
+                              "id": { "type": "string", "format": "uuid" },
+                              "entityType": {
+                                "type": "string",
+                                "enum": ["individual", "legal_entity"]
+                              },
+                              "name": { "type": "string" },
+                              "fullName": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "legalName": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "tradeName": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "phone": { "type": "string", "nullable": true },
+                              "email": { "type": "string", "nullable": true },
+                              "addressLine": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "city": { "type": "string", "nullable": true },
+                              "state": { "type": "string", "nullable": true },
+                              "postalCode": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "document": {
+                                "type": "object",
+                                "required": ["documentType", "maskedDocument"],
+                                "properties": {
+                                  "documentType": {
+                                    "type": "string",
+                                    "enum": ["CPF", "CNPJ"]
+                                  },
+                                  "maskedDocument": {
+                                    "type": "string",
+                                    "example": "***.***.247-25"
+                                  }
+                                },
+                                "additionalProperties": false
+                              },
+                              "isActive": { "type": "boolean" },
+                              "createdAt": {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              "updatedAt": {
+                                "type": "string",
+                                "format": "date-time"
+                              }
+                            },
+                            "additionalProperties": false
+                          }
+                        },
+                        "pageInfo": {
+                          "type": "object",
+                          "required": ["hasNextPage", "nextCursor"],
+                          "properties": {
+                            "hasNextPage": { "type": "boolean" },
+                            "nextCursor": { "type": "string", "nullable": true }
+                          },
+                          "additionalProperties": false
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/fuel-suppliers/selectors/active": {
+      "get": {
+        "summary": "List active Fuel Suppliers eligible for operational selectors",
+        "tags": ["Commercial"],
+        "parameters": [
+          {
+            "schema": { "type": "string", "maxLength": 120 },
+            "in": "query",
+            "name": "search",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 25
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          }
+        ],
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["success", "message", "data"],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [true] },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": ["id", "name", "document"],
+                        "properties": {
+                          "id": { "type": "string", "format": "uuid" },
+                          "name": { "type": "string" },
+                          "tradeName": { "type": "string", "nullable": true },
+                          "document": {
+                            "type": "object",
+                            "required": ["documentType", "maskedDocument"],
+                            "properties": {
+                              "documentType": {
+                                "type": "string",
+                                "enum": ["CPF", "CNPJ"]
+                              },
+                              "maskedDocument": {
+                                "type": "string",
+                                "example": "***.***.247-25"
+                              }
+                            },
+                            "additionalProperties": false
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/fuel-suppliers/{fuelSupplierId}": {
+      "get": {
+        "summary": "Get an authorized Fuel Supplier detail",
+        "tags": ["Commercial"],
+        "parameters": [
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "in": "path",
+            "name": "fuelSupplierId",
+            "required": true
+          }
+        ],
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["success", "message", "data"],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [true] },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "entityType",
+                        "name",
+                        "document",
+                        "isActive",
+                        "createdAt",
+                        "updatedAt"
+                      ],
+                      "properties": {
+                        "id": { "type": "string", "format": "uuid" },
+                        "entityType": {
+                          "type": "string",
+                          "enum": ["individual", "legal_entity"]
+                        },
+                        "name": { "type": "string" },
+                        "fullName": { "type": "string", "nullable": true },
+                        "legalName": { "type": "string", "nullable": true },
+                        "tradeName": { "type": "string", "nullable": true },
+                        "phone": { "type": "string", "nullable": true },
+                        "email": { "type": "string", "nullable": true },
+                        "addressLine": { "type": "string", "nullable": true },
+                        "city": { "type": "string", "nullable": true },
+                        "state": { "type": "string", "nullable": true },
+                        "postalCode": { "type": "string", "nullable": true },
+                        "document": {
+                          "type": "object",
+                          "required": [
+                            "documentType",
+                            "maskedDocument",
+                            "plaintextDocument"
+                          ],
+                          "properties": {
+                            "documentType": {
+                              "type": "string",
+                              "enum": ["CPF", "CNPJ"]
+                            },
+                            "maskedDocument": {
+                              "type": "string",
+                              "example": "***.***.247-25"
+                            },
+                            "plaintextDocument": {
+                              "type": "string",
+                              "example": "52998224725"
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "isActive": { "type": "boolean" },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "updatedAt": { "type": "string", "format": "date-time" }
+                      },
+                      "additionalProperties": false
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Remove a Fuel Supplier from operational use",
+        "tags": ["Commercial"],
+        "parameters": [
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "in": "path",
+            "name": "fuelSupplierId",
+            "required": true
+          }
+        ],
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["success", "message", "data"],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [true] },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "required": ["id", "isActive", "removedAt"],
+                      "properties": {
+                        "id": { "type": "string", "format": "uuid" },
+                        "isActive": { "type": "boolean", "enum": [false] },
+                        "removedAt": { "type": "string", "format": "date-time" }
+                      },
+                      "additionalProperties": false
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/employees": {
+      "post": {
+        "summary": "Create a Person Employment in the selected Company",
+        "tags": ["Workforce"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "document",
+                  "fullName",
+                  "companyRegistrationNumber",
+                  "admissionDate"
+                ],
+                "properties": {
+                  "document": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32,
+                    "writeOnly": true
+                  },
+                  "fullName": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 180
+                  },
+                  "companyRegistrationNumber": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "admissionDate": { "type": "string", "format": "date" }
+                }
+              }
+            }
+          }
+        },
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "201": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["success", "message", "data"],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [true] },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "person",
+                        "employment",
+                        "availability",
+                        "periods"
+                      ],
+                      "properties": {
+                        "id": { "type": "string", "format": "uuid" },
+                        "person": {
+                          "type": "object",
+                          "required": [
+                            "id",
+                            "fullName",
+                            "displayName",
+                            "document",
+                            "createdAt",
+                            "updatedAt"
+                          ],
+                          "properties": {
+                            "id": { "type": "string", "format": "uuid" },
+                            "fullName": { "type": "string" },
+                            "displayName": { "type": "string" },
+                            "document": {
+                              "type": "object",
+                              "required": [
+                                "documentType",
+                                "maskedDocument",
+                                "plaintextDocument"
+                              ],
+                              "properties": {
+                                "documentType": {
+                                  "type": "string",
+                                  "enum": ["CPF", "CNPJ"]
+                                },
+                                "maskedDocument": {
+                                  "type": "string",
+                                  "example": "***.***.247-25"
+                                },
+                                "plaintextDocument": {
+                                  "type": "string",
+                                  "example": "52998224725"
+                                }
+                              },
+                              "additionalProperties": false
+                            },
+                            "createdAt": {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            "updatedAt": {
+                              "type": "string",
+                              "format": "date-time"
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "employment": {
+                          "type": "object",
+                          "required": [
+                            "id",
+                            "companyRegistrationNumber",
+                            "state",
+                            "isActive",
+                            "admissionDate",
+                            "createdAt",
+                            "updatedAt"
+                          ],
+                          "properties": {
+                            "id": { "type": "string", "format": "uuid" },
+                            "companyRegistrationNumber": { "type": "string" },
+                            "state": {
+                              "type": "string",
+                              "enum": ["active", "terminated"]
+                            },
+                            "isActive": { "type": "boolean" },
+                            "admissionDate": {
+                              "type": "string",
+                              "format": "date",
+                              "nullable": true
+                            },
+                            "createdAt": {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            "updatedAt": {
+                              "type": "string",
+                              "format": "date-time"
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "availability": {
+                          "type": "object",
+                          "required": ["state", "hasOpenAllocation"],
+                          "properties": {
+                            "state": {
+                              "type": "string",
+                              "enum": ["available"]
+                            },
+                            "hasOpenAllocation": { "type": "boolean" }
+                          },
+                          "additionalProperties": false
+                        },
+                        "periods": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "id",
+                              "admissionDate",
+                              "effectiveFrom",
+                              "effectiveTo",
+                              "terminationReason",
+                              "createdAt",
+                              "updatedAt"
+                            ],
+                            "properties": {
+                              "id": { "type": "string", "format": "uuid" },
+                              "admissionDate": {
+                                "type": "string",
+                                "format": "date"
+                              },
+                              "effectiveFrom": {
+                                "type": "string",
+                                "format": "date"
+                              },
+                              "effectiveTo": {
+                                "type": "string",
+                                "format": "date",
+                                "nullable": true
+                              },
+                              "terminationReason": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "createdAt": {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              "updatedAt": {
+                                "type": "string",
+                                "format": "date-time"
+                              }
+                            },
+                            "additionalProperties": false
+                          }
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "List Employees in the selected Company",
+        "tags": ["Workforce"],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 25
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          },
+          {
+            "schema": { "type": "string", "minLength": 1, "maxLength": 2048 },
+            "in": "query",
+            "name": "cursor",
+            "required": false
+          },
+          {
+            "schema": { "type": "string", "maxLength": 120 },
+            "in": "query",
+            "name": "search",
+            "required": false
+          },
+          {
+            "schema": { "type": "string", "enum": ["active"] },
+            "in": "query",
+            "name": "state",
+            "required": false
+          },
+          {
+            "schema": { "type": "string", "enum": ["available"] },
+            "in": "query",
+            "name": "availability",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": ["name", "createdAt"],
+              "default": "createdAt"
+            },
+            "in": "query",
+            "name": "sortBy",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": ["asc", "desc"],
+              "default": "desc"
+            },
+            "in": "query",
+            "name": "sortDirection",
+            "required": false
+          }
+        ],
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["success", "message", "data"],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [true] },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "required": ["data", "pageInfo"],
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "id",
+                              "person",
+                              "employment",
+                              "availability"
+                            ],
+                            "properties": {
+                              "id": { "type": "string", "format": "uuid" },
+                              "person": {
+                                "type": "object",
+                                "required": [
+                                  "id",
+                                  "fullName",
+                                  "displayName",
+                                  "document"
+                                ],
+                                "properties": {
+                                  "id": { "type": "string", "format": "uuid" },
+                                  "fullName": { "type": "string" },
+                                  "displayName": { "type": "string" },
+                                  "document": {
+                                    "type": "object",
+                                    "required": [
+                                      "documentType",
+                                      "maskedDocument"
+                                    ],
+                                    "properties": {
+                                      "documentType": {
+                                        "type": "string",
+                                        "enum": ["CPF", "CNPJ"]
+                                      },
+                                      "maskedDocument": {
+                                        "type": "string",
+                                        "example": "***.***.247-25"
+                                      }
+                                    },
+                                    "additionalProperties": false
+                                  }
+                                },
+                                "additionalProperties": false
+                              },
+                              "employment": {
+                                "type": "object",
+                                "required": [
+                                  "id",
+                                  "companyRegistrationNumber",
+                                  "state",
+                                  "isActive",
+                                  "admissionDate",
+                                  "createdAt",
+                                  "updatedAt"
+                                ],
+                                "properties": {
+                                  "id": { "type": "string", "format": "uuid" },
+                                  "companyRegistrationNumber": {
+                                    "type": "string"
+                                  },
+                                  "state": {
+                                    "type": "string",
+                                    "enum": ["active", "terminated"]
+                                  },
+                                  "isActive": { "type": "boolean" },
+                                  "admissionDate": {
+                                    "type": "string",
+                                    "format": "date",
+                                    "nullable": true
+                                  },
+                                  "createdAt": {
+                                    "type": "string",
+                                    "format": "date-time"
+                                  },
+                                  "updatedAt": {
+                                    "type": "string",
+                                    "format": "date-time"
+                                  }
+                                },
+                                "additionalProperties": false
+                              },
+                              "availability": {
+                                "type": "object",
+                                "required": ["state", "hasOpenAllocation"],
+                                "properties": {
+                                  "state": {
+                                    "type": "string",
+                                    "enum": ["available"]
+                                  },
+                                  "hasOpenAllocation": { "type": "boolean" }
+                                },
+                                "additionalProperties": false
+                              }
+                            },
+                            "additionalProperties": false
+                          }
+                        },
+                        "pageInfo": {
+                          "type": "object",
+                          "required": ["hasNextPage", "nextCursor"],
+                          "properties": {
+                            "hasNextPage": { "type": "boolean" },
+                            "nextCursor": { "type": "string", "nullable": true }
+                          },
+                          "additionalProperties": false
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/employees/{employmentId}": {
+      "get": {
+        "summary": "Get an authorized Employee detail",
+        "tags": ["Workforce"],
+        "parameters": [
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "in": "path",
+            "name": "employmentId",
+            "required": true
+          }
+        ],
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["success", "message", "data"],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [true] },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "person",
+                        "employment",
+                        "availability",
+                        "periods"
+                      ],
+                      "properties": {
+                        "id": { "type": "string", "format": "uuid" },
+                        "person": {
+                          "type": "object",
+                          "required": [
+                            "id",
+                            "fullName",
+                            "displayName",
+                            "document",
+                            "createdAt",
+                            "updatedAt"
+                          ],
+                          "properties": {
+                            "id": { "type": "string", "format": "uuid" },
+                            "fullName": { "type": "string" },
+                            "displayName": { "type": "string" },
+                            "document": {
+                              "type": "object",
+                              "required": [
+                                "documentType",
+                                "maskedDocument",
+                                "plaintextDocument"
+                              ],
+                              "properties": {
+                                "documentType": {
+                                  "type": "string",
+                                  "enum": ["CPF", "CNPJ"]
+                                },
+                                "maskedDocument": {
+                                  "type": "string",
+                                  "example": "***.***.247-25"
+                                },
+                                "plaintextDocument": {
+                                  "type": "string",
+                                  "example": "52998224725"
+                                }
+                              },
+                              "additionalProperties": false
+                            },
+                            "createdAt": {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            "updatedAt": {
+                              "type": "string",
+                              "format": "date-time"
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "employment": {
+                          "type": "object",
+                          "required": [
+                            "id",
+                            "companyRegistrationNumber",
+                            "state",
+                            "isActive",
+                            "admissionDate",
+                            "createdAt",
+                            "updatedAt"
+                          ],
+                          "properties": {
+                            "id": { "type": "string", "format": "uuid" },
+                            "companyRegistrationNumber": { "type": "string" },
+                            "state": {
+                              "type": "string",
+                              "enum": ["active", "terminated"]
+                            },
+                            "isActive": { "type": "boolean" },
+                            "admissionDate": {
+                              "type": "string",
+                              "format": "date",
+                              "nullable": true
+                            },
+                            "createdAt": {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            "updatedAt": {
+                              "type": "string",
+                              "format": "date-time"
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "availability": {
+                          "type": "object",
+                          "required": ["state", "hasOpenAllocation"],
+                          "properties": {
+                            "state": {
+                              "type": "string",
+                              "enum": ["available"]
+                            },
+                            "hasOpenAllocation": { "type": "boolean" }
+                          },
+                          "additionalProperties": false
+                        },
+                        "periods": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "id",
+                              "admissionDate",
+                              "effectiveFrom",
+                              "effectiveTo",
+                              "terminationReason",
+                              "createdAt",
+                              "updatedAt"
+                            ],
+                            "properties": {
+                              "id": { "type": "string", "format": "uuid" },
+                              "admissionDate": {
+                                "type": "string",
+                                "format": "date"
+                              },
+                              "effectiveFrom": {
+                                "type": "string",
+                                "format": "date"
+                              },
+                              "effectiveTo": {
+                                "type": "string",
+                                "format": "date",
+                                "nullable": true
+                              },
+                              "terminationReason": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "createdAt": {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              "updatedAt": {
+                                "type": "string",
+                                "format": "date-time"
+                              }
+                            },
+                            "additionalProperties": false
+                          }
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "servers": [{ "url": "http://0.0.0.0:3333", "description": "Servidor local" }]

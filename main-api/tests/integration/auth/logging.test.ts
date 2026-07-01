@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { buildApp } from "../../../src/app";
 import { OrganizationService } from "../../../src/modules/organization/organization.service";
+import { resetIntegrationData } from "../reset-integration-data";
 
 import type { FastifyBaseLogger, FastifyInstance } from "fastify";
 
@@ -24,11 +25,7 @@ describe("authentication logging", () => {
   beforeAll(async () => {
     app = await buildApp({ loggerInstance: logger });
     await app.ready();
-    await app.prisma.session.deleteMany();
-    await app.prisma.company.deleteMany();
-    await app.prisma.user.deleteMany();
-    await app.prisma.domain.deleteMany();
-    await app.prisma.corporation.deleteMany();
+    await resetIntegrationData(app.prisma);
     await new OrganizationService(app.handlerContext).provision({
       corporationName: "Logging",
       domainHost: "logging.localhost",

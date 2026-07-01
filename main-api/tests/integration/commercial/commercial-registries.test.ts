@@ -1,0 +1,298 @@
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+
+import { buildApp } from "../../../src/app";
+import { OrganizationService } from "../../../src/modules/organization/organization.service";
+import { seedReferenceData } from "../../../prisma/seeds/reference-data";
+import { resetIntegrationData } from "../reset-integration-data";
+
+import type { FastifyInstance } from "fastify";
+
+describe("commercial Client and Fuel Supplier registries", () => {
+  const syntheticCpfFixture = "529.982.247-25";
+  const syntheticCpfNormalizedFixture = "52998224725";
+  const syntheticCnpjFixture = "11.222.333/0001-81";
+  const syntheticCnpjNormalizedFixture = "11222333000181";
+
+  let app: FastifyInstance;
+  let organization: OrganizationService;
+
+  beforeAll(async () => {
+    app = await buildApp({ logger: false });
+    await app.ready();
+    organization = new OrganizationService(app.handlerContext);
+  });
+
+  beforeEach(async () => {
+    await resetIntegrationData(app.prisma);
+  });
+
+  afterAll(() => app.close());
+
+  async function provision(suffix: string) {
+    return organization.provision({
+      corporationName: `Commercial ${suffix}`,
+      domainHost: `commercial-${suffix}.localhost`,
+      adminEmail: "master@example.com",
+      adminPassword: "correct integration password",
+      companyNames: ["One", "Two"],
+    });
+  }
+
+  async function authFor(input: {
+    corporationId: string;
+    userId: string;
+    companyId: string;
+  }) {
+    const now = new Date();
+    const session = await app.prisma.session.create({
+      data: {
+        corporationId: input.corporationId,
+        userId: input.userId,
+        companyId: input.companyId,
+        refreshTokenHash: "integration-refresh-token-hash",
+        idleExpiresAt: new Date(now.getTime() + 60 * 60 * 1000),
+        absoluteExpiresAt: new Date(now.getTime() + 2 * 60 * 60 * 1000),
+      },
+      select: { id: true },
+    });
+    return `Bearer ${app.jwt.sign({
+      userId: input.userId,
+      corporationId: input.corporationId,
+      sessionId: session.id,
+      role: "MASTER_ADMIN",
+      companyId: input.companyId,
+    })}`;
+  }
+
+  it("creates, lists, details, and rejects duplicate active Clients without plaintext list leaks", async () => {
+    const pilot = await provision("clients");
+    const authorization = await authFor({
+      corporationId: pilot.corporation.id,
+      userId: pilot.administrator.id,
+      companyId: pilot.companies[0].id,
+    });
+
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/v1/clients",
+      headers: { authorization },
+      payload: {
+        entityType: "individual",
+        document: syntheticCpfFixture,
+        fullName: "Synthetic Ana Client",
+        tradeName: "Ana Field",
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    expect(created.json().data.document).toMatchObject({
+      documentType: "CPF",
+      plaintextDocument: syntheticCpfNormalizedFixture,
+    });
+
+    const listed = await app.inject({
+      method: "GET",
+      url: "/api/v1/clients?limit=1&sortBy=name&sortDirection=asc",
+      headers: { authorization },
+    });
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json().data.data).toHaveLength(1);
+    expect(JSON.stringify(listed.json())).not.toContain(
+      syntheticCpfNormalizedFixture,
+    );
+    expect(listed.json().data.data[0].document.maskedDocument).toContain("247");
+
+    const detail = await app.inject({
+      method: "GET",
+      url: `/api/v1/clients/${created.json().data.id}`,
+      headers: { authorization },
+    });
+    expect(detail.statusCode).toBe(200);
+    expect(detail.json().data.document.plaintextDocument).toBe(
+      syntheticCpfNormalizedFixture,
+    );
+
+    const duplicate = await app.inject({
+      method: "POST",
+      url: "/api/v1/clients",
+      headers: { authorization },
+      payload: {
+        entityType: "individual",
+        document: syntheticCpfFixture,
+        fullName: "Synthetic Duplicate",
+      },
+    });
+    expect(duplicate.statusCode).toBe(409);
+    expect(duplicate.json()).toMatchObject({ code: "DOCUMENT_ALREADY_EXISTS" });
+    expect(JSON.stringify(duplicate.json())).not.toContain(
+      syntheticCpfNormalizedFixture,
+    );
+
+    const badCursor = await app.inject({
+      method: "GET",
+      url: "/api/v1/clients?cursor=not+base64",
+      headers: { authorization },
+    });
+    expect(badCursor.statusCode).toBe(400);
+    expect(badCursor.json()).toMatchObject({ code: "VALIDATION_ERROR" });
+  });
+
+  it("allows same synthetic document across Company, Corporation, and separate Supplier aggregate", async () => {
+    const first = await provision("first");
+    const second = await provision("second");
+    const firstCompanyOne = await authFor({
+      corporationId: first.corporation.id,
+      userId: first.administrator.id,
+      companyId: first.companies[0].id,
+    });
+    const firstCompanyTwo = await authFor({
+      corporationId: first.corporation.id,
+      userId: first.administrator.id,
+      companyId: first.companies[1].id,
+    });
+    const secondCompany = await authFor({
+      corporationId: second.corporation.id,
+      userId: second.administrator.id,
+      companyId: second.companies[0].id,
+    });
+
+    for (const [authorization, url, name] of [
+      [firstCompanyOne, "/api/v1/clients", "Synthetic Client One"],
+      [firstCompanyTwo, "/api/v1/clients", "Synthetic Client Two"],
+      [secondCompany, "/api/v1/clients", "Synthetic Client Foreign"],
+      [firstCompanyOne, "/api/v1/fuel-suppliers", "Synthetic Supplier"],
+    ] as const) {
+      const response = await app.inject({
+        method: "POST",
+        url,
+        headers: { authorization },
+        payload: {
+          entityType: "individual",
+          document: syntheticCpfFixture,
+          fullName: name,
+        },
+      });
+      expect(response.statusCode).toBe(201);
+    }
+
+    expect(await app.prisma.client.count()).toBe(3);
+    expect(await app.prisma.fuelSupplier.count()).toBe(1);
+  });
+
+  it("removes commercial records from operational use and permits active document reuse", async () => {
+    const pilot = await provision("removal");
+    const authorization = await authFor({
+      corporationId: pilot.corporation.id,
+      userId: pilot.administrator.id,
+      companyId: pilot.companies[0].id,
+    });
+
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/v1/clients",
+      headers: { authorization },
+      payload: {
+        entityType: "individual",
+        document: syntheticCpfFixture,
+        fullName: "Synthetic Removable Client",
+      },
+    });
+    expect(created.statusCode).toBe(201);
+
+    const removed = await app.inject({
+      method: "DELETE",
+      url: `/api/v1/clients/${created.json().data.id}`,
+      headers: { authorization },
+    });
+    expect(removed.statusCode).toBe(200);
+    expect(removed.json().data).toMatchObject({
+      id: created.json().data.id,
+      isActive: false,
+    });
+    expect(removed.json().data.removedAt).toEqual(expect.any(String));
+
+    const listed = await app.inject({
+      method: "GET",
+      url: "/api/v1/clients",
+      headers: { authorization },
+    });
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json().data.data).toEqual([]);
+
+    const detail = await app.inject({
+      method: "GET",
+      url: `/api/v1/clients/${created.json().data.id}`,
+      headers: { authorization },
+    });
+    expect(detail.statusCode).toBe(404);
+
+    const reused = await app.inject({
+      method: "POST",
+      url: "/api/v1/clients",
+      headers: { authorization },
+      payload: {
+        entityType: "individual",
+        document: syntheticCpfFixture,
+        fullName: "Synthetic Reused Client",
+      },
+    });
+    expect(reused.statusCode).toBe(201);
+    expect(await app.prisma.client.count()).toBe(2);
+  });
+
+  it("handles legal-entity Fuel Suppliers, active selectors, and immutable Fuel Type seeds", async () => {
+    const pilot = await provision("suppliers");
+    const authorization = await authFor({
+      corporationId: pilot.corporation.id,
+      userId: pilot.administrator.id,
+      companyId: pilot.companies[0].id,
+    });
+
+    await seedReferenceData(app.prisma);
+    await seedReferenceData(app.prisma);
+    expect(await app.prisma.fuelType.findMany({ orderBy: { id: "asc" } }))
+      .toMatchObject([
+        { id: "diesel-s10", name: "Diesel S10", isActive: true },
+        { id: "diesel-s500", name: "Diesel S500", isActive: true },
+      ]);
+
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/v1/fuel-suppliers",
+      headers: { authorization },
+      payload: {
+        entityType: "legal_entity",
+        document: syntheticCnpjFixture,
+        legalName: "Synthetic Diesel Supplier Ltda",
+        tradeName: "Synthetic Diesel",
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    expect(created.json().data.document).toMatchObject({
+      documentType: "CNPJ",
+      plaintextDocument: syntheticCnpjNormalizedFixture,
+    });
+
+    const selector = await app.inject({
+      method: "GET",
+      url: "/api/v1/fuel-suppliers/selectors/active",
+      headers: { authorization },
+    });
+    expect(selector.statusCode).toBe(200);
+    expect(selector.json().data).toHaveLength(1);
+    expect(JSON.stringify(selector.json())).not.toContain(
+      syntheticCnpjNormalizedFixture,
+    );
+
+    await app.prisma.fuelSupplier.update({
+      where: { id: created.json().data.id },
+      data: { isActive: false, inactivatedAt: new Date() },
+    });
+    const inactiveSelector = await app.inject({
+      method: "GET",
+      url: "/api/v1/fuel-suppliers/selectors/active",
+      headers: { authorization },
+    });
+    expect(inactiveSelector.statusCode).toBe(200);
+    expect(inactiveSelector.json().data).toEqual([]);
+  });
+});
