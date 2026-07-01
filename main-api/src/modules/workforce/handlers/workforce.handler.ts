@@ -105,7 +105,7 @@ const employmentSelect = {
   createdAt: true,
   updatedAt: true,
   person: { select: personSelect },
-  periods: { orderBy: { effectiveFrom: "desc" }, select: periodSelect },
+  periods: { orderBy: { effectiveFrom: "desc" as const }, select: periodSelect },
 };
 
 function isUniqueError(error: unknown): error is { code: string; meta?: unknown } {
@@ -114,6 +114,22 @@ function isUniqueError(error: unknown): error is { code: string; meta?: unknown 
     error !== null &&
     "code" in error &&
     error.code === "P2002"
+  );
+}
+
+function isOpenPeriodUniqueError(error: unknown): boolean {
+  if (!isUniqueError(error)) return false;
+  const meta = error.meta;
+  if (typeof meta !== "object" || meta === null || !("target" in meta)) {
+    return false;
+  }
+  const target = meta.target;
+  return (
+    target === "employment_periods_open_period_unique" ||
+    (Array.isArray(target) &&
+      target.includes("corporation_id") &&
+      target.includes("company_id") &&
+      target.includes("employment_id"))
   );
 }
 
@@ -138,6 +154,14 @@ function notFoundError(): AppError {
     code: "NOT_FOUND",
     message: "Employee not found",
     statusCode: 404,
+  });
+}
+
+function currentStateConflictError(): AppError {
+  return new AppError({
+    code: "EMPLOYMENT_CURRENT_STATE_CONFLICT",
+    message: "Employment current state does not allow rehire",
+    statusCode: 409,
   });
 }
 
@@ -336,6 +360,7 @@ export async function listEmployeesHandler(
     corporationId: string;
     companyId: string;
     search?: string;
+    state?: "active" | "terminated";
     limit: number;
     boundary: CursorBoundary | null;
     sortBy: "name" | "createdAt";
@@ -346,7 +371,9 @@ export async function listEmployeesHandler(
     where: {
       corporationId: input.corporationId,
       companyId: input.companyId,
-      isActive: true,
+      ...(input.state === "terminated"
+        ? { isActive: false, state: "TERMINATED" as const }
+        : { isActive: true, state: "ACTIVE" as const }),
       ...searchWhere(input.search),
       ...boundaryWhere(input),
     },
@@ -365,11 +392,80 @@ export async function findEmployeeDetailHandler(
       id: input.employmentId,
       corporationId: input.corporationId,
       companyId: input.companyId,
-      isActive: true,
     },
     select: employmentSelect,
   })) as EmploymentRecord | null;
 
   if (!record) throw notFoundError();
   return record;
+}
+
+export async function rehireEmploymentHandler(
+  context: HandlerContext,
+  input: {
+    corporationId: string;
+    companyId: string;
+    employmentId: string;
+    effectiveDate: Date;
+  },
+): Promise<EmploymentRecord> {
+  const employment = await context.prisma.employment.findFirst({
+    where: {
+      id: input.employmentId,
+      corporationId: input.corporationId,
+      companyId: input.companyId,
+    },
+    select: { id: true, state: true, isActive: true },
+  });
+
+  if (!employment) throw notFoundError();
+
+  const openPeriod = await context.prisma.employmentPeriod.findFirst({
+    where: {
+      corporationId: input.corporationId,
+      companyId: input.companyId,
+      employmentId: input.employmentId,
+      effectiveTo: null,
+    },
+    select: { id: true },
+  });
+
+  if (employment.isActive || employment.state === "ACTIVE" || openPeriod) {
+    throw currentStateConflictError();
+  }
+
+  try {
+    await context.prisma.employmentPeriod.create({
+      data: {
+        corporationId: input.corporationId,
+        companyId: input.companyId,
+        employmentId: input.employmentId,
+        admissionDate: input.effectiveDate,
+        effectiveFrom: input.effectiveDate,
+      },
+      select: { id: true },
+    });
+    await context.prisma.employment.update({
+      where: {
+        corporationId_companyId_id: {
+          corporationId: input.corporationId,
+          companyId: input.companyId,
+          id: input.employmentId,
+        },
+      },
+      data: {
+        isActive: true,
+        state: "ACTIVE",
+        terminatedAt: null,
+      },
+      select: { id: true },
+    });
+  } catch (error) {
+    if (isOpenPeriodUniqueError(error)) {
+      throw currentStateConflictError();
+    }
+    throw error;
+  }
+
+  return findEmployeeDetailHandler(context, input);
 }

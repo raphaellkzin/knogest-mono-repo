@@ -18,12 +18,16 @@ export const createEmployeeSchema = z
 
 export type CreateEmployeeInput = z.infer<typeof createEmployeeSchema>;
 
+export const rehireEmployeeSchema = z.object({}).strict();
+
+export type RehireEmployeeInput = z.infer<typeof rehireEmployeeSchema>;
+
 export const listEmployeesQuerySchema = z
   .object({
     limit: z.coerce.number().int().min(1).max(100).default(25),
     cursor: z.string().trim().min(1).max(2048).optional(),
     search: optionalSearch,
-    state: z.enum(["active"]).optional(),
+    state: z.enum(["active", "terminated"]).optional(),
     availability: z.enum(["available"]).optional(),
     sortBy: z.enum(["name", "createdAt"]).default("createdAt"),
     sortDirection: z.enum(["asc", "desc"]).default("desc"),

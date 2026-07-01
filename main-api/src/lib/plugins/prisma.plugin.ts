@@ -1,6 +1,6 @@
 import { createPrismaClient } from "../../db/prisma.db";
 import fp from "fastify-plugin";
-import { PrismaClient } from "../../db/generated/prisma/client";
+import { Prisma, PrismaClient } from "../../db/generated/prisma/client";
 import { HandlerContext } from "../utils/handler.dto";
 
 declare module "fastify" {
@@ -16,14 +16,22 @@ export const prismaPlugin = fp(async (app) => {
   app.decorate("prisma", prisma);
   const handlerContext: HandlerContext = {
     prisma,
-    transaction: (work) =>
-      prisma.$transaction((transaction) => {
-        const transactionContext: HandlerContext = {
-          prisma: transaction,
-          transaction: (nestedWork) => nestedWork(transactionContext),
-        };
-        return work(transactionContext);
-      }),
+    transaction: (work, options) =>
+      prisma.$transaction(
+        (transaction) => {
+          const transactionContext: HandlerContext = {
+            prisma: transaction,
+            transaction: (nestedWork) => nestedWork(transactionContext),
+          };
+          return work(transactionContext);
+        },
+        {
+          isolationLevel:
+            options?.isolationLevel === "Serializable"
+              ? Prisma.TransactionIsolationLevel.Serializable
+              : Prisma.TransactionIsolationLevel.ReadCommitted,
+        },
+      ),
   };
   app.decorate("handlerContext", handlerContext);
 

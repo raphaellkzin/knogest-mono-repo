@@ -2442,7 +2442,7 @@
                           "properties": {
                             "state": {
                               "type": "string",
-                              "enum": ["available"]
+                              "enum": ["available", "unavailable"]
                             },
                             "hasOpenAllocation": { "type": "boolean" }
                           },
@@ -2458,6 +2458,7 @@
                               "effectiveFrom",
                               "effectiveTo",
                               "terminationReason",
+                              "state",
                               "createdAt",
                               "updatedAt"
                             ],
@@ -2479,6 +2480,10 @@
                               "terminationReason": {
                                 "type": "string",
                                 "nullable": true
+                              },
+                              "state": {
+                                "type": "string",
+                                "enum": ["current", "closed"]
                               },
                               "createdAt": {
                                 "type": "string",
@@ -2626,7 +2631,7 @@
             "required": false
           },
           {
-            "schema": { "type": "string", "enum": ["active"] },
+            "schema": { "type": "string", "enum": ["active", "terminated"] },
             "in": "query",
             "name": "state",
             "required": false
@@ -2762,7 +2767,7 @@
                                 "properties": {
                                   "state": {
                                     "type": "string",
-                                    "enum": ["available"]
+                                    "enum": ["available", "unavailable"]
                                   },
                                   "hasOpenAllocation": { "type": "boolean" }
                                 },
@@ -2988,7 +2993,7 @@
                           "properties": {
                             "state": {
                               "type": "string",
-                              "enum": ["available"]
+                              "enum": ["available", "unavailable"]
                             },
                             "hasOpenAllocation": { "type": "boolean" }
                           },
@@ -3004,6 +3009,7 @@
                               "effectiveFrom",
                               "effectiveTo",
                               "terminationReason",
+                              "state",
                               "createdAt",
                               "updatedAt"
                             ],
@@ -3025,6 +3031,10 @@
                               "terminationReason": {
                                 "type": "string",
                                 "nullable": true
+                              },
+                              "state": {
+                                "type": "string",
+                                "enum": ["current", "closed"]
                               },
                               "createdAt": {
                                 "type": "string",
@@ -3119,6 +3129,328 @@
             }
           },
           "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/employees/{employmentId}/rehire": {
+      "post": {
+        "summary": "Rehire a terminated Employee in the selected Company",
+        "tags": ["Workforce"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {}
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "in": "path",
+            "name": "employmentId",
+            "required": true
+          }
+        ],
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["success", "message", "data"],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [true] },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "person",
+                        "employment",
+                        "availability",
+                        "periods"
+                      ],
+                      "properties": {
+                        "id": { "type": "string", "format": "uuid" },
+                        "person": {
+                          "type": "object",
+                          "required": [
+                            "id",
+                            "fullName",
+                            "displayName",
+                            "document",
+                            "createdAt",
+                            "updatedAt"
+                          ],
+                          "properties": {
+                            "id": { "type": "string", "format": "uuid" },
+                            "fullName": { "type": "string" },
+                            "displayName": { "type": "string" },
+                            "document": {
+                              "type": "object",
+                              "required": [
+                                "documentType",
+                                "maskedDocument",
+                                "plaintextDocument"
+                              ],
+                              "properties": {
+                                "documentType": {
+                                  "type": "string",
+                                  "enum": ["CPF", "CNPJ"]
+                                },
+                                "maskedDocument": {
+                                  "type": "string",
+                                  "example": "***.***.247-25"
+                                },
+                                "plaintextDocument": {
+                                  "type": "string",
+                                  "example": "52998224725"
+                                }
+                              },
+                              "additionalProperties": false
+                            },
+                            "createdAt": {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            "updatedAt": {
+                              "type": "string",
+                              "format": "date-time"
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "employment": {
+                          "type": "object",
+                          "required": [
+                            "id",
+                            "companyRegistrationNumber",
+                            "state",
+                            "isActive",
+                            "admissionDate",
+                            "createdAt",
+                            "updatedAt"
+                          ],
+                          "properties": {
+                            "id": { "type": "string", "format": "uuid" },
+                            "companyRegistrationNumber": { "type": "string" },
+                            "state": {
+                              "type": "string",
+                              "enum": ["active", "terminated"]
+                            },
+                            "isActive": { "type": "boolean" },
+                            "admissionDate": {
+                              "type": "string",
+                              "format": "date",
+                              "nullable": true
+                            },
+                            "createdAt": {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            "updatedAt": {
+                              "type": "string",
+                              "format": "date-time"
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "availability": {
+                          "type": "object",
+                          "required": ["state", "hasOpenAllocation"],
+                          "properties": {
+                            "state": {
+                              "type": "string",
+                              "enum": ["available", "unavailable"]
+                            },
+                            "hasOpenAllocation": { "type": "boolean" }
+                          },
+                          "additionalProperties": false
+                        },
+                        "periods": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "id",
+                              "admissionDate",
+                              "effectiveFrom",
+                              "effectiveTo",
+                              "terminationReason",
+                              "state",
+                              "createdAt",
+                              "updatedAt"
+                            ],
+                            "properties": {
+                              "id": { "type": "string", "format": "uuid" },
+                              "admissionDate": {
+                                "type": "string",
+                                "format": "date"
+                              },
+                              "effectiveFrom": {
+                                "type": "string",
+                                "format": "date"
+                              },
+                              "effectiveTo": {
+                                "type": "string",
+                                "format": "date",
+                                "nullable": true
+                              },
+                              "terminationReason": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "state": {
+                                "type": "string",
+                                "enum": ["current", "closed"]
+                              },
+                              "createdAt": {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              "updatedAt": {
+                                "type": "string",
+                                "format": "date-time"
+                              }
+                            },
+                            "additionalProperties": false
+                          }
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
             "description": "Default Response",
             "content": {
               "application/json": {

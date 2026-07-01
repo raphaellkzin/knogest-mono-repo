@@ -1,10 +1,14 @@
 import { Prisma, PrismaClient } from "../../db/generated/prisma/client";
 
 export type DatabaseClient = PrismaClient | Prisma.TransactionClient;
+export type TransactionIsolationLevel = "ReadCommitted" | "Serializable";
 
 export interface HandlerContext {
   prisma: DatabaseClient;
-  transaction<T>(work: (context: HandlerContext) => Promise<T>): Promise<T>;
+  transaction<T>(
+    work: (context: HandlerContext) => Promise<T>,
+    options?: { isolationLevel?: TransactionIsolationLevel },
+  ): Promise<T>;
 }
 
 export interface ICreateEntityHandler<T> {

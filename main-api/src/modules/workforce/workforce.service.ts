@@ -19,6 +19,7 @@ import {
   findEmployeeDetailHandler,
   findOrCreatePersonHandler,
   listEmployeesHandler,
+  rehireEmploymentHandler,
   type EmploymentRecord,
   type PersonRecord,
 } from "./handlers/workforce.handler";
@@ -73,6 +74,10 @@ function currentPeriod(record: EmploymentRecord) {
   return record.periods.find((period) => period.effectiveTo === null) ?? null;
 }
 
+function openPeriods(record: EmploymentRecord) {
+  return record.periods.filter((period) => period.effectiveTo === null);
+}
+
 function periodDto(period: EmploymentRecord["periods"][number]) {
   return {
     id: period.id,
@@ -82,12 +87,31 @@ function periodDto(period: EmploymentRecord["periods"][number]) {
     terminationReason: period.terminationReason,
     createdAt: period.createdAt.toISOString(),
     updatedAt: period.updatedAt.toISOString(),
+    state: period.effectiveTo === null ? ("current" as const) : ("closed" as const),
   };
 }
 
-function availabilityDto(_record: EmploymentRecord) {
+function periodsForDetail(record: EmploymentRecord) {
+  return [...record.periods].sort((left, right) => {
+    if (left.effectiveTo === null && right.effectiveTo !== null) return -1;
+    if (left.effectiveTo !== null && right.effectiveTo === null) return 1;
+    return right.effectiveFrom.getTime() - left.effectiveFrom.getTime();
+  });
+}
+
+function isCurrentEmployment(record: EmploymentRecord) {
+  return (
+    record.state === "ACTIVE" &&
+    record.isActive &&
+    openPeriods(record).length === 1
+  );
+}
+
+function availabilityDto(record: EmploymentRecord) {
   return {
-    state: "available" as const,
+    state: isCurrentEmployment(record)
+      ? ("available" as const)
+      : ("unavailable" as const),
     hasOpenAllocation: false,
   };
 }
@@ -105,8 +129,8 @@ function toListDto(record: EmploymentRecord) {
     employment: {
       id: record.id,
       companyRegistrationNumber: record.companyRegistrationNumber,
-      state: record.state === "ACTIVE" ? "active" : "terminated",
-      isActive: record.isActive,
+      state: isCurrentEmployment(record) ? "active" : "terminated",
+      isActive: isCurrentEmployment(record),
       admissionDate:
         openPeriod?.admissionDate.toISOString().slice(0, 10) ?? null,
       createdAt: record.createdAt.toISOString(),
@@ -127,7 +151,7 @@ function toDetailDto(record: EmploymentRecord) {
       createdAt: record.person.createdAt.toISOString(),
       updatedAt: record.person.updatedAt.toISOString(),
     },
-    periods: record.periods.map(periodDto),
+    periods: periodsForDetail(record).map(periodDto),
   };
 }
 
@@ -183,6 +207,7 @@ export class WorkforceService {
     const records = await listEmployeesHandler(this.context, {
       ...scope,
       search: query.search,
+      state: query.state,
       limit: query.limit,
       boundary,
       sortBy: query.sortBy,
@@ -217,4 +242,53 @@ export class WorkforceService {
     });
     return toDetailDto(record);
   }
+
+  async rehire(scope: AuthenticatedCompanyScope, employmentId: string) {
+    return runSerializableWithRetry(async () =>
+      this.context.transaction(
+        async (transactionContext) => {
+          const effectiveDate = todayUtc();
+          const record = await rehireEmploymentHandler(transactionContext, {
+            ...scope,
+            employmentId,
+            effectiveDate,
+          });
+          return toDetailDto(record);
+        },
+        { isolationLevel: "Serializable" },
+      ),
+    );
+  }
+}
+
+function todayUtc() {
+  const now = new Date();
+  return new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+  );
+}
+
+async function runSerializableWithRetry<T>(work: () => Promise<T>) {
+  const maxAttempts = 3;
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await work();
+    } catch (error) {
+      if (!isRetryableTransactionError(error) || attempt === maxAttempts) {
+        throw error;
+      }
+      lastError = error;
+    }
+  }
+  throw lastError;
+}
+
+function isRetryableTransactionError(error: unknown) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "P2034"
+  );
 }

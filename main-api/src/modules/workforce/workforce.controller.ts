@@ -14,6 +14,7 @@ import {
 import {
   createEmployeeSchema,
   listEmployeesQuerySchema,
+  rehireEmployeeSchema,
 } from "./workforce.dto";
 import { WorkforceService } from "./workforce.service";
 
@@ -57,7 +58,7 @@ const listEmployeesOpenApiQuerySchema = {
     limit: { type: "integer", minimum: 1, maximum: 100, default: 25 },
     cursor: { type: "string", minLength: 1, maxLength: 2048 },
     search: { type: "string", maxLength: 120 },
-    state: { type: "string", enum: ["active"] },
+    state: { type: "string", enum: ["active", "terminated"] },
     availability: { type: "string", enum: ["available"] },
     sortBy: { type: "string", enum: ["name", "createdAt"], default: "createdAt" },
     sortDirection: { type: "string", enum: ["asc", "desc"], default: "desc" },
@@ -113,7 +114,7 @@ const employeeListItemSchema = {
       type: "object",
       required: ["state", "hasOpenAllocation"],
       properties: {
-        state: { type: "string", enum: ["available"] },
+        state: { type: "string", enum: ["available", "unavailable"] },
         hasOpenAllocation: { type: "boolean" },
       },
       additionalProperties: false,
@@ -157,6 +158,7 @@ const employeeDetailSchema = {
           "effectiveFrom",
           "effectiveTo",
           "terminationReason",
+          "state",
           "createdAt",
           "updatedAt",
         ],
@@ -166,6 +168,7 @@ const employeeDetailSchema = {
           effectiveFrom: { type: "string", format: "date" },
           effectiveTo: { type: "string", format: "date", nullable: true },
           terminationReason: { type: "string", nullable: true },
+          state: { type: "string", enum: ["current", "closed"] },
           createdAt: { type: "string", format: "date-time" },
           updatedAt: { type: "string", format: "date-time" },
         },
@@ -209,6 +212,12 @@ const detailResponseSchema = {
     message: { type: "string" },
     data: employeeDetailSchema,
   },
+} as const;
+
+const emptyBodySchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {},
 } as const;
 
 const employeeParamsSchema = z
@@ -311,6 +320,42 @@ export const v1WorkforceController = async (app: FastifyInstance) => {
         typeof employeeParamsSchema
       >;
       const data = await workforceService.detail(
+        scopeFromRequest(request),
+        employmentId,
+      );
+      return jsonResponse.success({ reply, data });
+    },
+  );
+
+  app.post(
+    "/employees/:employmentId/rehire",
+    {
+      preHandler: [
+        app.requireCompanyScope,
+        validateParams(employeeParamsSchema),
+        validateBody(rehireEmployeeSchema),
+      ],
+      schema: {
+        tags: ["Workforce"],
+        summary: "Rehire a terminated Employee in the selected Company",
+        security: [{ bearerAuth: [] }],
+        params: employeeParamsOpenApiSchema,
+        body: emptyBodySchema,
+        response: {
+          200: detailResponseSchema,
+          400: errorSchema,
+          401: errorSchema,
+          403: errorSchema,
+          404: errorSchema,
+          409: errorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { employmentId } = request.params as z.infer<
+        typeof employeeParamsSchema
+      >;
+      const data = await workforceService.rehire(
         scopeFromRequest(request),
         employmentId,
       );

@@ -1,7 +1,7 @@
 import type { PrismaClient } from "../../src/db/generated/prisma/client";
 
 export async function resetIntegrationData(prisma: PrismaClient) {
-  await prisma.employmentPeriod.deleteMany();
+  await prisma.$executeRawUnsafe('TRUNCATE TABLE "employment_periods" CASCADE');
   await prisma.employment.deleteMany();
   await prisma.person.deleteMany();
   await prisma.fuelSupplier.deleteMany();
