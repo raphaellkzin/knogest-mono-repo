@@ -1,6 +1,6 @@
 import { AppShell } from "@/components/layout/app-shell";
+import { ClientsPage } from "@/features/clients/clients-page";
 import { requireCompanyWorkspace } from "@/features/company-selection/company-selection.server";
-import { FuelSuppliersPage } from "@/features/fuel-suppliers/fuel-suppliers-page";
 
 export default async function Page({
   searchParams,
@@ -15,9 +15,9 @@ export default async function Page({
       companies={companies}
       selectedCompany={selectedCompany}
       userId={session.user.id}
-      currentArea="suppliers"
+      currentArea="clients"
     >
-      <FuelSuppliersPage searchParams={resolvedSearchParams} />
+      <ClientsPage searchParams={resolvedSearchParams} />
     </AppShell>
   );
 }

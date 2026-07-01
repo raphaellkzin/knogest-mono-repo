@@ -2,6 +2,7 @@ import Link from "next/link";
 import {
   AlertTriangle,
   ArrowRight,
+  Building2,
   CalendarClock,
   Fuel,
   Gauge,
@@ -99,6 +100,12 @@ const resourceLinks = [
     icon: UsersRound,
   },
   {
+    href: "/home/clientes",
+    label: "Clientes",
+    detail: "Contratantes reutilizáveis por empresa",
+    icon: Building2,
+  },
+  {
     href: "/home/maquinas",
     label: "Máquinas",
     detail: "Frota, horímetro e condição",
@@ -112,8 +119,8 @@ const resourceLinks = [
   },
   {
     href: "/home/fornecedores",
-    label: "Fornecedores",
-    detail: "Contratos e contatos de campo",
+    label: "Combustível",
+    detail: "Fornecedores elegíveis para abastecimento",
     icon: Fuel,
   },
 ];

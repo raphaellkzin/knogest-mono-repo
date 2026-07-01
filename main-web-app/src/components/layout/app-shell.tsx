@@ -23,6 +23,7 @@ import type { CompanyOption } from "@/features/company-selection/types";
 
 export type AppArea =
   | "dashboard"
+  | "clients"
   | "employees"
   | "machines"
   | "works"
@@ -43,6 +44,11 @@ const areaMeta: Record<
     title: "Equipe e permissões",
     subtitle: "Cadastro, função, disponibilidade e vínculo com obras",
   },
+  clients: {
+    label: "Clientes",
+    title: "Clientes da empresa",
+    subtitle: "Contratantes reutilizáveis para criação de obras",
+  },
   machines: {
     label: "Máquinas",
     title: "Frota da empresa",
@@ -54,9 +60,9 @@ const areaMeta: Record<
     subtitle: "Listagem administrativa sem abrir a página da obra",
   },
   suppliers: {
-    label: "Fornecedores",
-    title: "Fornecedores e contratos",
-    subtitle: "Combustível, transporte, ensaios e serviços de campo",
+    label: "Combustível",
+    title: "Fornecedores de combustível",
+    subtitle: "Cadastro de fornecedores elegíveis para termos de combustível",
   },
   settings: {
     label: "Configurações",
@@ -79,6 +85,12 @@ const navItems = [
     area: "employees",
   },
   {
+    href: "/home/clientes",
+    label: "Clientes",
+    icon: Building2,
+    area: "clients",
+  },
+  {
     href: "/home/maquinas",
     label: "Máquinas",
     icon: Truck,
@@ -87,7 +99,7 @@ const navItems = [
   { href: "/home/obras", label: "Obras", icon: Map, area: "works" },
   {
     href: "/home/fornecedores",
-    label: "Fornecedores",
+    label: "Combustível",
     icon: Fuel,
     area: "suppliers",
   },
