@@ -13,6 +13,13 @@ enum UserRole {
   @@map("user_role")
 }
 
+enum SensitiveDocumentType {
+  CPF
+  CNPJ
+
+  @@map("sensitive_document_type")
+}
+
 model Corporation {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name      String   @db.VarChar(160)
@@ -24,6 +31,7 @@ model Corporation {
   companies Company[]
   users     User[]
   sessions  Session[]
+  sensitiveDocumentHarnessRows SensitiveDocumentProtectionHarness[]
 
   @@map("corporations")
 }
@@ -50,6 +58,7 @@ model Company {
   updatedAt     DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
   corporation   Corporation @relation(fields: [corporationId], references: [id], onDelete: Restrict)
   sessions      Session[]
+  sensitiveDocumentHarnessRows SensitiveDocumentProtectionHarness[]
 
   @@unique([corporationId, id])
   @@unique([corporationId, name])
@@ -95,4 +104,26 @@ model Session {
   @@index([corporationId, userId])
   @@index([corporationId, companyId])
   @@map("sessions")
+}
+
+model SensitiveDocumentProtectionHarness {
+  id                   String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId        String                @map("corporation_id") @db.Uuid
+  companyId            String                @map("company_id") @db.Uuid
+  registryType         String                @map("registry_type") @db.VarChar(64)
+  documentType         SensitiveDocumentType @map("document_type")
+  ciphertext           String                @db.Text
+  iv                   String                @db.VarChar(64)
+  authTag              String                @map("auth_tag") @db.VarChar(64)
+  encryptionKeyVersion String                @map("encryption_key_version") @db.VarChar(64)
+  documentDigest       String                @map("document_digest") @db.VarChar(96)
+  isActive             Boolean               @default(true) @map("is_active")
+  createdAt            DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime              @updatedAt @map("updated_at") @db.Timestamptz(3)
+  corporation          Corporation           @relation(fields: [corporationId], references: [id], onDelete: Restrict)
+  company              Company               @relation(fields: [corporationId, companyId], references: [corporationId, id], onDelete: Restrict)
+
+  @@index([corporationId, companyId, registryType])
+  @@index([documentDigest])
+  @@map("sensitive_document_protection_harness")
 }

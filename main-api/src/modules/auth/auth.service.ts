@@ -101,6 +101,7 @@ export class AuthService {
           corporationId: resolved.corporation.id,
           sessionId: session.id,
           role: user.role,
+          tokenVersion: 0,
         }),
         refreshToken,
       };
@@ -111,13 +112,13 @@ export class AuthService {
     const now = input.now ?? new Date();
     const presentedHash = hashRefreshCredential(input.refreshToken);
 
-    return this.context.transaction(async (transactionContext) => {
+    const result = await this.context.transaction(async (transactionContext) => {
       const session = await findSessionByRefreshCredentialHandler(
         transactionContext,
         { refreshTokenHash: presentedHash },
       );
 
-      if (!session) throw invalidSession();
+      if (!session) return null;
 
       if (session.consumedRefreshTokenHash === presentedHash) {
         await revokeSessionHandler(transactionContext, {
@@ -125,7 +126,7 @@ export class AuthService {
           now,
           reason: "refresh-reuse-detected",
         });
-        throw invalidSession();
+        return null;
       }
 
       if (
@@ -136,7 +137,7 @@ export class AuthService {
         !session.corporation.isActive ||
         session.refreshTokenHash !== presentedHash
       ) {
-        throw invalidSession();
+        return null;
       }
 
       const replacementRefreshToken = createRefreshCredential();
@@ -162,7 +163,7 @@ export class AuthService {
             reason: "refresh-race-reuse-detected",
           });
         }
-        throw invalidSession();
+        return null;
       }
 
       return {
@@ -171,11 +172,15 @@ export class AuthService {
           corporationId: session.corporationId,
           sessionId: session.id,
           role: session.user.role,
+          tokenVersion: session.refreshVersion + 1,
           ...(session.companyId ? { companyId: session.companyId } : {}),
         }),
         refreshToken: replacementRefreshToken,
       };
     });
+
+    if (!result) throw invalidSession();
+    return result;
   }
 
   async logout(input: { sessionId: string; now?: Date }) {
@@ -233,6 +238,7 @@ export class AuthService {
           corporationId: input.corporationId,
           sessionId: input.sessionId,
           role: input.role,
+          tokenVersion: 0,
           companyId: company.id,
         }),
       };

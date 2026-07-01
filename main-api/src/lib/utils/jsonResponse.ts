@@ -1,5 +1,6 @@
 import type { FastifyReply } from "fastify";
 
+import { redactSensitiveDocumentMetadata } from "../security/sensitive-document";
 import { isAppError } from "./appError";
 
 interface JsonResponseBase {
@@ -32,7 +33,7 @@ export const jsonResponse = {
       success: false,
       code,
       message,
-      details,
+      details: redactSensitiveDocumentMetadata(details),
       requestId: reply.request.id,
     });
   },

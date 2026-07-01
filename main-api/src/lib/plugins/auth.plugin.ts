@@ -43,6 +43,7 @@ const accessClaimsSchema = z.object({
   sessionId: z.string().uuid(),
   role: z.literal("MASTER_ADMIN"),
   companyId: z.string().uuid().optional(),
+  tokenVersion: z.number().int().nonnegative().optional(),
 });
 
 export const authPlugin = fp(async function authPlugin(app: FastifyInstance) {

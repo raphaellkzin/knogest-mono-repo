@@ -9,6 +9,7 @@ export type AppErrorCode =
   | "FORBIDDEN"
   | "NOT_FOUND"
   | "CONFLICT"
+  | "DOCUMENT_ALREADY_EXISTS"
   | "UNPROCESSABLE_ENTITY"
   | "INTERNAL_ERROR";
 

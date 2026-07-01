@@ -2,6 +2,27 @@ import { z } from "zod";
 
 type JsonSchema = Record<string, unknown>;
 
+export const maskedSensitiveDocumentSchema: JsonSchema = {
+  type: "object",
+  required: ["documentType", "maskedDocument"],
+  properties: {
+    documentType: { type: "string", enum: ["CPF", "CNPJ"] },
+    maskedDocument: { type: "string", example: "***.***.247-25" },
+  },
+  additionalProperties: false,
+};
+
+export const protectedSensitiveDocumentSchema: JsonSchema = {
+  type: "object",
+  required: ["documentType", "maskedDocument", "plaintextDocument"],
+  properties: {
+    documentType: { type: "string", enum: ["CPF", "CNPJ"] },
+    maskedDocument: { type: "string", example: "***.***.247-25" },
+    plaintextDocument: { type: "string", example: "52998224725" },
+  },
+  additionalProperties: false,
+};
+
 export const zodToJsonSchema = (
   schema: z.ZodTypeAny,
 ): Record<string, unknown> => {

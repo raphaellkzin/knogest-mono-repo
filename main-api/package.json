@@ -13,6 +13,7 @@
     "lint": "eslint . && node scripts/check-architecture.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "check:personal-data-gate": "tsx scripts/validate-personal-data-gate.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",

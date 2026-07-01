@@ -13,6 +13,7 @@ export interface AccessClaims {
   sessionId: string;
   role: "MASTER_ADMIN";
   companyId?: string;
+  tokenVersion?: number;
 }
 
 export function createAccessClaims(input: AccessClaims): AccessClaims {
