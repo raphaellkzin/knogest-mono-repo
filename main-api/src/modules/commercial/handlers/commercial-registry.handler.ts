@@ -155,10 +155,7 @@ function boundaryWhere({
   boundary: CursorBoundary | null;
   sortBy: "name" | "createdAt";
   sortDirection: SortDirection;
-}):
-  | Prisma.ClientWhereInput
-  | Prisma.FuelSupplierWhereInput
-  | undefined {
+}): Prisma.ClientWhereInput | Prisma.FuelSupplierWhereInput | undefined {
   if (!boundary) return undefined;
   if (sortBy === "createdAt") {
     const createdAt = new Date(String(boundary.value));
@@ -291,14 +288,44 @@ export async function findCommercialRegistryForRemovalHandler(
 }
 
 export async function findCommercialRemovalBlockersHandler(
-  _context: HandlerContext,
+  context: HandlerContext,
   kind: RegistryKind,
-  _input: { corporationId: string; companyId: string; id: string },
+  input: { corporationId: string; companyId: string; id: string },
 ): Promise<CommercialRemovalBlocker | null> {
   if (kind === "client") {
-    return { projectIds: [], action: "replace_client" };
+    const rows = await context.prisma.projectClientPeriod.findMany({
+      where: {
+        corporationId: input.corporationId,
+        companyId: input.companyId,
+        clientId: input.id,
+        effectiveTo: null,
+      },
+      select: { projectId: true },
+      take: 100,
+    });
+    return rows.length
+      ? {
+          projectIds: rows.map((row) => row.projectId),
+          action: "replace_client",
+        }
+      : null;
   }
-  return { projectIds: [], action: "end_fuel_agreement" };
+  const rows = await context.prisma.projectFuelAgreement.findMany({
+    where: {
+      corporationId: input.corporationId,
+      companyId: input.companyId,
+      fuelSupplierId: input.id,
+      effectiveTo: null,
+    },
+    select: { projectId: true },
+    take: 100,
+  });
+  return rows.length
+    ? {
+        projectIds: rows.map((row) => row.projectId),
+        action: "end_fuel_agreement",
+      }
+    : null;
 }
 
 export async function removeCommercialRegistryHandler(

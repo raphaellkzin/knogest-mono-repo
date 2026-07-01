@@ -9,10 +9,7 @@ import {
   toMaskedDocumentDto,
   toProtectedDocumentDto,
 } from "../../lib/security/sensitive-document";
-import type {
-  CreateEmployeeInput,
-  ListEmployeesQuery,
-} from "./workforce.dto";
+import type { CreateEmployeeInput, ListEmployeesQuery } from "./workforce.dto";
 import {
   assertEmploymentCanBeCreatedHandler,
   createEmploymentWithFirstPeriodHandler,
@@ -87,7 +84,8 @@ function periodDto(period: EmploymentRecord["periods"][number]) {
     terminationReason: period.terminationReason,
     createdAt: period.createdAt.toISOString(),
     updatedAt: period.updatedAt.toISOString(),
-    state: period.effectiveTo === null ? ("current" as const) : ("closed" as const),
+    state:
+      period.effectiveTo === null ? ("current" as const) : ("closed" as const),
   };
 }
 
@@ -107,16 +105,20 @@ function isCurrentEmployment(record: EmploymentRecord) {
   );
 }
 
-function availabilityDto(record: EmploymentRecord) {
+function availabilityDto(record: EmploymentRecord, hasOpenAllocation = false) {
   return {
-    state: isCurrentEmployment(record)
-      ? ("available" as const)
-      : ("unavailable" as const),
-    hasOpenAllocation: false,
+    state:
+      isCurrentEmployment(record) && !hasOpenAllocation
+        ? ("available" as const)
+        : ("unavailable" as const),
+    hasOpenAllocation,
   };
 }
 
-function toListDto(record: EmploymentRecord) {
+function toListDto(
+  record: EmploymentRecord,
+  allocatedPersonIds = new Set<string>(),
+) {
   const openPeriod = currentPeriod(record);
   return {
     id: record.id,
@@ -136,7 +138,10 @@ function toListDto(record: EmploymentRecord) {
       createdAt: record.createdAt.toISOString(),
       updatedAt: record.updatedAt.toISOString(),
     },
-    availability: availabilityDto(record),
+    availability: availabilityDto(
+      record,
+      allocatedPersonIds.has(record.person.id),
+    ),
   };
 }
 
@@ -229,8 +234,20 @@ export class WorkforceService {
             : item.person.displayName,
       }),
     });
+    const allocationRows =
+      await this.context.prisma.projectEmployeeAllocation.findMany({
+        where: {
+          corporationId: scope.corporationId,
+          personId: { in: page.data.map((item) => item.person.id) },
+          effectiveTo: null,
+        },
+        select: { personId: true },
+      });
+    const allocatedPersonIds = new Set(
+      allocationRows.map((row) => row.personId),
+    );
     return {
-      data: page.data.map(toListDto),
+      data: page.data.map((record) => toListDto(record, allocatedPersonIds)),
       pageInfo: page.pageInfo,
     };
   }

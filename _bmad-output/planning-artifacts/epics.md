@@ -1736,6 +1736,22 @@ So that I can correct only the affected step without creating duplicate Projects
 **Then** they cover initial submission, affected-step mapping, preserved values, unchanged retry, successful cleanup, registry appearance, and Company-scope changes
 **And** generated clients remain server-only.
 
+### Epic 4 Security and Completeness Acceptance Addendum
+
+The following acceptance requirements are normative for the corresponding Story 4.x criteria above and must remain synchronized with the dedicated story files:
+
+- **Story 4.1:** disclose the memory-only loss model; confirm dirty in-app exits; capture an immutable expected Company precondition; protect exit during unknown outcome; test keyboard/focus/screen-reader behavior, 200% zoom, 320 CSS pixels, and a cross-tab Company switch.
+- **Story 4.2:** enforce trimmed NFC text maxima of 160 code points for Project name, 500 for address, and 120 for contract number; reject unsafe controls; cap budget at 16 integral plus two fractional digits; store paired coordinates as canonical `numeric(9,6)` values with geographic bounds.
+- **Story 4.3:** require 1-20 Technical Responsibilities unique by Employment; keep Manager, Technical Responsibility, and allocation roles independent; revalidate Client and Employment scope/lifecycle at commit; return subsection-specific conflicts and prove selection/finalization races.
+- **Story 4.4:** model schedule values as timezone-free wall clock, reject `24:00`, use half-open `[start,end)` intervals, disallow implicit overnight windows, and bound Break Template names to 120 NFC code points and durations to 1-1440 minutes without inventing clock placement.
+- **Story 4.5:** bound `jobRole` to 120 NFC code points and money to `numeric(18,2)` capacity; preserve explicit selections across paginated views; enforce Corporation Person exclusivity independently from accountability; prove concurrent allocations with deterministic database barriers.
+- **Story 4.6:** require the submitted reading id to remain the latest confirmed reading at commit; preserve paginated selections; report a specific authorized stale-reading conflict; prove allocation and reading races atomically.
+- **Story 4.7:** pin the immutable catalog to `fuel-types:v1` with `diesel-s10` and `diesel-s500`; treat seed inconsistency as configuration failure; cap prices to positive `numeric(18,4)` values; distinguish Supplier and Fuel Type conflicts without deriving budget, consumption, inventory, or Machine rules.
+- **Story 4.8:** require `Idempotency-Key` and the non-authoritative `X-Expected-Company-Id` precondition; accept only JSON; apply the exact body/collection limits and 10 attempts/minute per trusted Session/Company; use versioned canonicalization, completed-result idempotency, closed error discriminators, executable PostgreSQL enforcement mechanisms, three bounded serializable attempts, and deterministic concurrency tests.
+- **Story 4.9:** disable authentication auto-refresh for finalization; send the expected Company only as a header; use a closed action-result union; preserve and route multiple conflicts; avoid lookups of revoked data; freeze unknown outcomes for manual identical retry; isolate all state/cache/navigation by Company epoch and ignore late responses.
+
+These additions do not authorize backend drafts, browser persistence, automatic post-refresh recovery, Break Template clock placement, outbox/events, budget calculations, fuel-to-Machine compatibility, or new labor rules.
+
 ## Epic 5: Mobilize Resources and Control Project Operation
 
 The Master Administrator can allocate, reallocate, release, terminate, transfer, or retire operational resources, reserve them during planning, explicitly start real production, pause and reactivate operation, and safely move a Project into an irreversible terminal state.

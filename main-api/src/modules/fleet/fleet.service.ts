@@ -87,17 +87,22 @@ function ownershipDto(record: MachineRecord) {
     : null;
 }
 
-function availabilityDto(record: MachineRecord) {
+function availabilityDto(record: MachineRecord, hasOpenAllocation = false) {
   return {
     state:
-      record.isActive && record.ownershipPeriods.length === 1
+      record.isActive &&
+      record.ownershipPeriods.length === 1 &&
+      !hasOpenAllocation
         ? ("available" as const)
         : ("unavailable" as const),
-    hasOpenAllocation: false,
+    hasOpenAllocation,
   };
 }
 
-function toMachineDto(record: MachineRecord) {
+function toMachineDto(
+  record: MachineRecord,
+  allocatedMachineIds = new Set<string>(),
+) {
   const plate = currentIdentifier(record, "PLATE");
   const companyTag = currentIdentifier(record, "COMPANY_TAG");
   return {
@@ -119,7 +124,7 @@ function toMachineDto(record: MachineRecord) {
         : null,
     },
     latestMeterReading: latestReading(record),
-    availability: availabilityDto(record),
+    availability: availabilityDto(record, allocatedMachineIds.has(record.id)),
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
   };
@@ -224,8 +229,22 @@ export class FleetService {
             : item.name,
       }),
     });
+    const allocationRows =
+      await this.context.prisma.projectMachineAllocation.findMany({
+        where: {
+          corporationId: scope.corporationId,
+          machineId: { in: page.data.map((item) => item.id) },
+          effectiveTo: null,
+        },
+        select: { machineId: true },
+      });
+    const allocatedMachineIds = new Set(
+      allocationRows.map((row) => row.machineId),
+    );
     return {
-      data: page.data.map(toMachineDto),
+      data: page.data.map((record) =>
+        toMachineDto(record, allocatedMachineIds),
+      ),
       pageInfo: page.pageInfo,
     };
   }

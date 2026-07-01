@@ -33,6 +33,19 @@ export const buildApp = async (options: FastifyServerOptions = {}) => {
   });
 
   app.setErrorHandler((error: unknown, _request, reply) => {
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code === "FST_ERR_CTP_BODY_TOO_LARGE"
+    ) {
+      return jsonResponse.error({
+        reply,
+        statusCode: 413,
+        code: "PROJECT_WIZARD_BODY_TOO_LARGE",
+        message: "Project command body is too large",
+      });
+    }
     if (typeof error === "object" && error !== null && "validation" in error) {
       return jsonResponse.error({
         reply,

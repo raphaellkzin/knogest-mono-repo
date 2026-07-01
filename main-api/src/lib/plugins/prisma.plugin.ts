@@ -26,6 +26,8 @@ export const prismaPlugin = fp(async (app) => {
           return work(transactionContext);
         },
         {
+          maxWait: options?.maxWait,
+          timeout: options?.timeout,
           isolationLevel:
             options?.isolationLevel === "Serializable"
               ? Prisma.TransactionIsolationLevel.Serializable

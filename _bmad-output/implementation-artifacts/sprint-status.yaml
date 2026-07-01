@@ -1,5 +1,5 @@
 # generated: 2026-06-19T19:48:27-03:00
-# last_updated: 2026-07-01T13:45:22-03:00
+# last_updated: 2026-07-01T15:59:08-03:00
 # project: knogest
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: "2026-06-19T19:48:27-03:00"
-last_updated: "2026-07-01T13:45:22-03:00"
+last_updated: "2026-07-01T15:59:08-03:00"
 project: knogest
 project_key: NOKEY
 tracking_system: file-system
@@ -65,16 +65,16 @@ development_status:
   3-2-maintain-a-monotonic-meter-reading-chain: in-progress
   epic-3-retrospective: optional
 
-  epic-4: backlog
-  4-1-run-a-non-resumable-local-project-wizard: backlog
-  4-2-capture-project-identity-and-commercial-baseline: backlog
-  4-3-select-the-client-and-project-responsibilities: backlog
-  4-4-configure-the-weekly-schedule-and-break-templates: backlog
-  4-5-configure-optional-initial-employee-mobilization: backlog
-  4-6-configure-optional-initial-machine-mobilization: backlog
-  4-7-configure-optional-project-fuel-agreements: backlog
-  4-8-finalize-the-project-aggregate-atomically-and-idempotently: backlog
-  4-9-submit-the-wizard-and-recover-finalization-conflicts: backlog
+  epic-4: in-progress
+  4-1-run-a-non-resumable-local-project-wizard: in-progress
+  4-2-capture-project-identity-and-commercial-baseline: in-progress
+  4-3-select-the-client-and-project-responsibilities: in-progress
+  4-4-configure-the-weekly-schedule-and-break-templates: in-progress
+  4-5-configure-optional-initial-employee-mobilization: in-progress
+  4-6-configure-optional-initial-machine-mobilization: in-progress
+  4-7-configure-optional-project-fuel-agreements: in-progress
+  4-8-finalize-the-project-aggregate-atomically-and-idempotently: in-progress
+  4-9-submit-the-wizard-and-recover-finalization-conflicts: in-progress
   epic-4-retrospective: optional
 
   epic-5: backlog

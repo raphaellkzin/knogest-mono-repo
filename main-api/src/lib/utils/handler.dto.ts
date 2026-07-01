@@ -7,7 +7,11 @@ export interface HandlerContext {
   prisma: DatabaseClient;
   transaction<T>(
     work: (context: HandlerContext) => Promise<T>,
-    options?: { isolationLevel?: TransactionIsolationLevel },
+    options?: {
+      isolationLevel?: TransactionIsolationLevel;
+      maxWait?: number;
+      timeout?: number;
+    },
   ): Promise<T>;
 }
 

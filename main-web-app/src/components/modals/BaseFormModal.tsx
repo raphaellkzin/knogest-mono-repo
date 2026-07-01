@@ -51,7 +51,9 @@ interface BaseFormModalProps<TData extends FieldValues> {
   schema: z.ZodType<TData>;
   size?: OperationsModalSize;
   defaultValues?: DefaultValues<TData>;
-  onSubmit: (data: TData) => Promise<void>;
+  onSubmit: (data: TData) => Promise<void | boolean>;
+  confirmClose?: (dirty: boolean) => boolean | Promise<boolean>;
+  onSessionStart?: () => void;
   submitLabel?: string;
   children?: (
     form: UseFormReturn<TData>,
@@ -65,6 +67,8 @@ export function BaseFormModal<TData extends FieldValues>({
   defaultValues,
   description,
   icon,
+  confirmClose,
+  onSessionStart,
   onSubmit,
   schema,
   size = "lg",
@@ -102,10 +106,16 @@ export function BaseFormModal<TData extends FieldValues>({
     setCurrentStep(step);
   };
 
-  const handleOpenChange = (nextOpen: boolean) => {
+  const handleOpenChange = async (nextOpen: boolean) => {
     if (isSubmitting && !nextOpen) return;
 
+    if (!nextOpen && form.formState.isDirty && confirmClose) {
+      const confirmed = await confirmClose(true);
+      if (!confirmed) return;
+    }
+
     if (nextOpen) {
+      onSessionStart?.();
       form.reset(defaultValues);
       setCurrentStep(0);
       advancingRef.current = false;
@@ -125,7 +135,8 @@ export function BaseFormModal<TData extends FieldValues>({
 
   const handleSubmitWrapper = async (data: TData) => {
     try {
-      await onSubmit(data);
+      const shouldClose = await onSubmit(data);
+      if (shouldClose === false) return;
       setOpen(false);
       form.reset(defaultValues);
       setCurrentStep(0);
@@ -174,7 +185,7 @@ export function BaseFormModal<TData extends FieldValues>({
       bodyClassName="overflow-hidden p-0"
       description={description}
       icon={icon}
-      onOpenChange={handleOpenChange}
+      onOpenChange={(nextOpen) => void handleOpenChange(nextOpen)}
       open={open}
       size={size}
       title={title}
@@ -210,7 +221,7 @@ export function BaseFormModal<TData extends FieldValues>({
                   variant="outline"
                   size="lg"
                   className="min-h-11"
-                  onClick={() => handleOpenChange(false)}
+                  onClick={() => void handleOpenChange(false)}
                   disabled={navigationDisabled}
                 >
                   Cancelar
@@ -261,7 +272,7 @@ export function BaseFormModal<TData extends FieldValues>({
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => handleOpenChange(false)}
+                onClick={() => void handleOpenChange(false)}
                 disabled={isSubmitting}
               >
                 Cancelar

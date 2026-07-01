@@ -62,6 +62,16 @@ enum MachineMeterReadingStatus {
   @@map("machine_meter_reading_status")
 }
 
+enum ProjectLifecycleStatus {
+  PLANNED
+  ACTIVE
+  PAUSED
+  COMPLETED
+  CANCELLED
+
+  @@map("project_lifecycle_status")
+}
+
 model Corporation {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name      String   @db.VarChar(160)
@@ -69,21 +79,21 @@ model Corporation {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  domains   Domain[]
-  companies Company[]
-  users     User[]
-  sessions  Session[]
-  sensitiveDocumentHarnessRows SensitiveDocumentProtectionHarness[]
-  clients   Client[]
-  fuelSuppliers FuelSupplier[]
-  persons   Person[]
-  employments Employment[]
-  machines Machine[]
-  machineOwnershipPeriods MachineOwnershipPeriod[]
-  machineIdentifiers MachineIdentifier[]
-  machineMeterReadings MachineMeterReading[]
+  domains                        Domain[]
+  companies                      Company[]
+  users                          User[]
+  sessions                       Session[]
+  sensitiveDocumentHarnessRows   SensitiveDocumentProtectionHarness[]
+  clients                        Client[]
+  fuelSuppliers                  FuelSupplier[]
+  persons                        Person[]
+  employments                    Employment[]
+  machines                       Machine[]
+  machineOwnershipPeriods        MachineOwnershipPeriod[]
+  machineIdentifiers             MachineIdentifier[]
+  machineMeterReadings           MachineMeterReading[]
   machineMeterReadingCorrections MachineMeterReadingCorrection[]
-  machineMeterReadingReferences MachineMeterReadingReference[]
+  machineMeterReadingReferences  MachineMeterReadingReference[]
 
   @@map("corporations")
 }
@@ -102,23 +112,23 @@ model Domain {
 }
 
 model Company {
-  id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  corporationId String      @map("corporation_id") @db.Uuid
-  name          String      @db.VarChar(160)
-  isActive      Boolean     @default(true) @map("is_active")
-  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt     DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
-  corporation   Corporation @relation(fields: [corporationId], references: [id], onDelete: Restrict)
-  sessions      Session[]
-  sensitiveDocumentHarnessRows SensitiveDocumentProtectionHarness[]
-  clients       Client[]
-  fuelSuppliers FuelSupplier[]
-  employments   Employment[]
-  machineOwnershipPeriods MachineOwnershipPeriod[]
-  machineIdentifiers MachineIdentifier[]
-  machineMeterReadings MachineMeterReading[]
+  id                             String                               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId                  String                               @map("corporation_id") @db.Uuid
+  name                           String                               @db.VarChar(160)
+  isActive                       Boolean                              @default(true) @map("is_active")
+  createdAt                      DateTime                             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                      DateTime                             @updatedAt @map("updated_at") @db.Timestamptz(3)
+  corporation                    Corporation                          @relation(fields: [corporationId], references: [id], onDelete: Restrict)
+  sessions                       Session[]
+  sensitiveDocumentHarnessRows   SensitiveDocumentProtectionHarness[]
+  clients                        Client[]
+  fuelSuppliers                  FuelSupplier[]
+  employments                    Employment[]
+  machineOwnershipPeriods        MachineOwnershipPeriod[]
+  machineIdentifiers             MachineIdentifier[]
+  machineMeterReadings           MachineMeterReading[]
   machineMeterReadingCorrections MachineMeterReadingCorrection[]
-  machineMeterReadingReferences MachineMeterReadingReference[]
+  machineMeterReadingReferences  MachineMeterReadingReference[]
 
   @@unique([corporationId, id])
   @@unique([corporationId, name])
@@ -126,19 +136,19 @@ model Company {
 }
 
 model User {
-  id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  corporationId String      @map("corporation_id") @db.Uuid
-  email         String      @db.VarChar(254)
-  passwordHash  String      @map("password_hash")
-  role          UserRole    @default(MASTER_ADMIN)
-  isActive      Boolean     @default(true) @map("is_active")
-  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt     DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
-  corporation   Corporation @relation(fields: [corporationId], references: [id], onDelete: Restrict)
-  sessions      Session[]
-  removedClients Client[] @relation("ClientRemovedBy")
-  removedFuelSuppliers FuelSupplier[] @relation("FuelSupplierRemovedBy")
-  machineMeterReadings MachineMeterReading[] @relation("MachineMeterReadingActor")
+  id                             String                          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId                  String                          @map("corporation_id") @db.Uuid
+  email                          String                          @db.VarChar(254)
+  passwordHash                   String                          @map("password_hash")
+  role                           UserRole                        @default(MASTER_ADMIN)
+  isActive                       Boolean                         @default(true) @map("is_active")
+  createdAt                      DateTime                        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                      DateTime                        @updatedAt @map("updated_at") @db.Timestamptz(3)
+  corporation                    Corporation                     @relation(fields: [corporationId], references: [id], onDelete: Restrict)
+  sessions                       Session[]
+  removedClients                 Client[]                        @relation("ClientRemovedBy")
+  removedFuelSuppliers           FuelSupplier[]                  @relation("FuelSupplierRemovedBy")
+  machineMeterReadings           MachineMeterReading[]           @relation("MachineMeterReadingActor")
   machineMeterReadingCorrections MachineMeterReadingCorrection[] @relation("MachineMeterReadingCorrectionActor")
 
   @@unique([corporationId, id])
@@ -193,36 +203,37 @@ model SensitiveDocumentProtectionHarness {
 }
 
 model Client {
-  id                   String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  corporationId        String                 @map("corporation_id") @db.Uuid
-  companyId            String                 @map("company_id") @db.Uuid
-  entityType           CommercialEntityType   @map("entity_type")
-  documentType         SensitiveDocumentType  @map("document_type")
-  ciphertext           String                 @db.Text
-  iv                   String                 @db.VarChar(64)
-  authTag              String                 @map("auth_tag") @db.VarChar(64)
-  encryptionKeyVersion String                 @map("encryption_key_version") @db.VarChar(64)
-  documentDigest       String                 @map("document_digest") @db.VarChar(96)
-  displayName          String                 @map("display_name") @db.VarChar(180)
-  fullName             String?                @map("full_name") @db.VarChar(180)
-  legalName            String?                @map("legal_name") @db.VarChar(180)
-  tradeName            String?                @map("trade_name") @db.VarChar(180)
-  phone                String?                @db.VarChar(32)
-  email                String?                @db.VarChar(254)
-  addressLine          String?                @map("address_line") @db.VarChar(220)
-  city                 String?                @db.VarChar(120)
-  state                String?                @db.VarChar(80)
-  postalCode           String?                @map("postal_code") @db.VarChar(24)
-  isActive             Boolean                @default(true) @map("is_active")
-  inactivatedAt        DateTime?              @map("inactivated_at") @db.Timestamptz(3)
-  removedAt            DateTime?              @map("removed_at") @db.Timestamptz(3)
-  removedByUserId      String?                @map("removed_by_user_id") @db.Uuid
-  createdAt            DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt            DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
-  corporation          Corporation            @relation(fields: [corporationId], references: [id], onDelete: Restrict)
-  company              Company                @relation(fields: [corporationId, companyId], references: [corporationId, id], onDelete: Restrict)
-  removedBy            User?                  @relation("ClientRemovedBy", fields: [corporationId, removedByUserId], references: [corporationId, id], onDelete: Restrict)
+  id                   String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId        String                @map("corporation_id") @db.Uuid
+  companyId            String                @map("company_id") @db.Uuid
+  entityType           CommercialEntityType  @map("entity_type")
+  documentType         SensitiveDocumentType @map("document_type")
+  ciphertext           String                @db.Text
+  iv                   String                @db.VarChar(64)
+  authTag              String                @map("auth_tag") @db.VarChar(64)
+  encryptionKeyVersion String                @map("encryption_key_version") @db.VarChar(64)
+  documentDigest       String                @map("document_digest") @db.VarChar(96)
+  displayName          String                @map("display_name") @db.VarChar(180)
+  fullName             String?               @map("full_name") @db.VarChar(180)
+  legalName            String?               @map("legal_name") @db.VarChar(180)
+  tradeName            String?               @map("trade_name") @db.VarChar(180)
+  phone                String?               @db.VarChar(32)
+  email                String?               @db.VarChar(254)
+  addressLine          String?               @map("address_line") @db.VarChar(220)
+  city                 String?               @db.VarChar(120)
+  state                String?               @db.VarChar(80)
+  postalCode           String?               @map("postal_code") @db.VarChar(24)
+  isActive             Boolean               @default(true) @map("is_active")
+  inactivatedAt        DateTime?             @map("inactivated_at") @db.Timestamptz(3)
+  removedAt            DateTime?             @map("removed_at") @db.Timestamptz(3)
+  removedByUserId      String?               @map("removed_by_user_id") @db.Uuid
+  createdAt            DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime              @updatedAt @map("updated_at") @db.Timestamptz(3)
+  corporation          Corporation           @relation(fields: [corporationId], references: [id], onDelete: Restrict)
+  company              Company               @relation(fields: [corporationId, companyId], references: [corporationId, id], onDelete: Restrict)
+  removedBy            User?                 @relation("ClientRemovedBy", fields: [corporationId, removedByUserId], references: [corporationId, id], onDelete: Restrict)
 
+  @@unique([corporationId, companyId, id])
   @@index([corporationId, companyId, isActive])
   @@index([corporationId, companyId, createdAt, id])
   @@index([corporationId, companyId, displayName, id])
@@ -232,36 +243,37 @@ model Client {
 }
 
 model FuelSupplier {
-  id                   String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  corporationId        String                 @map("corporation_id") @db.Uuid
-  companyId            String                 @map("company_id") @db.Uuid
-  entityType           CommercialEntityType   @map("entity_type")
-  documentType         SensitiveDocumentType  @map("document_type")
-  ciphertext           String                 @db.Text
-  iv                   String                 @db.VarChar(64)
-  authTag              String                 @map("auth_tag") @db.VarChar(64)
-  encryptionKeyVersion String                 @map("encryption_key_version") @db.VarChar(64)
-  documentDigest       String                 @map("document_digest") @db.VarChar(96)
-  displayName          String                 @map("display_name") @db.VarChar(180)
-  fullName             String?                @map("full_name") @db.VarChar(180)
-  legalName            String?                @map("legal_name") @db.VarChar(180)
-  tradeName            String?                @map("trade_name") @db.VarChar(180)
-  phone                String?                @db.VarChar(32)
-  email                String?                @db.VarChar(254)
-  addressLine          String?                @map("address_line") @db.VarChar(220)
-  city                 String?                @db.VarChar(120)
-  state                String?                @db.VarChar(80)
-  postalCode           String?                @map("postal_code") @db.VarChar(24)
-  isActive             Boolean                @default(true) @map("is_active")
-  inactivatedAt        DateTime?              @map("inactivated_at") @db.Timestamptz(3)
-  removedAt            DateTime?              @map("removed_at") @db.Timestamptz(3)
-  removedByUserId      String?                @map("removed_by_user_id") @db.Uuid
-  createdAt            DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt            DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
-  corporation          Corporation            @relation(fields: [corporationId], references: [id], onDelete: Restrict)
-  company              Company                @relation(fields: [corporationId, companyId], references: [corporationId, id], onDelete: Restrict)
-  removedBy            User?                  @relation("FuelSupplierRemovedBy", fields: [corporationId, removedByUserId], references: [corporationId, id], onDelete: Restrict)
+  id                   String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId        String                @map("corporation_id") @db.Uuid
+  companyId            String                @map("company_id") @db.Uuid
+  entityType           CommercialEntityType  @map("entity_type")
+  documentType         SensitiveDocumentType @map("document_type")
+  ciphertext           String                @db.Text
+  iv                   String                @db.VarChar(64)
+  authTag              String                @map("auth_tag") @db.VarChar(64)
+  encryptionKeyVersion String                @map("encryption_key_version") @db.VarChar(64)
+  documentDigest       String                @map("document_digest") @db.VarChar(96)
+  displayName          String                @map("display_name") @db.VarChar(180)
+  fullName             String?               @map("full_name") @db.VarChar(180)
+  legalName            String?               @map("legal_name") @db.VarChar(180)
+  tradeName            String?               @map("trade_name") @db.VarChar(180)
+  phone                String?               @db.VarChar(32)
+  email                String?               @db.VarChar(254)
+  addressLine          String?               @map("address_line") @db.VarChar(220)
+  city                 String?               @db.VarChar(120)
+  state                String?               @db.VarChar(80)
+  postalCode           String?               @map("postal_code") @db.VarChar(24)
+  isActive             Boolean               @default(true) @map("is_active")
+  inactivatedAt        DateTime?             @map("inactivated_at") @db.Timestamptz(3)
+  removedAt            DateTime?             @map("removed_at") @db.Timestamptz(3)
+  removedByUserId      String?               @map("removed_by_user_id") @db.Uuid
+  createdAt            DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime              @updatedAt @map("updated_at") @db.Timestamptz(3)
+  corporation          Corporation           @relation(fields: [corporationId], references: [id], onDelete: Restrict)
+  company              Company               @relation(fields: [corporationId, companyId], references: [corporationId, id], onDelete: Restrict)
+  removedBy            User?                 @relation("FuelSupplierRemovedBy", fields: [corporationId, removedByUserId], references: [corporationId, id], onDelete: Restrict)
 
+  @@unique([corporationId, companyId, id])
   @@index([corporationId, companyId, isActive])
   @@index([corporationId, companyId, createdAt, id])
   @@index([corporationId, companyId, displayName, id])
@@ -329,17 +341,17 @@ model Employment {
 }
 
 model EmploymentPeriod {
-  id                String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  corporationId     String      @map("corporation_id") @db.Uuid
-  companyId         String      @map("company_id") @db.Uuid
-  employmentId      String      @map("employment_id") @db.Uuid
-  admissionDate     DateTime    @map("admission_date") @db.Date
-  effectiveFrom     DateTime    @map("effective_from") @db.Date
-  effectiveTo       DateTime?   @map("effective_to") @db.Date
-  terminationReason String?     @map("termination_reason") @db.VarChar(240)
-  createdAt         DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt         DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
-  employment        Employment  @relation(fields: [corporationId, companyId, employmentId], references: [corporationId, companyId, id], onDelete: Restrict)
+  id                String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId     String     @map("corporation_id") @db.Uuid
+  companyId         String     @map("company_id") @db.Uuid
+  employmentId      String     @map("employment_id") @db.Uuid
+  admissionDate     DateTime   @map("admission_date") @db.Date
+  effectiveFrom     DateTime   @map("effective_from") @db.Date
+  effectiveTo       DateTime?  @map("effective_to") @db.Date
+  terminationReason String?    @map("termination_reason") @db.VarChar(240)
+  createdAt         DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
+  employment        Employment @relation(fields: [corporationId, companyId, employmentId], references: [corporationId, companyId, id], onDelete: Restrict)
 
   @@index([corporationId, companyId, employmentId])
   @@index([corporationId, companyId, effectiveFrom, id], map: "employment_periods_corporation_id_company_id_effective_from_id_")
@@ -347,20 +359,20 @@ model EmploymentPeriod {
 }
 
 model Machine {
-  id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  corporationId String      @map("corporation_id") @db.Uuid
-  name          String      @db.VarChar(160)
-  description   String?     @db.VarChar(500)
-  type          MachineType
-  manufacturer  String      @db.VarChar(120)
-  model         String      @db.VarChar(120)
-  isActive      Boolean     @default(true) @map("is_active")
-  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt     DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
-  corporation   Corporation @relation(fields: [corporationId], references: [id], onDelete: Restrict)
+  id               String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId    String                   @map("corporation_id") @db.Uuid
+  name             String                   @db.VarChar(160)
+  description      String?                  @db.VarChar(500)
+  type             MachineType
+  manufacturer     String                   @db.VarChar(120)
+  model            String                   @db.VarChar(120)
+  isActive         Boolean                  @default(true) @map("is_active")
+  createdAt        DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(3)
+  corporation      Corporation              @relation(fields: [corporationId], references: [id], onDelete: Restrict)
   ownershipPeriods MachineOwnershipPeriod[]
-  identifiers   MachineIdentifier[]
-  meterReadings MachineMeterReading[]
+  identifiers      MachineIdentifier[]
+  meterReadings    MachineMeterReading[]
 
   @@unique([corporationId, id])
   @@index([corporationId, createdAt, id])
@@ -407,24 +419,24 @@ model MachineIdentifier {
 }
 
 model MachineMeterReading {
-  id            String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  corporationId String                    @map("corporation_id") @db.Uuid
-  companyId     String                    @map("company_id") @db.Uuid
-  machineId     String                    @map("machine_id") @db.Uuid
-  readingSequence Int                     @map("reading_sequence")
-  value         Decimal                   @db.Decimal(14, 2)
-  status        MachineMeterReadingStatus @default(CONFIRMED)
-  purpose       MachineMeterReadingPurpose
-  actorUserId   String                    @map("actor_user_id") @db.Uuid
-  recordedAt    DateTime                  @default(now()) @map("recorded_at") @db.Timestamptz(3)
-  createdAt     DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt     DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(3)
-  corporation   Corporation               @relation(fields: [corporationId], references: [id], onDelete: Restrict)
-  company       Company                   @relation(fields: [corporationId, companyId], references: [corporationId, id], onDelete: Restrict)
-  machine       Machine                   @relation(fields: [corporationId, machineId], references: [corporationId, id], onDelete: Restrict)
-  actor         User                      @relation("MachineMeterReadingActor", fields: [corporationId, actorUserId], references: [corporationId, id], onDelete: Restrict)
-  corrections   MachineMeterReadingCorrection[]
-  references    MachineMeterReadingReference[]
+  id              String                          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId   String                          @map("corporation_id") @db.Uuid
+  companyId       String                          @map("company_id") @db.Uuid
+  machineId       String                          @map("machine_id") @db.Uuid
+  readingSequence Int                             @map("reading_sequence")
+  value           Decimal                         @db.Decimal(14, 2)
+  status          MachineMeterReadingStatus       @default(CONFIRMED)
+  purpose         MachineMeterReadingPurpose
+  actorUserId     String                          @map("actor_user_id") @db.Uuid
+  recordedAt      DateTime                        @default(now()) @map("recorded_at") @db.Timestamptz(3)
+  createdAt       DateTime                        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime                        @updatedAt @map("updated_at") @db.Timestamptz(3)
+  corporation     Corporation                     @relation(fields: [corporationId], references: [id], onDelete: Restrict)
+  company         Company                         @relation(fields: [corporationId, companyId], references: [corporationId, id], onDelete: Restrict)
+  machine         Machine                         @relation(fields: [corporationId, machineId], references: [corporationId, id], onDelete: Restrict)
+  actor           User                            @relation("MachineMeterReadingActor", fields: [corporationId, actorUserId], references: [corporationId, id], onDelete: Restrict)
+  corrections     MachineMeterReadingCorrection[]
+  references      MachineMeterReadingReference[]
 
   @@unique([corporationId, companyId, machineId, id])
   @@unique([corporationId, machineId, readingSequence], map: "machine_meter_readings_corporation_id_machine_id_sequence_key")
@@ -469,4 +481,197 @@ model MachineMeterReadingReference {
   @@unique([corporationId, companyId, readingId, sourceType, sourceId])
   @@index([corporationId, companyId, machineId, readingId])
   @@map("machine_meter_reading_references")
+}
+
+model Project {
+  id                       String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId            String                 @map("corporation_id") @db.Uuid
+  companyId                String                 @map("company_id") @db.Uuid
+  name                     String                 @db.VarChar(160)
+  address                  String                 @db.VarChar(500)
+  latitude                 Decimal?               @db.Decimal(9, 6)
+  longitude                Decimal?               @db.Decimal(9, 6)
+  contractNumber           String?                @map("contract_number") @db.VarChar(120)
+  normalizedContractNumber String?                @map("normalized_contract_number") @db.VarChar(120)
+  status                   ProjectLifecycleStatus @default(PLANNED)
+  actualStartedAt          DateTime?              @map("actual_started_at") @db.Timestamptz(3)
+  createdAt                DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([corporationId, companyId, id])
+  @@index([corporationId, companyId, createdAt, id])
+  @@index([corporationId, companyId, name, id])
+  @@index([corporationId, companyId, normalizedContractNumber])
+  @@map("projects")
+}
+
+model ProjectBaseline {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId    String    @map("corporation_id") @db.Uuid
+  companyId        String    @map("company_id") @db.Uuid
+  projectId        String    @map("project_id") @db.Uuid
+  approvedBudget   Decimal   @map("approved_budget") @db.Decimal(18, 2)
+  plannedStartDate DateTime  @map("planned_start_date") @db.Date
+  plannedEndDate   DateTime  @map("planned_end_date") @db.Date
+  effectiveFrom    DateTime  @map("effective_from") @db.Timestamptz(3)
+  effectiveTo      DateTime? @map("effective_to") @db.Timestamptz(3)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([corporationId, companyId, projectId])
+  @@map("project_baselines")
+}
+
+model ProjectClientPeriod {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId String    @map("corporation_id") @db.Uuid
+  companyId     String    @map("company_id") @db.Uuid
+  projectId     String    @map("project_id") @db.Uuid
+  clientId      String    @map("client_id") @db.Uuid
+  effectiveFrom DateTime  @map("effective_from") @db.Timestamptz(3)
+  effectiveTo   DateTime? @map("effective_to") @db.Timestamptz(3)
+
+  @@index([corporationId, companyId, projectId])
+  @@map("project_client_periods")
+}
+
+model ProjectManagerTenure {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId String    @map("corporation_id") @db.Uuid
+  companyId     String    @map("company_id") @db.Uuid
+  projectId     String    @map("project_id") @db.Uuid
+  employmentId  String    @map("employment_id") @db.Uuid
+  effectiveFrom DateTime  @map("effective_from") @db.Timestamptz(3)
+  effectiveTo   DateTime? @map("effective_to") @db.Timestamptz(3)
+
+  @@index([corporationId, companyId, projectId])
+  @@map("project_manager_tenures")
+}
+
+model ProjectTechnicalResponsibility {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId String    @map("corporation_id") @db.Uuid
+  companyId     String    @map("company_id") @db.Uuid
+  projectId     String    @map("project_id") @db.Uuid
+  employmentId  String    @map("employment_id") @db.Uuid
+  effectiveFrom DateTime  @map("effective_from") @db.Timestamptz(3)
+  effectiveTo   DateTime? @map("effective_to") @db.Timestamptz(3)
+
+  @@index([corporationId, companyId, projectId])
+  @@map("project_technical_responsibilities")
+}
+
+model ProjectScheduleRevision {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId String    @map("corporation_id") @db.Uuid
+  companyId     String    @map("company_id") @db.Uuid
+  projectId     String    @map("project_id") @db.Uuid
+  effectiveFrom DateTime  @map("effective_from") @db.Timestamptz(3)
+  effectiveTo   DateTime? @map("effective_to") @db.Timestamptz(3)
+
+  @@index([corporationId, companyId, projectId])
+  @@map("project_schedule_revisions")
+}
+
+model ProjectScheduleDay {
+  id                 String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId      String  @map("corporation_id") @db.Uuid
+  companyId          String  @map("company_id") @db.Uuid
+  scheduleRevisionId String  @map("schedule_revision_id") @db.Uuid
+  dayOfWeek          Int     @map("day_of_week")
+  isWorking          Boolean @map("is_working")
+  startTime          String? @map("start_time") @db.VarChar(5)
+  endTime            String? @map("end_time") @db.VarChar(5)
+
+  @@unique([scheduleRevisionId, dayOfWeek])
+  @@map("project_schedule_days")
+}
+
+model ProjectBreakTemplate {
+  id                 String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId      String @map("corporation_id") @db.Uuid
+  companyId          String @map("company_id") @db.Uuid
+  scheduleRevisionId String @map("schedule_revision_id") @db.Uuid
+  position           Int
+  name               String @db.VarChar(120)
+  durationMinutes    Int    @map("duration_minutes")
+
+  @@unique([scheduleRevisionId, position])
+  @@map("project_break_templates")
+}
+
+model ProjectEmployeeAllocation {
+  id                           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId                String    @map("corporation_id") @db.Uuid
+  companyId                    String    @map("company_id") @db.Uuid
+  projectId                    String    @map("project_id") @db.Uuid
+  employmentId                 String    @map("employment_id") @db.Uuid
+  personId                     String    @map("person_id") @db.Uuid
+  jobRole                      String    @map("job_role") @db.VarChar(120)
+  expectedDailyWorkloadMinutes Int       @map("expected_daily_workload_minutes")
+  compensationMode             String    @map("compensation_mode") @db.VarChar(16)
+  compensationValue            Decimal   @map("compensation_value") @db.Decimal(18, 2)
+  overtimeRate                 Decimal   @map("overtime_rate") @db.Decimal(18, 2)
+  effectiveFrom                DateTime  @map("effective_from") @db.Timestamptz(3)
+  effectiveTo                  DateTime? @map("effective_to") @db.Timestamptz(3)
+
+  @@index([corporationId, companyId, projectId])
+  @@map("project_employee_allocations")
+}
+
+model ProjectMachineAllocation {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId       String    @map("corporation_id") @db.Uuid
+  companyId           String    @map("company_id") @db.Uuid
+  projectId           String    @map("project_id") @db.Uuid
+  machineId           String    @map("machine_id") @db.Uuid
+  startMeterReadingId String    @map("start_meter_reading_id") @db.Uuid
+  effectiveFrom       DateTime  @map("effective_from") @db.Timestamptz(3)
+  effectiveTo         DateTime? @map("effective_to") @db.Timestamptz(3)
+
+  @@index([corporationId, companyId, projectId])
+  @@map("project_machine_allocations")
+}
+
+model ProjectFuelAgreement {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId  String    @map("corporation_id") @db.Uuid
+  companyId      String    @map("company_id") @db.Uuid
+  projectId      String    @map("project_id") @db.Uuid
+  fuelSupplierId String    @map("fuel_supplier_id") @db.Uuid
+  effectiveFrom  DateTime  @map("effective_from") @db.Timestamptz(3)
+  effectiveTo    DateTime? @map("effective_to") @db.Timestamptz(3)
+
+  @@index([corporationId, companyId, projectId])
+  @@map("project_fuel_agreements")
+}
+
+model ProjectFuelPrice {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId String    @map("corporation_id") @db.Uuid
+  companyId     String    @map("company_id") @db.Uuid
+  agreementId   String    @map("agreement_id") @db.Uuid
+  fuelTypeId    String    @map("fuel_type_id") @db.VarChar(32)
+  pricePerLiter Decimal   @map("price_per_liter") @db.Decimal(18, 4)
+  effectiveFrom DateTime  @map("effective_from") @db.Timestamptz(3)
+  effectiveTo   DateTime? @map("effective_to") @db.Timestamptz(3)
+
+  @@index([corporationId, companyId, agreementId])
+  @@map("project_fuel_prices")
+}
+
+model IdempotencyRecord {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sessionId     String   @map("session_id") @db.Uuid
+  corporationId String   @map("corporation_id") @db.Uuid
+  companyId     String   @map("company_id") @db.Uuid
+  operation     String   @db.VarChar(80)
+  key           String   @db.Uuid
+  requestHash   String   @map("request_hash") @db.VarChar(64)
+  projectId     String   @map("project_id") @db.Uuid
+  completedAt   DateTime @map("completed_at") @db.Timestamptz(3)
+  expiresAt     DateTime @map("expires_at") @db.Timestamptz(3)
+
+  @@unique([sessionId, corporationId, companyId, operation, key])
+  @@index([expiresAt])
+  @@map("idempotency_records")
 }

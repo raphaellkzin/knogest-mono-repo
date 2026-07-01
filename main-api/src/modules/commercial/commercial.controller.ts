@@ -6,7 +6,11 @@ import {
   maskedSensitiveDocumentSchema,
   protectedSensitiveDocumentSchema,
 } from "../../lib/utils/swaggerSchemas";
-import { validateBody, validateParams, validateQuery } from "../../lib/utils/zodResolver";
+import {
+  validateBody,
+  validateParams,
+  validateQuery,
+} from "../../lib/utils/zodResolver";
 import {
   createCommercialRegistrySchema,
   listCommercialRegistryQuerySchema,
@@ -53,7 +57,11 @@ const listRegistryQuerySchema = {
     cursor: { type: "string", minLength: 1, maxLength: 2048 },
     search: { type: "string", maxLength: 120 },
     entityType: { type: "string", enum: ["individual", "legal_entity"] },
-    sortBy: { type: "string", enum: ["name", "createdAt"], default: "createdAt" },
+    sortBy: {
+      type: "string",
+      enum: ["name", "createdAt"],
+      default: "createdAt",
+    },
     sortDirection: { type: "string", enum: ["asc", "desc"], default: "desc" },
   },
 } as const;
@@ -293,10 +301,7 @@ export const v1CommercialController = async (app: FastifyInstance) => {
   app.get(
     "/clients/:clientId",
     {
-      preHandler: [
-        app.requireCompanyScope,
-        validateParams(clientParamsSchema),
-      ],
+      preHandler: [app.requireCompanyScope, validateParams(clientParamsSchema)],
       schema: {
         tags: ["Commercial"],
         summary: "Get an authorized Client detail",
@@ -325,10 +330,7 @@ export const v1CommercialController = async (app: FastifyInstance) => {
   app.delete(
     "/clients/:clientId",
     {
-      preHandler: [
-        app.requireCompanyScope,
-        validateParams(clientParamsSchema),
-      ],
+      preHandler: [app.requireCompanyScope, validateParams(clientParamsSchema)],
       schema: {
         tags: ["Commercial"],
         summary: "Remove a Client from operational use",
@@ -422,7 +424,8 @@ export const v1CommercialController = async (app: FastifyInstance) => {
       preHandler: [app.requireCompanyScope, validateQuery(selectorQuerySchema)],
       schema: {
         tags: ["Commercial"],
-        summary: "List active Fuel Suppliers eligible for operational selectors",
+        summary:
+          "List active Fuel Suppliers eligible for operational selectors",
         security: [{ bearerAuth: [] }],
         querystring: selectorOpenApiQuerySchema,
         response: {
@@ -438,6 +441,50 @@ export const v1CommercialController = async (app: FastifyInstance) => {
         scopeFromRequest(request),
         request.query as z.infer<typeof selectorQuerySchema>,
       );
+      return jsonResponse.success({ reply, data });
+    },
+  );
+
+  app.get(
+    "/fuel-types",
+    {
+      preHandler: app.requireCompanyScope,
+      schema: {
+        tags: ["Commercial"],
+        summary: "List the immutable active Fuel Type catalog",
+        security: [{ bearerAuth: [] }],
+        response: {
+          200: {
+            type: "object",
+            required: ["success", "message", "data"],
+            properties: {
+              success: { const: true },
+              message: { type: "string" },
+              data: {
+                type: "array",
+                maxItems: 99,
+                items: {
+                  type: "object",
+                  required: ["id", "name"],
+                  properties: {
+                    id: { enum: ["diesel-s10", "diesel-s500"] },
+                    name: { type: "string" },
+                  },
+                },
+              },
+            },
+          },
+          401: errorSchema,
+          403: errorSchema,
+        },
+      },
+    },
+    async (_request, reply) => {
+      const data = await app.prisma.fuelType.findMany({
+        where: { id: { in: ["diesel-s10", "diesel-s500"] }, isActive: true },
+        orderBy: { id: "asc" },
+        select: { id: true, name: true },
+      });
       return jsonResponse.success({ reply, data });
     },
   );

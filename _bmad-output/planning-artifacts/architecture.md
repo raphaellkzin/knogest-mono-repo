@@ -1274,6 +1274,33 @@ These items are explicitly deferred and do not block the internal MVP pilot.
 - Development and automated tests use synthetic documents.
 - The gate is an operational acceptance condition, not an optional future policy.
 
+### Epic 4 Finalization Security Contract
+
+**Trusted workspace precondition**
+
+- Project finalization requires `Idempotency-Key` UUID v4 and `X-Expected-Company-Id`. The expected Company header detects stale browser context but never grants scope.
+- Fastify derives Session, Corporation, Company, User, and role from authenticated server state, compares the expected Company before mutation, and rereads the active Session/Company and `MASTER_ADMIN` role inside the serializable transaction.
+- The dashboard finalization call disables automatic authentication refresh. A mutation started for Company A cannot refresh into Company B and replay. Company epoch changes clear subordinate UI/cache state, and late responses are ignored.
+
+**Canonical idempotency and limits**
+
+- Canonical bytes are `project-finalization:v1\n` plus UTF-8 canonical JSON: unknown properties rejected; bounded text NFC-normalized; UUIDs lowercase; decimals and civil dates remain normalized strings; explicit `null` preserved; object keys lexicographically ordered; semantically unordered id sets sorted by stable id; Break Template order preserved.
+- `IdempotencyRecord` describes a completed result only and commits atomically with its Project. Same scoped key/hash replays the original `201`; a different hash returns `409 IDEMPOTENCY_PAYLOAD_CONFLICT`. Failed commands leave no reservation. Expired records are reusable only after their original Session is inactive.
+- The route accepts only `application/json`, limits the raw body to 1,048,576 bytes, enforces the story collection maxima, and permits 10 attempts per minute per trusted Session/Company. Payloads and idempotency keys never enter logs.
+- Serializable finalization uses at most three attempts, `maxWait` 5 seconds, transaction timeout 15 seconds, and bounded retry jitter outside the transaction. Every retry repeats authoritative reads; no network work occurs inside the transaction.
+
+**Closed recovery contract**
+
+- Validation details use ordered `{ path, code }` entries. Authorized resource conflicts use an ordered closed union `{ kind, id, section, reason }`. Foreign and absent identifiers share a generic response with no resource details.
+- The dashboard handles `success`, `recoverable-conflict`, `unknown-outcome`, and `terminal-failure` as a discriminated union and never parses localized messages. Multiple conflicts remain visible and route in canonical wizard order.
+- Unknown outcomes freeze the in-memory command and key for manual identical single-flight retry. No backend draft, browser persistence, or post-refresh automatic recovery is implied.
+
+**Database enforcement**
+
+- Composite foreign keys carry Corporation and Company scope. Partial unique indexes enforce one open Manager per Project, one open allocation per Corporation Person, one open allocation per Machine, one current Project/Supplier agreement, and one current Agreement/Fuel Type price.
+- Scalar checks cover only row-local values. Deferred constraint triggers enforce required child cardinalities at transaction end, including Manager, Technical Responsibilities, seven schedule days, and Fuel Types per agreement. A PostgreSQL `CHECK` is never used to claim a cross-row invariant.
+- Real-PostgreSQL concurrency tests coordinate with barriers/latches rather than sleeps and prove winner/loser outcomes, stable errors, idempotent replay, tenant isolation, latest-reading safety, and complete rollback.
+
 ### Architecture Completeness Checklist
 
 **Requirements Analysis**
