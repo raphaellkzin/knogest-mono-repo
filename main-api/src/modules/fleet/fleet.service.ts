@@ -2,6 +2,7 @@ import {
   buildCursorPage,
   parseBoundCursor,
 } from "../../lib/utils/cursor-pagination";
+import { AppError } from "../../lib/utils/appError";
 import type { HandlerContext } from "../../lib/utils/handler.dto";
 import type {
   AppendMachineMeterReadingInput,
@@ -59,7 +60,9 @@ function currentIdentifier(
   record: MachineRecord,
   kind: "PLATE" | "COMPANY_TAG",
 ) {
-  return record.identifiers.find((identifier) => identifier.kind === kind) ?? null;
+  return (
+    record.identifiers.find((identifier) => identifier.kind === kind) ?? null
+  );
 }
 
 function latestReading(record: MachineRecord) {
@@ -130,7 +133,7 @@ function toMachineDetailDto(record: MachineRecord) {
 }
 
 function identifiersFromInput(input: CreateMachineInput) {
-  return [
+  const identifiers = [
     input.plate
       ? {
           kind: "PLATE" as const,
@@ -145,7 +148,26 @@ function identifiersFromInput(input: CreateMachineInput) {
           normalizedValue: normalizeIdentifier(input.companyTag),
         }
       : null,
-  ].filter((identifier) => identifier !== null);
+  ].filter(
+    (
+      identifier,
+    ): identifier is {
+      kind: "PLATE" | "COMPANY_TAG";
+      value: string;
+      normalizedValue: string;
+    } => identifier !== null,
+  );
+
+  if (
+    identifiers.some((identifier) => identifier.normalizedValue.length === 0)
+  ) {
+    throw new AppError({
+      code: "VALIDATION_ERROR",
+      message: "Machine identifier must include at least one letter or number",
+      statusCode: 400,
+    });
+  }
+  return identifiers;
 }
 
 export class FleetService {
@@ -197,7 +219,9 @@ export class FleetService {
       getLast: (item) => ({
         id: item.id,
         value:
-          query.sortBy === "createdAt" ? item.createdAt.toISOString() : item.name,
+          query.sortBy === "createdAt"
+            ? item.createdAt.toISOString()
+            : item.name,
       }),
     });
     return {

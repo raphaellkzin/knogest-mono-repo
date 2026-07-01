@@ -116,6 +116,22 @@ so that the Company has trustworthy equipment available for future Project alloc
   - [ ] Playwright-test login/select Company, empty Machine registry, successful Machine creation, duplicate identifier conflict, pagination traversal, detail view, and workspace-switch isolation.
   - [ ] Run typecheck, lint/architecture checks, unit tests, integration tests, OpenAPI generation/drift check, Kubb generation/drift check, build, and relevant Playwright tests.
 
+### Review Findings
+
+- [x] [Review][Patch] Scope returned Machine nested data by selected Company [main-api/src/modules/fleet/handlers/fleet.handler.ts:49]
+- [x] [Review][Patch] Enforce a single open ownership period per Machine [main-api/prisma/migrations/20260701193000_fleet_review_hardening/migration.sql:1]
+- [x] [Review][Patch] Reject identifiers whose normalized value is empty [main-api/src/modules/fleet/fleet.service.ts:27]
+- [x] [Review][Patch] Omit identifier search predicate when normalized search is empty [main-api/src/modules/fleet/handlers/fleet.handler.ts:196]
+- [x] [Review][Patch] Reject invalid createdAt cursor boundaries with canonical validation error [main-api/src/modules/fleet/handlers/fleet.handler.ts:162]
+- [x] [Review][Patch] Align OpenAPI decimal pattern with DTO validation [main-api/src/modules/fleet/fleet.controller.ts:176]
+- [x] [Review][Patch] Return an application auth/scope error instead of generic 500 when scope is missing [main-api/src/modules/fleet/fleet.controller.ts:228]
+- [x] [Review][Patch] Add missing Story 3.1 acceptance coverage for plate-only, both identifiers, atomic rollback, cursor errors, pagination traversal, and cross-scope detail/list isolation [main-api/tests/integration/fleet/fleet-machines.test.ts:86]
+- [x] [Review][Patch] Validate cursor boundary IDs as UUIDs and require canonical ISO timestamps so malformed boundaries always return the canonical validation error [main-api/src/modules/fleet/handlers/fleet.handler.ts:162]
+- [x] [Review][Patch] Express the plate-or-company-tag requirement in the Fastify/OpenAPI request schema, not only in the downstream DTO validator [main-api/src/modules/fleet/fleet.controller.ts:162]
+- [x] [Review][Patch] Strengthen cursor pagination coverage to prove pages do not repeat records and traversal terminates [main-api/tests/integration/fleet/fleet-machines.test.ts:298]
+- [x] [Review][Patch] Add exact numeric(14,2) boundary persistence coverage for the initial Meter Reading [main-api/tests/integration/fleet/fleet-machines.test.ts:440]
+- [x] [Review][Patch] Correct completed review evidence that points to the original migration although the ownership-index fix lives in the hardening migration [_bmad-output/implementation-artifacts/3-1-register-and-find-machines.md:122]
+
 ## Dev Notes
 
 ### Developer Context

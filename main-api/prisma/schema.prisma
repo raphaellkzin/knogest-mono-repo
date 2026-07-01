@@ -227,6 +227,7 @@ model Client {
   @@index([corporationId, companyId, createdAt, id])
   @@index([corporationId, companyId, displayName, id])
   @@index([documentDigest])
+  @@index([removedAt], map: "clients_removed_at_idx")
   @@map("clients")
 }
 
@@ -265,6 +266,7 @@ model FuelSupplier {
   @@index([corporationId, companyId, createdAt, id])
   @@index([corporationId, companyId, displayName, id])
   @@index([documentDigest])
+  @@index([removedAt], map: "fuel_suppliers_removed_at_idx")
   @@map("fuel_suppliers")
 }
 
@@ -321,7 +323,7 @@ model Employment {
   @@unique([corporationId, companyId, id])
   @@index([corporationId, companyId, isActive])
   @@index([corporationId, companyId, createdAt, id])
-  @@index([corporationId, companyId, companyRegistrationNumber])
+  @@index([corporationId, companyId, companyRegistrationNumber], map: "employments_corporation_id_company_id_company_registration_numb")
   @@index([corporationId, personId])
   @@map("employments")
 }
@@ -340,7 +342,7 @@ model EmploymentPeriod {
   employment        Employment  @relation(fields: [corporationId, companyId, employmentId], references: [corporationId, companyId, id], onDelete: Restrict)
 
   @@index([corporationId, companyId, employmentId])
-  @@index([corporationId, companyId, effectiveFrom, id])
+  @@index([corporationId, companyId, effectiveFrom, id], map: "employment_periods_corporation_id_company_id_effective_from_id_")
   @@map("employment_periods")
 }
 
@@ -409,6 +411,7 @@ model MachineMeterReading {
   corporationId String                    @map("corporation_id") @db.Uuid
   companyId     String                    @map("company_id") @db.Uuid
   machineId     String                    @map("machine_id") @db.Uuid
+  readingSequence Int                     @map("reading_sequence")
   value         Decimal                   @db.Decimal(14, 2)
   status        MachineMeterReadingStatus @default(CONFIRMED)
   purpose       MachineMeterReadingPurpose
@@ -424,7 +427,8 @@ model MachineMeterReading {
   references    MachineMeterReadingReference[]
 
   @@unique([corporationId, companyId, machineId, id])
-  @@index([corporationId, companyId, machineId, recordedAt, id])
+  @@unique([corporationId, machineId, readingSequence], map: "machine_meter_readings_corporation_id_machine_id_sequence_key")
+  @@index([corporationId, companyId, machineId, readingSequence])
   @@map("machine_meter_readings")
 }
 
@@ -443,7 +447,7 @@ model MachineMeterReadingCorrection {
   corporation   Corporation         @relation(fields: [corporationId], references: [id], onDelete: Restrict)
   company       Company             @relation(fields: [corporationId, companyId], references: [corporationId, id], onDelete: Restrict, map: "mmr_corrections_company_fkey")
   reading       MachineMeterReading @relation(fields: [corporationId, companyId, machineId, readingId], references: [corporationId, companyId, machineId, id], onDelete: Restrict, map: "mmr_corrections_reading_fkey")
-  actor         User                @relation("MachineMeterReadingCorrectionActor", fields: [corporationId, actorUserId], references: [corporationId, id], onDelete: Restrict)
+  actor         User                @relation("MachineMeterReadingCorrectionActor", fields: [corporationId, actorUserId], references: [corporationId, id], onDelete: Restrict, map: "machine_meter_reading_corrections_corporation_id_actor_user_id_")
 
   @@index([corporationId, companyId, machineId, readingId])
   @@map("machine_meter_reading_corrections")

@@ -7,6 +7,17 @@ const optionalSearch = z
   .optional()
   .transform((value) => (value && value.length > 0 ? value : undefined));
 
+const optionalIdentifier = z
+  .string()
+  .trim()
+  .max(80)
+  .optional()
+  .transform((value) => (value && value.length > 0 ? value : undefined))
+  .refine(
+    (value) => value === undefined || /[A-Za-z0-9]/u.test(value),
+    "Identifier must include at least one letter or number",
+  );
+
 export const decimalStringSchema = z
   .string()
   .trim()
@@ -24,18 +35,8 @@ export const createMachineSchema = z
     type: z.enum(["YELLOW_LINE", "WHITE_LINE"]),
     manufacturer: z.string().trim().min(1).max(120),
     model: z.string().trim().min(1).max(120),
-    plate: z
-      .string()
-      .trim()
-      .max(80)
-      .optional()
-      .transform((value) => (value && value.length > 0 ? value : undefined)),
-    companyTag: z
-      .string()
-      .trim()
-      .max(80)
-      .optional()
-      .transform((value) => (value && value.length > 0 ? value : undefined)),
+    plate: optionalIdentifier,
+    companyTag: optionalIdentifier,
     initialMeterReading: decimalStringSchema,
   })
   .strict()

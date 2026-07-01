@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 
+import { AppError } from "../../lib/utils/appError";
 import { jsonResponse } from "../../lib/utils/jsonResponse";
 import {
   validateBody,
@@ -16,6 +17,9 @@ import {
   machineReadingParamsSchema,
 } from "./fleet.dto";
 import { FleetService } from "./fleet.service";
+
+const decimalStringOpenApiPattern = "^(?:0|[1-9]\\d{0,11})(?:\\.[0-9]{1,2})?$";
+const identifierOpenApiPattern = ".*[A-Za-z0-9].*";
 
 const errorSchema = {
   type: "object",
@@ -158,22 +162,24 @@ const listResponseSchema = {
 const createMachineBodySchema = {
   type: "object",
   additionalProperties: false,
-  required: [
-    "name",
-    "type",
-    "manufacturer",
-    "model",
-    "initialMeterReading",
-  ],
+  required: ["name", "type", "manufacturer", "model", "initialMeterReading"],
+  anyOf: [{ required: ["plate"] }, { required: ["companyTag"] }],
   properties: {
     name: { type: "string", minLength: 1, maxLength: 160 },
     description: { type: "string", maxLength: 500 },
     type: { type: "string", enum: ["YELLOW_LINE", "WHITE_LINE"] },
     manufacturer: { type: "string", minLength: 1, maxLength: 120 },
     model: { type: "string", minLength: 1, maxLength: 120 },
-    plate: { type: "string", maxLength: 80 },
-    companyTag: { type: "string", maxLength: 80 },
-    initialMeterReading: { type: "string", pattern: "^[0-9]+(\\.[0-9]{1,2})?$" },
+    plate: { type: "string", maxLength: 80, pattern: identifierOpenApiPattern },
+    companyTag: {
+      type: "string",
+      maxLength: 80,
+      pattern: identifierOpenApiPattern,
+    },
+    initialMeterReading: {
+      type: "string",
+      pattern: decimalStringOpenApiPattern,
+    },
   },
 } as const;
 
@@ -186,7 +192,11 @@ const listMachinesOpenApiQuerySchema = {
     search: { type: "string", maxLength: 120 },
     type: { type: "string", enum: ["YELLOW_LINE", "WHITE_LINE"] },
     availability: { type: "string", enum: ["available"] },
-    sortBy: { type: "string", enum: ["name", "createdAt"], default: "createdAt" },
+    sortBy: {
+      type: "string",
+      enum: ["name", "createdAt"],
+      default: "createdAt",
+    },
     sortDirection: { type: "string", enum: ["asc", "desc"], default: "desc" },
   },
 } as const;
@@ -212,7 +222,9 @@ const appendReadingBodySchema = {
   type: "object",
   additionalProperties: false,
   required: ["value"],
-  properties: { value: { type: "string", pattern: "^[0-9]+(\\.[0-9]{1,2})?$" } },
+  properties: {
+    value: { type: "string", pattern: decimalStringOpenApiPattern },
+  },
 } as const;
 
 const correctReadingBodySchema = {
@@ -220,7 +232,7 @@ const correctReadingBodySchema = {
   additionalProperties: false,
   required: ["value", "reason"],
   properties: {
-    value: { type: "string", pattern: "^[0-9]+(\\.[0-9]{1,2})?$" },
+    value: { type: "string", pattern: decimalStringOpenApiPattern },
     reason: { type: "string", minLength: 1, maxLength: 500 },
   },
 } as const;
@@ -232,7 +244,11 @@ function scopeFromRequest(request: {
   const companyId = request.authContext?.companyId;
   const actorUserId = request.authContext?.userId;
   if (!corporationId || !companyId || !actorUserId) {
-    throw new Error("Company-scoped route executed without auth context");
+    throw new AppError({
+      code: "COMPANY_CONTEXT_REQUIRED",
+      message: "Company context required",
+      statusCode: 403,
+    });
   }
   return { corporationId, companyId, actorUserId };
 }
@@ -270,7 +286,10 @@ export const v1FleetController = async (app: FastifyInstance) => {
   app.get(
     "/machines",
     {
-      preHandler: [app.requireCompanyScope, validateQuery(listMachinesQuerySchema)],
+      preHandler: [
+        app.requireCompanyScope,
+        validateQuery(listMachinesQuerySchema),
+      ],
       schema: {
         tags: ["Fleet"],
         summary: "List Machines in the selected Company",
@@ -296,7 +315,10 @@ export const v1FleetController = async (app: FastifyInstance) => {
   app.get(
     "/machines/:machineId",
     {
-      preHandler: [app.requireCompanyScope, validateParams(machineParamsSchema)],
+      preHandler: [
+        app.requireCompanyScope,
+        validateParams(machineParamsSchema),
+      ],
       schema: {
         tags: ["Fleet"],
         summary: "Get a Machine detail in the selected Company",
@@ -312,8 +334,13 @@ export const v1FleetController = async (app: FastifyInstance) => {
       },
     },
     async (request, reply) => {
-      const { machineId } = request.params as z.infer<typeof machineParamsSchema>;
-      const data = await fleetService.detail(scopeFromRequest(request), machineId);
+      const { machineId } = request.params as z.infer<
+        typeof machineParamsSchema
+      >;
+      const data = await fleetService.detail(
+        scopeFromRequest(request),
+        machineId,
+      );
       return jsonResponse.success({ reply, data });
     },
   );
@@ -343,7 +370,9 @@ export const v1FleetController = async (app: FastifyInstance) => {
       },
     },
     async (request, reply) => {
-      const { machineId } = request.params as z.infer<typeof machineParamsSchema>;
+      const { machineId } = request.params as z.infer<
+        typeof machineParamsSchema
+      >;
       const data = await fleetService.appendReading(
         scopeFromRequest(request),
         machineId,

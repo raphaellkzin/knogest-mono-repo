@@ -113,6 +113,16 @@ so that future allocation, fueling, maintenance, and RDO evidence can rely on on
   - [ ] Frontend-test any updated Machine latest-reading presentation and any accepted correction UI states.
   - [ ] Run typecheck, lint/architecture checks, unit tests, integration tests, OpenAPI generation/drift check, Kubb generation/drift check, build, and relevant Playwright tests.
 
+### Review Findings
+
+- [x] [Review][Patch] Add deterministic Meter Reading sequence metadata instead of ordering by millisecond timestamp plus UUID [main-api/prisma/migrations/20260701193000_fleet_review_hardening/migration.sql:7]
+- [x] [Review][Patch] Scope latest Meter Reading selection by selected Company [main-api/src/modules/fleet/handlers/fleet.handler.ts:86]
+- [x] [Review][Patch] Add missing Story 3.2 acceptance coverage for increasing append, concurrency, permitted corrections, referenced immutability, ordinary-reading immutability, audit persistence, tenant isolation, and full non-decreasing chain proof [main-api/tests/integration/fleet/fleet-machines.test.ts:175]
+- [x] [Review][Patch] Evaluate correction neighbors across the Machine's full Corporation-scoped sequence so ownership-transfer corrections cannot break the global chain [main-api/src/modules/fleet/handlers/fleet.handler.ts:484]
+- [x] [Review][Patch] Assert rejected neighbor-bound corrections leave both the reading value and correction audit table unchanged [main-api/tests/integration/fleet/fleet-machines.test.ts:421]
+- [x] [Review][Patch] Add exact numeric(14,2) boundary persistence coverage for appended and corrected Meter Readings [main-api/tests/integration/fleet/fleet-machines.test.ts:440]
+- [x] [Review][Patch] Correct completed review evidence that points to the original migration although the sequence fix lives in the hardening migration [_bmad-output/implementation-artifacts/3-2-maintain-a-monotonic-meter-reading-chain.md:118]
+
 ## Dev Notes
 
 ### Developer Context

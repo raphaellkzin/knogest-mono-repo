@@ -45,6 +45,26 @@ describe("fleet DTOs", () => {
         type: "YELLOW_LINE",
       }),
     ).toThrow();
+    expect(() =>
+      createMachineSchema.parse({
+        initialMeterReading: "1.00",
+        manufacturer: "Synthetic",
+        model: "Loader",
+        name: "Machine",
+        plate: "---",
+        type: "YELLOW_LINE",
+      }),
+    ).toThrow();
+    expect(() =>
+      createMachineSchema.parse({
+        companyTag: "MCH-001",
+        initialMeterReading: "0001.00",
+        manufacturer: "Synthetic",
+        model: "Loader",
+        name: "Machine",
+        type: "YELLOW_LINE",
+      }),
+    ).toThrow();
   });
 
   it("normalizes list defaults and allowlists filters", () => {

@@ -4,7 +4,11 @@ import type {
   CursorBoundary,
   SortDirection,
 } from "../../../lib/utils/cursor-pagination";
+import { invalidCursorError } from "../../../lib/utils/cursor-pagination";
 import type { HandlerContext } from "../../../lib/utils/handler.dto";
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 
 export interface MachineRecord {
   id: string;
@@ -36,6 +40,7 @@ export interface MachineRecord {
   }[];
   meterReadings: {
     id: string;
+    readingSequence: number;
     value: Prisma.Decimal;
     status: "CONFIRMED";
     purpose: "INITIAL" | "OWNERSHIP_TRANSFER" | "ORDINARY";
@@ -46,61 +51,66 @@ export interface MachineRecord {
   }[];
 }
 
-const machineSelect = {
-  id: true,
-  corporationId: true,
-  name: true,
-  description: true,
-  type: true,
-  manufacturer: true,
-  model: true,
-  isActive: true,
-  createdAt: true,
-  updatedAt: true,
-  ownershipPeriods: {
-    where: { effectiveTo: null },
-    orderBy: { effectiveFrom: "desc" as const },
-    take: 1,
-    select: {
-      id: true,
-      corporationId: true,
-      companyId: true,
-      machineId: true,
-      effectiveFrom: true,
-      effectiveTo: true,
-      createdAt: true,
-      updatedAt: true,
+function machineSelect(companyId: string) {
+  return {
+    id: true,
+    corporationId: true,
+    name: true,
+    description: true,
+    type: true,
+    manufacturer: true,
+    model: true,
+    isActive: true,
+    createdAt: true,
+    updatedAt: true,
+    ownershipPeriods: {
+      where: { companyId, effectiveTo: null },
+      orderBy: { effectiveFrom: "desc" as const },
+      take: 1,
+      select: {
+        id: true,
+        corporationId: true,
+        companyId: true,
+        machineId: true,
+        effectiveFrom: true,
+        effectiveTo: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     },
-  },
-  identifiers: {
-    where: { releasedAt: null },
-    orderBy: { kind: "asc" as const },
-    select: {
-      id: true,
-      kind: true,
-      value: true,
-      normalizedValue: true,
-      releasedAt: true,
+    identifiers: {
+      where: { companyId, releasedAt: null },
+      orderBy: { kind: "asc" as const },
+      select: {
+        id: true,
+        kind: true,
+        value: true,
+        normalizedValue: true,
+        releasedAt: true,
+      },
     },
-  },
-  meterReadings: {
-    where: { status: "CONFIRMED" as const },
-    orderBy: [{ recordedAt: "desc" as const }, { id: "desc" as const }],
-    take: 1,
-    select: {
-      id: true,
-      value: true,
-      status: true,
-      purpose: true,
-      actorUserId: true,
-      recordedAt: true,
-      createdAt: true,
-      updatedAt: true,
+    meterReadings: {
+      where: { companyId, status: "CONFIRMED" as const },
+      orderBy: { readingSequence: "desc" as const },
+      take: 1,
+      select: {
+        id: true,
+        readingSequence: true,
+        value: true,
+        status: true,
+        purpose: true,
+        actorUserId: true,
+        recordedAt: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     },
-  },
-};
+  };
+}
 
-function isUniqueError(error: unknown): error is { code: string; meta?: unknown } {
+function isUniqueError(
+  error: unknown,
+): error is { code: string; meta?: unknown } {
   return (
     typeof error === "object" &&
     error !== null &&
@@ -159,8 +169,16 @@ function boundaryWhere({
   sortDirection: SortDirection;
 }): Prisma.MachineWhereInput | undefined {
   if (!boundary) return undefined;
+  if (!UUID_PATTERN.test(boundary.id)) throw invalidCursorError();
   if (sortBy === "createdAt") {
+    if (typeof boundary.value !== "string") throw invalidCursorError();
     const createdAt = new Date(String(boundary.value));
+    if (
+      Number.isNaN(createdAt.getTime()) ||
+      createdAt.toISOString() !== boundary.value
+    ) {
+      throw invalidCursorError();
+    }
     return sortDirection === "asc"
       ? {
           OR: [
@@ -189,33 +207,76 @@ function orderBy({
   sortBy: "name" | "createdAt";
   sortDirection: SortDirection;
 }): Prisma.MachineOrderByWithRelationInput[] {
-  if (sortBy === "name") return [{ name: sortDirection }, { id: sortDirection }];
+  if (sortBy === "name")
+    return [{ name: sortDirection }, { id: sortDirection }];
   return [{ createdAt: sortDirection }, { id: sortDirection }];
 }
 
-function searchWhere(search?: string): Prisma.MachineWhereInput | undefined {
+function searchWhere({
+  companyId,
+  search,
+}: {
+  companyId: string;
+  search?: string;
+}): Prisma.MachineWhereInput | undefined {
   if (!search) return undefined;
+  const normalizedIdentifierSearch = search.replace(/\W/gu, "").toUpperCase();
   return {
     OR: [
       { name: { contains: search, mode: "insensitive" } },
       { manufacturer: { contains: search, mode: "insensitive" } },
       { model: { contains: search, mode: "insensitive" } },
-      {
-        identifiers: {
-          some: {
-            releasedAt: null,
-            normalizedValue: { contains: search.replace(/\W/gu, "").toUpperCase() },
-          },
-        },
-      },
+      ...(normalizedIdentifierSearch
+        ? [
+            {
+              identifiers: {
+                some: {
+                  companyId,
+                  releasedAt: null,
+                  normalizedValue: { contains: normalizedIdentifierSearch },
+                },
+              },
+            },
+          ]
+        : []),
     ],
   };
 }
 
-async function lockMachine(context: HandlerContext, machineId: string) {
+async function latestMachineReading(
+  context: HandlerContext,
+  input: { corporationId: string; machineId: string },
+) {
+  return context.prisma.machineMeterReading.findFirst({
+    where: {
+      corporationId: input.corporationId,
+      machineId: input.machineId,
+      status: "CONFIRMED",
+    },
+    orderBy: { readingSequence: "desc" },
+    select: { readingSequence: true, value: true },
+  });
+}
+
+async function nextReadingSequence(
+  context: HandlerContext,
+  input: { corporationId: string; machineId: string },
+) {
+  const latest = await latestMachineReading(context, input);
+  return {
+    latest,
+    readingSequence: latest ? latest.readingSequence + 1 : 1,
+  };
+}
+
+async function lockMachine(
+  context: HandlerContext,
+  input: { corporationId: string; machineId: string },
+) {
   await context.prisma.$queryRawUnsafe(
-    `SELECT id FROM "machines" WHERE "id" = $1 FOR UPDATE`,
-    machineId,
+    `SELECT id FROM "machines" WHERE "corporation_id" = $1 AND "id" = $2 FOR UPDATE`,
+    input.corporationId,
+    input.machineId,
   );
 }
 
@@ -230,7 +291,11 @@ export async function createMachineHandler(
     type: "YELLOW_LINE" | "WHITE_LINE";
     manufacturer: string;
     model: string;
-    identifiers: { kind: "PLATE" | "COMPANY_TAG"; value: string; normalizedValue: string }[];
+    identifiers: {
+      kind: "PLATE" | "COMPANY_TAG";
+      value: string;
+      normalizedValue: string;
+    }[];
     initialMeterReading: string;
   },
 ): Promise<MachineRecord> {
@@ -269,6 +334,7 @@ export async function createMachineHandler(
         corporationId: input.corporationId,
         companyId: input.companyId,
         machineId: machine.id,
+        readingSequence: 1,
         value: input.initialMeterReading,
         purpose: "INITIAL",
         actorUserId: input.actorUserId,
@@ -311,12 +377,12 @@ export async function listMachinesHandler(
         },
       },
       ...(input.type ? { type: input.type } : {}),
-      ...searchWhere(input.search),
+      ...searchWhere({ companyId: input.companyId, search: input.search }),
       ...boundaryWhere(input),
     },
     orderBy: orderBy(input),
     take: input.limit + 1,
-    select: machineSelect,
+    select: machineSelect(input.companyId),
   })) as MachineRecord[];
 }
 
@@ -337,7 +403,7 @@ export async function findMachineDetailHandler(
         },
       },
     },
-    select: machineSelect,
+    select: machineSelect(input.companyId),
   })) as MachineRecord | null;
 
   if (!record) throw notFoundError();
@@ -356,17 +422,8 @@ export async function appendMachineMeterReadingHandler(
   },
 ) {
   await findMachineDetailHandler(context, input);
-  await lockMachine(context, input.machineId);
-  const latest = await context.prisma.machineMeterReading.findFirst({
-    where: {
-      corporationId: input.corporationId,
-      companyId: input.companyId,
-      machineId: input.machineId,
-      status: "CONFIRMED",
-    },
-    orderBy: [{ recordedAt: "desc" }, { id: "desc" }],
-    select: { value: true },
-  });
+  await lockMachine(context, input);
+  const { latest, readingSequence } = await nextReadingSequence(context, input);
   if (latest && decimalToCents(String(latest.value)) > input.valueCents) {
     throw readingDecreaseError();
   }
@@ -375,6 +432,7 @@ export async function appendMachineMeterReadingHandler(
       corporationId: input.corporationId,
       companyId: input.companyId,
       machineId: input.machineId,
+      readingSequence,
       value: input.value,
       purpose: "ORDINARY",
       actorUserId: input.actorUserId,
@@ -398,7 +456,7 @@ export async function correctMachineMeterReadingHandler(
   },
 ) {
   await findMachineDetailHandler(context, input);
-  await lockMachine(context, input.machineId);
+  await lockMachine(context, input);
   const reading = await context.prisma.machineMeterReading.findFirst({
     where: {
       id: input.readingId,
@@ -410,6 +468,7 @@ export async function correctMachineMeterReadingHandler(
     select: {
       id: true,
       value: true,
+      readingSequence: true,
       purpose: true,
       recordedAt: true,
       references: { select: { id: true }, take: 1 },
@@ -427,29 +486,21 @@ export async function correctMachineMeterReadingHandler(
     context.prisma.machineMeterReading.findFirst({
       where: {
         corporationId: input.corporationId,
-        companyId: input.companyId,
         machineId: input.machineId,
         status: "CONFIRMED",
-        OR: [
-          { recordedAt: { lt: reading.recordedAt } },
-          { recordedAt: reading.recordedAt, id: { lt: reading.id } },
-        ],
+        readingSequence: { lt: reading.readingSequence },
       },
-      orderBy: [{ recordedAt: "desc" }, { id: "desc" }],
+      orderBy: { readingSequence: "desc" },
       select: { value: true },
     }),
     context.prisma.machineMeterReading.findFirst({
       where: {
         corporationId: input.corporationId,
-        companyId: input.companyId,
         machineId: input.machineId,
         status: "CONFIRMED",
-        OR: [
-          { recordedAt: { gt: reading.recordedAt } },
-          { recordedAt: reading.recordedAt, id: { gt: reading.id } },
-        ],
+        readingSequence: { gt: reading.readingSequence },
       },
-      orderBy: [{ recordedAt: "asc" }, { id: "asc" }],
+      orderBy: { readingSequence: "asc" },
       select: { value: true },
     }),
   ]);
