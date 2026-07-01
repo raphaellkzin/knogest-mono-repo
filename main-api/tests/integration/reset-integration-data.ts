@@ -1,6 +1,14 @@
 import type { PrismaClient } from "../../src/db/generated/prisma/client";
 
 export async function resetIntegrationData(prisma: PrismaClient) {
+  await prisma.$executeRawUnsafe(
+    'TRUNCATE TABLE "machine_meter_reading_references" CASCADE',
+  );
+  await prisma.machineMeterReadingCorrection.deleteMany();
+  await prisma.machineMeterReading.deleteMany();
+  await prisma.machineIdentifier.deleteMany();
+  await prisma.machineOwnershipPeriod.deleteMany();
+  await prisma.machine.deleteMany();
   await prisma.$executeRawUnsafe('TRUNCATE TABLE "employment_periods" CASCADE');
   await prisma.employment.deleteMany();
   await prisma.person.deleteMany();

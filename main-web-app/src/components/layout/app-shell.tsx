@@ -186,12 +186,12 @@ export function AppShell({
           </p>
         </div>
 
-        <div className="mt-auto rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-3 text-xs text-emerald-950">
+        <div className="mt-auto rounded-lg border border-sidebar-border bg-accent px-3 py-3 text-xs text-accent-foreground">
           <div className="flex items-center gap-2 font-semibold">
             <ShieldCheck className="size-4" />
             Sessão corporativa
           </div>
-          <p className="mt-2 break-all text-emerald-900">{userId}</p>
+          <p className="mt-2 break-all text-primary">{userId}</p>
         </div>
       </aside>
 

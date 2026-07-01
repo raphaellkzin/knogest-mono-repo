@@ -1,6 +1,10 @@
+---
+baseline_commit: cf110ba7a492ad3b5a2ea525e8c59905e7a7d1e8
+---
+
 # Story 2.7: Maintain Admission and Rehire Periods
 
-Status: ready-for-dev
+Status: in-progress
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 

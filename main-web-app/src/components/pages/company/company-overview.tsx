@@ -22,7 +22,7 @@ const overviewCards = [
     value: "3",
     detail: "BR-381 concentra 54% da frota",
     icon: Map,
-    tone: "bg-teal-50 text-teal-950 border-teal-200",
+    tone: "bg-accent text-accent-foreground border-primary/20",
   },
   {
     label: "Funcionários ativos",
@@ -183,7 +183,7 @@ export function CompanyOverview() {
           </div>
 
           <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_260px]">
-            <div className="relative min-h-[360px] overflow-hidden rounded-lg border border-border bg-[oklch(0.956_0.018_170)]">
+            <div className="relative min-h-[360px] overflow-hidden rounded-lg border border-border bg-[oklch(0.956_0.018_250)]">
               <div className="absolute inset-0">
                 <div className="absolute left-[8%] top-[16%] h-[68%] w-[82%] rounded-[48%] border border-primary/20" />
                 <div className="absolute left-[18%] top-[30%] h-[42%] w-[62%] rounded-[48%] border border-primary/25" />

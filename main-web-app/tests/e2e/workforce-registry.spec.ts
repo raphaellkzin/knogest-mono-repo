@@ -33,3 +33,30 @@ test("creates, lists, and opens a synthetic Employee detail", async ({
   await expect(page.getByText("Alocação aberta")).toBeVisible();
   await expect(page.getByText("Não")).toBeVisible();
 });
+
+test("rehires a terminated Employee and keeps period history visible", async ({
+  page,
+}) => {
+  await login(page);
+  await page.getByRole("link", { name: "Funcionários" }).click();
+  await page.locator('select[name="state"]').selectOption("terminated");
+  await page.getByRole("button", { name: "Filtrar" }).click();
+  await expect(page.getByText("Synthetic Rehire Fixture")).toBeVisible();
+  await expect(page.getByText("Indisponível")).toBeVisible();
+
+  await page.getByRole("link", { name: "Ver" }).first().click();
+  await expect(page.getByText("Encerrado")).toBeVisible();
+  await expect(page.getByText("Synthetic termination fixture")).toBeVisible();
+  await page.getByRole("button", { name: "Recontratar funcionário" }).click();
+  await expect(page.getByText("Funcionário recontratado.")).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByText("Ativo")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Recontratar funcionário" })).toHaveCount(0);
+  await expect(page.getByText("Atual")).toBeVisible();
+  await expect(page.getByText("Encerrado")).toBeVisible();
+
+  await page.getByRole("link", { name: "Funcionários" }).click();
+  await expect(page.getByText("Synthetic Rehire Fixture")).toBeVisible();
+  await expect(page.getByText("Disponível")).toBeVisible();
+});

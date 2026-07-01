@@ -33,7 +33,7 @@ const projectKpis = [
     label: "Frentes ativas",
     value: "3",
     detail: "Corte, aterro e drenagem",
-    tone: "text-emerald-800",
+    tone: "text-primary",
   },
   {
     label: "Frota em campo",
@@ -68,7 +68,7 @@ const mapMarkers = [
     detail: "Compactação liberada",
     position: "left-[58%] top-[38%]",
     layer: "production",
-    tone: "bg-emerald-700 text-white",
+    tone: "bg-primary text-primary-foreground",
   },
   {
     label: "Esc. 320",
@@ -242,7 +242,7 @@ export function HomeDashboard({ userId }: { userId: string }) {
               <p className={cn("text-2xl font-bold leading-none", item.tone)}>
                 {item.value}
               </p>
-              <CheckCircle2 className="size-5 text-emerald-700" />
+              <CheckCircle2 className="size-5 text-primary" />
             </div>
             <p className="mt-2 text-sm leading-5 text-muted-foreground">
               {item.detail}
@@ -292,7 +292,7 @@ export function HomeDashboard({ userId }: { userId: string }) {
             </div>
           </div>
 
-          <div className="relative h-[420px] overflow-hidden bg-[oklch(0.952_0.014_170)] sm:h-[500px]">
+          <div className="relative h-[420px] overflow-hidden bg-[oklch(0.952_0.014_250)] sm:h-[500px]">
             <svg
               aria-hidden="true"
               className="absolute inset-0 size-full"
@@ -301,7 +301,7 @@ export function HomeDashboard({ userId }: { userId: string }) {
             >
               <path
                 d="M0 438 C128 390 206 332 296 352 C420 380 470 252 570 230 C690 204 778 268 900 198 L900 560 L0 560 Z"
-                fill="oklch(0.74 0.08 170 / 0.18)"
+                fill="oklch(0.74 0.08 250 / 0.18)"
               />
               <path
                 d="M0 132 C118 86 214 138 320 112 C452 80 552 94 658 54 C756 18 832 40 900 16 L900 0 L0 0 Z"
@@ -310,7 +310,7 @@ export function HomeDashboard({ userId }: { userId: string }) {
               <path
                 d="M50 430 C162 346 210 380 306 296 C416 198 526 226 648 136 C744 64 820 82 862 48"
                 fill="none"
-                stroke="oklch(0.37 0.083 176)"
+                stroke="oklch(0.38 0.09 255)"
                 strokeLinecap="round"
                 strokeWidth="18"
               />
@@ -325,7 +325,7 @@ export function HomeDashboard({ userId }: { userId: string }) {
               <path
                 d="M92 96 L192 164 L286 122 L390 184 L498 142 L606 190 L710 132 L832 172"
                 fill="none"
-                stroke="oklch(0.38 0.034 184 / 0.22)"
+                stroke="oklch(0.38 0.034 260 / 0.22)"
                 strokeDasharray="12 14"
                 strokeLinecap="round"
                 strokeWidth="3"
@@ -333,7 +333,7 @@ export function HomeDashboard({ userId }: { userId: string }) {
               <path
                 d="M142 510 L246 446 L354 486 L466 430 L582 470 L706 410 L840 452"
                 fill="none"
-                stroke="oklch(0.38 0.034 184 / 0.2)"
+                stroke="oklch(0.38 0.034 260 / 0.2)"
                 strokeDasharray="10 14"
                 strokeLinecap="round"
                 strokeWidth="3"

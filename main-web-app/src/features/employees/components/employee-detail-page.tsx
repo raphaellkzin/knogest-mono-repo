@@ -1,26 +1,69 @@
+"use client";
+
 import Link from "next/link";
+import { useActionState } from "react";
+import { useFormStatus } from "react-dom";
 import {
   ArrowLeft,
   CalendarDays,
   FileSearch,
+  RotateCcw,
   UserRound,
   type LucideIcon,
 } from "lucide-react";
 import type { ReactNode } from "react";
 
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import type { EmployeeActionState } from "../employees-action-state";
 import type { EmployeeDetail } from "../employees.server";
 
-export function EmployeeDetailPage({ record }: { record: EmployeeDetail }) {
+type EmployeeAction = (
+  state: EmployeeActionState,
+  formData: FormData,
+) => Promise<EmployeeActionState>;
+
+const initialState: EmployeeActionState = { ok: false, message: "" };
+
+export function EmployeeDetailPage({
+  action,
+  record,
+}: {
+  action: EmployeeAction;
+  record: EmployeeDetail;
+}) {
+  const [state, formAction] = useActionState(action, initialState);
+  const canRehire = record.employment.state === "terminated";
+
   return (
     <div className="space-y-4">
-      <Link
-        href="/home/funcionarios"
-        className={buttonVariants({ variant: "outline" })}
-      >
-        <ArrowLeft className="size-4" />
-        Funcionários
-      </Link>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <Link
+          href="/home/funcionarios"
+          className={buttonVariants({ variant: "outline" })}
+        >
+          <ArrowLeft className="size-4" />
+          Funcionários
+        </Link>
+
+        {canRehire && (
+          <form action={formAction} className="flex flex-col gap-2 sm:items-end">
+            <input type="hidden" name="employmentId" value={record.id} />
+            <RehireButton />
+            {state.message && (
+              <p
+                role="status"
+                className={`rounded-md border px-3 py-2 text-sm font-semibold ${
+                  state.ok
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-950"
+                    : "border-red-200 bg-red-50 text-red-950"
+                }`}
+              >
+                {state.message}
+              </p>
+            )}
+          </form>
+        )}
+      </div>
 
       <section className="rounded-lg border border-border bg-card">
         <div className="border-b border-border bg-secondary/60 px-4 py-3">
@@ -61,24 +104,46 @@ export function EmployeeDetailPage({ record }: { record: EmployeeDetail }) {
               value={record.availability.hasOpenAllocation ? "Sim" : "Não"}
             />
           </DetailGroup>
-          <DetailGroup icon={CalendarDays} title="Período atual">
+          <DetailGroup icon={CalendarDays} title="Histórico de períodos">
             {record.periods.map((period) => (
               <div key={period.id} className="rounded-md bg-muted p-3">
-                <Detail label="Admissão" value={formatDate(period.admissionDate)} />
+                <Detail
+                  label="Estado"
+                  value={period.state === "current" ? "Atual" : "Encerrado"}
+                />
+                <Detail
+                  label="Admissão"
+                  value={formatDate(period.admissionDate)}
+                />
                 <Detail
                   label="Início efetivo"
                   value={formatDate(period.effectiveFrom)}
                 />
                 <Detail
                   label="Fim efetivo"
-                  value={period.effectiveTo ? formatDate(period.effectiveTo) : "Aberto"}
+                  value={
+                    period.effectiveTo ? formatDate(period.effectiveTo) : "Aberto"
+                  }
                 />
+                {period.terminationReason && (
+                  <Detail label="Motivo" value={period.terminationReason} />
+                )}
               </div>
             ))}
           </DetailGroup>
         </div>
       </section>
     </div>
+  );
+}
+
+function RehireButton() {
+  const { pending } = useFormStatus();
+  return (
+    <Button type="submit" disabled={pending}>
+      <RotateCcw className="size-4" />
+      {pending ? "Recontratando" : "Recontratar funcionário"}
+    </Button>
   );
 }
 

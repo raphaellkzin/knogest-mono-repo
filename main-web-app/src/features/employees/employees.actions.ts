@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { postApiV1Employees } from "@/generated/clients/postApiV1Employees";
+import { postApiV1EmployeesEmploymentidRehire } from "@/generated/clients/postApiV1EmployeesEmploymentidRehire";
 import type { PostApiV1EmployeesMutationRequest } from "@/generated/models/PostApiV1Employees";
 import { ApiClientError } from "@/lib/api/server-client";
 import type { EmployeeActionState } from "./employees-action-state";
@@ -33,6 +34,12 @@ function failureMessage(error: unknown) {
     if (error.code === "REGISTRATION_NUMBER_ALREADY_EXISTS") {
       return "Esta matrícula já está em uso nesta empresa.";
     }
+    if (error.code === "EMPLOYMENT_CURRENT_STATE_CONFLICT") {
+      return "Este vínculo não está mais encerrado para recontratação.";
+    }
+    if (error.code === "NOT_FOUND") {
+      return "Este vínculo não está disponível nesta empresa.";
+    }
     if (error.code === "VALIDATION_ERROR") {
       return "Revise CPF, nome, matrícula e admissão.";
     }
@@ -52,6 +59,24 @@ export async function createEmployeeAction(
     await postApiV1Employees({ data: payload(formData) });
     revalidatePath("/home/funcionarios");
     return { ok: true, message: "Funcionário cadastrado." };
+  } catch (error) {
+    return { ok: false, message: failureMessage(error) };
+  }
+}
+
+export async function rehireEmployeeAction(
+  _state: EmployeeActionState,
+  formData: FormData,
+): Promise<EmployeeActionState> {
+  const employmentId = optionalString(formData, "employmentId");
+  try {
+    await postApiV1EmployeesEmploymentidRehire({
+      employmentId,
+      data: {},
+    });
+    revalidatePath("/home/funcionarios");
+    revalidatePath(`/home/funcionarios/${employmentId}`);
+    return { ok: true, message: "Funcionário recontratado." };
   } catch (error) {
     return { ok: false, message: failureMessage(error) };
   }

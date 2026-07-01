@@ -234,7 +234,7 @@ const resourceConfigs: Record<CompanyResource, ResourceConfig> = {
         value: String(rows.length),
         detail: "pessoas na empresa",
         icon: UsersRound,
-        tone: "bg-teal-50 text-teal-950 border-teal-200",
+        tone: "bg-accent text-accent-foreground border-primary/20",
       },
       {
         label: "Em campo",
@@ -360,7 +360,7 @@ const resourceConfigs: Record<CompanyResource, ResourceConfig> = {
         value: String(rows.length),
         detail: "máquinas e equipamentos",
         icon: Truck,
-        tone: "bg-teal-50 text-teal-950 border-teal-200",
+        tone: "bg-accent text-accent-foreground border-primary/20",
       },
       {
         label: "Operando",
@@ -455,7 +455,7 @@ const resourceConfigs: Record<CompanyResource, ResourceConfig> = {
         value: String(rows.length),
         detail: "no ambiente da empresa",
         icon: HardHat,
-        tone: "bg-teal-50 text-teal-950 border-teal-200",
+        tone: "bg-accent text-accent-foreground border-primary/20",
       },
       {
         label: "Em execução",
@@ -562,7 +562,7 @@ const resourceConfigs: Record<CompanyResource, ResourceConfig> = {
         value: String(rows.length),
         detail: "na base da empresa",
         icon: Fuel,
-        tone: "bg-teal-50 text-teal-950 border-teal-200",
+        tone: "bg-accent text-accent-foreground border-primary/20",
       },
       {
         label: "Ativos",

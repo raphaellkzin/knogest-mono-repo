@@ -76,7 +76,7 @@ export function LoginPage() {
               <span className="font-bold">KnoGest</span>
             </div>
 
-            <div className="mb-5 flex size-10 items-center justify-center rounded-md bg-emerald-50 text-emerald-800">
+            <div className="mb-5 flex size-10 items-center justify-center rounded-md bg-accent text-primary">
               <ShieldCheck aria-hidden="true" className="size-5" />
             </div>
             <h1 className="text-2xl font-bold text-balance">

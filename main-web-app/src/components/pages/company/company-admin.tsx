@@ -19,7 +19,7 @@ const modules = [
     value: "126",
     detail: "34 em campo hoje",
     icon: UsersRound,
-    tone: "bg-emerald-50 text-emerald-900 border-emerald-200",
+    tone: "bg-accent text-accent-foreground border-primary/20",
   },
   {
     href: "#projetos",
@@ -43,7 +43,7 @@ const modules = [
     value: "42",
     detail: "18 alocadas agora",
     icon: Truck,
-    tone: "bg-teal-50 text-teal-950 border-teal-200",
+    tone: "bg-accent text-accent-foreground border-primary/20",
   },
 ];
 

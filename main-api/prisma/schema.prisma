@@ -34,6 +34,34 @@ enum EmploymentState {
   @@map("employment_state")
 }
 
+enum MachineType {
+  YELLOW_LINE
+  WHITE_LINE
+
+  @@map("machine_type")
+}
+
+enum MachineIdentifierKind {
+  PLATE
+  COMPANY_TAG
+
+  @@map("machine_identifier_kind")
+}
+
+enum MachineMeterReadingPurpose {
+  INITIAL
+  OWNERSHIP_TRANSFER
+  ORDINARY
+
+  @@map("machine_meter_reading_purpose")
+}
+
+enum MachineMeterReadingStatus {
+  CONFIRMED
+
+  @@map("machine_meter_reading_status")
+}
+
 model Corporation {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name      String   @db.VarChar(160)
@@ -50,6 +78,12 @@ model Corporation {
   fuelSuppliers FuelSupplier[]
   persons   Person[]
   employments Employment[]
+  machines Machine[]
+  machineOwnershipPeriods MachineOwnershipPeriod[]
+  machineIdentifiers MachineIdentifier[]
+  machineMeterReadings MachineMeterReading[]
+  machineMeterReadingCorrections MachineMeterReadingCorrection[]
+  machineMeterReadingReferences MachineMeterReadingReference[]
 
   @@map("corporations")
 }
@@ -80,6 +114,11 @@ model Company {
   clients       Client[]
   fuelSuppliers FuelSupplier[]
   employments   Employment[]
+  machineOwnershipPeriods MachineOwnershipPeriod[]
+  machineIdentifiers MachineIdentifier[]
+  machineMeterReadings MachineMeterReading[]
+  machineMeterReadingCorrections MachineMeterReadingCorrection[]
+  machineMeterReadingReferences MachineMeterReadingReference[]
 
   @@unique([corporationId, id])
   @@unique([corporationId, name])
@@ -99,6 +138,8 @@ model User {
   sessions      Session[]
   removedClients Client[] @relation("ClientRemovedBy")
   removedFuelSuppliers FuelSupplier[] @relation("FuelSupplierRemovedBy")
+  machineMeterReadings MachineMeterReading[] @relation("MachineMeterReadingActor")
+  machineMeterReadingCorrections MachineMeterReadingCorrection[] @relation("MachineMeterReadingCorrectionActor")
 
   @@unique([corporationId, id])
   @@unique([corporationId, email])
@@ -301,4 +342,127 @@ model EmploymentPeriod {
   @@index([corporationId, companyId, employmentId])
   @@index([corporationId, companyId, effectiveFrom, id])
   @@map("employment_periods")
+}
+
+model Machine {
+  id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId String      @map("corporation_id") @db.Uuid
+  name          String      @db.VarChar(160)
+  description   String?     @db.VarChar(500)
+  type          MachineType
+  manufacturer  String      @db.VarChar(120)
+  model         String      @db.VarChar(120)
+  isActive      Boolean     @default(true) @map("is_active")
+  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+  corporation   Corporation @relation(fields: [corporationId], references: [id], onDelete: Restrict)
+  ownershipPeriods MachineOwnershipPeriod[]
+  identifiers   MachineIdentifier[]
+  meterReadings MachineMeterReading[]
+
+  @@unique([corporationId, id])
+  @@index([corporationId, createdAt, id])
+  @@index([corporationId, name, id])
+  @@map("machines")
+}
+
+model MachineOwnershipPeriod {
+  id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId String      @map("corporation_id") @db.Uuid
+  companyId     String      @map("company_id") @db.Uuid
+  machineId     String      @map("machine_id") @db.Uuid
+  effectiveFrom DateTime    @default(now()) @map("effective_from") @db.Timestamptz(3)
+  effectiveTo   DateTime?   @map("effective_to") @db.Timestamptz(3)
+  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+  corporation   Corporation @relation(fields: [corporationId], references: [id], onDelete: Restrict)
+  company       Company     @relation(fields: [corporationId, companyId], references: [corporationId, id], onDelete: Restrict)
+  machine       Machine     @relation(fields: [corporationId, machineId], references: [corporationId, id], onDelete: Restrict)
+
+  @@index([corporationId, companyId, machineId])
+  @@index([corporationId, companyId, effectiveFrom, id])
+  @@map("machine_ownership_periods")
+}
+
+model MachineIdentifier {
+  id              String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId   String                @map("corporation_id") @db.Uuid
+  companyId       String                @map("company_id") @db.Uuid
+  machineId       String                @map("machine_id") @db.Uuid
+  kind            MachineIdentifierKind
+  value           String                @db.VarChar(80)
+  normalizedValue String                @map("normalized_value") @db.VarChar(80)
+  releasedAt      DateTime?             @map("released_at") @db.Timestamptz(3)
+  createdAt       DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime              @updatedAt @map("updated_at") @db.Timestamptz(3)
+  corporation     Corporation           @relation(fields: [corporationId], references: [id], onDelete: Restrict)
+  company         Company               @relation(fields: [corporationId, companyId], references: [corporationId, id], onDelete: Restrict)
+  machine         Machine               @relation(fields: [corporationId, machineId], references: [corporationId, id], onDelete: Restrict)
+
+  @@index([corporationId, companyId, machineId])
+  @@index([corporationId, companyId, kind, normalizedValue])
+  @@map("machine_identifiers")
+}
+
+model MachineMeterReading {
+  id            String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId String                    @map("corporation_id") @db.Uuid
+  companyId     String                    @map("company_id") @db.Uuid
+  machineId     String                    @map("machine_id") @db.Uuid
+  value         Decimal                   @db.Decimal(14, 2)
+  status        MachineMeterReadingStatus @default(CONFIRMED)
+  purpose       MachineMeterReadingPurpose
+  actorUserId   String                    @map("actor_user_id") @db.Uuid
+  recordedAt    DateTime                  @default(now()) @map("recorded_at") @db.Timestamptz(3)
+  createdAt     DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  corporation   Corporation               @relation(fields: [corporationId], references: [id], onDelete: Restrict)
+  company       Company                   @relation(fields: [corporationId, companyId], references: [corporationId, id], onDelete: Restrict)
+  machine       Machine                   @relation(fields: [corporationId, machineId], references: [corporationId, id], onDelete: Restrict)
+  actor         User                      @relation("MachineMeterReadingActor", fields: [corporationId, actorUserId], references: [corporationId, id], onDelete: Restrict)
+  corrections   MachineMeterReadingCorrection[]
+  references    MachineMeterReadingReference[]
+
+  @@unique([corporationId, companyId, machineId, id])
+  @@index([corporationId, companyId, machineId, recordedAt, id])
+  @@map("machine_meter_readings")
+}
+
+model MachineMeterReadingCorrection {
+  id            String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId String              @map("corporation_id") @db.Uuid
+  companyId     String              @map("company_id") @db.Uuid
+  machineId     String              @map("machine_id") @db.Uuid
+  readingId     String              @map("reading_id") @db.Uuid
+  actorUserId   String              @map("actor_user_id") @db.Uuid
+  oldValue      Decimal             @map("old_value") @db.Decimal(14, 2)
+  newValue      Decimal             @map("new_value") @db.Decimal(14, 2)
+  reason        String              @db.VarChar(500)
+  correctedAt   DateTime            @default(now()) @map("corrected_at") @db.Timestamptz(3)
+  createdAt     DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  corporation   Corporation         @relation(fields: [corporationId], references: [id], onDelete: Restrict)
+  company       Company             @relation(fields: [corporationId, companyId], references: [corporationId, id], onDelete: Restrict, map: "mmr_corrections_company_fkey")
+  reading       MachineMeterReading @relation(fields: [corporationId, companyId, machineId, readingId], references: [corporationId, companyId, machineId, id], onDelete: Restrict, map: "mmr_corrections_reading_fkey")
+  actor         User                @relation("MachineMeterReadingCorrectionActor", fields: [corporationId, actorUserId], references: [corporationId, id], onDelete: Restrict)
+
+  @@index([corporationId, companyId, machineId, readingId])
+  @@map("machine_meter_reading_corrections")
+}
+
+model MachineMeterReadingReference {
+  id            String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId String              @map("corporation_id") @db.Uuid
+  companyId     String              @map("company_id") @db.Uuid
+  machineId     String              @map("machine_id") @db.Uuid
+  readingId     String              @map("reading_id") @db.Uuid
+  sourceType    String              @map("source_type") @db.VarChar(80)
+  sourceId      String              @map("source_id") @db.VarChar(120)
+  createdAt     DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  corporation   Corporation         @relation(fields: [corporationId], references: [id], onDelete: Restrict)
+  company       Company             @relation(fields: [corporationId, companyId], references: [corporationId, id], onDelete: Restrict, map: "mmr_references_company_fkey")
+  reading       MachineMeterReading @relation(fields: [corporationId, companyId, machineId, readingId], references: [corporationId, companyId, machineId, id], onDelete: Restrict, map: "mmr_references_reading_fkey")
+
+  @@unique([corporationId, companyId, readingId, sourceType, sourceId])
+  @@index([corporationId, companyId, machineId, readingId])
+  @@map("machine_meter_reading_references")
 }

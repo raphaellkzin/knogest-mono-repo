@@ -1,24 +1,24 @@
 import "server-only";
 
-import { getApiV1Employees } from "@/generated/clients/getApiV1Employees";
-import { getApiV1EmployeesEmploymentid } from "@/generated/clients/getApiV1EmployeesEmploymentid";
-import type { GetApiV1EmployeesQueryParams } from "@/generated/models/GetApiV1Employees";
+import { getApiV1Machines } from "@/generated/clients/getApiV1Machines";
+import { getApiV1MachinesMachineid } from "@/generated/clients/getApiV1MachinesMachineid";
+import type { GetApiV1MachinesQueryParams } from "@/generated/models/GetApiV1Machines";
 
-export type EmployeesListQuery = {
+export type MachinesListQuery = {
   availability?: "available";
   cursor?: string;
   search?: string;
   sortBy?: "name" | "createdAt";
   sortDirection?: "asc" | "desc";
-  state?: "active" | "terminated";
+  type?: "YELLOW_LINE" | "WHITE_LINE";
 };
 
-export type EmployeeListItem = Awaited<
-  ReturnType<typeof getApiV1Employees>
+export type MachineListItem = Awaited<
+  ReturnType<typeof getApiV1Machines>
 >["data"]["data"][number];
 
-export type EmployeeDetail = Awaited<
-  ReturnType<typeof getApiV1EmployeesEmploymentid>
+export type MachineDetail = Awaited<
+  ReturnType<typeof getApiV1MachinesMachineid>
 >["data"];
 
 const pageSize = 10;
@@ -27,39 +27,39 @@ function valueFromParam(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
 }
 
-export function parseEmployeesSearchParams(
+export function parseMachinesSearchParams(
   params: Record<string, string | string[] | undefined>,
-): EmployeesListQuery {
+): MachinesListQuery {
   const availability = valueFromParam(params.availability);
   const sortBy = valueFromParam(params.sortBy);
   const sortDirection = valueFromParam(params.sortDirection);
-  const state = valueFromParam(params.state);
+  const type = valueFromParam(params.type);
   return {
     availability: availability === "available" ? "available" : undefined,
     cursor: valueFromParam(params.cursor),
     search: valueFromParam(params.search),
     sortBy: sortBy === "name" ? "name" : "createdAt",
     sortDirection: sortDirection === "asc" ? "asc" : "desc",
-    state:
-      state === "active" || state === "terminated" ? state : undefined,
+    type:
+      type === "YELLOW_LINE" || type === "WHITE_LINE" ? type : undefined,
   };
 }
 
-export async function getEmployeesList(query: EmployeesListQuery) {
-  const params: GetApiV1EmployeesQueryParams = {
+export async function getMachinesList(query: MachinesListQuery) {
+  const params: GetApiV1MachinesQueryParams = {
     availability: query.availability,
     cursor: query.cursor,
     limit: pageSize,
     search: query.search,
     sortBy: query.sortBy ?? "createdAt",
     sortDirection: query.sortDirection ?? "desc",
-    state: query.state,
+    type: query.type,
   };
-  const response = await getApiV1Employees({ params });
+  const response = await getApiV1Machines({ params });
   return response.data;
 }
 
-export async function getEmployeeDetail(employmentId: string) {
-  const response = await getApiV1EmployeesEmploymentid({ employmentId });
-  return response.data as EmployeeDetail;
+export async function getMachineDetail(machineId: string) {
+  const response = await getApiV1MachinesMachineid({ machineId });
+  return response.data as MachineDetail;
 }

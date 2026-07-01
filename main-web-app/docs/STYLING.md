@@ -25,7 +25,7 @@ Data da oficialização: 2026-06-18
 Fonte de verdade: PRODUCT.md + direção visual "Map-First Project Operations"
 
 Tokens oficiais:
-- Cores: OKLCH em `src/app/globals.css`; base clara mineral/teal, estados operacionais em verde, âmbar, vermelho e azul.
+- Cores: OKLCH em `src/app/globals.css`; base clara mineral/azul, estados operacionais em verde, âmbar, vermelho e azul. Verde é reservado para estados positivos/ativos, não para identidade de marca.
 - Tipografia: Inter/Geist via `next/font`, escala fixa em rem para produto.
 - Espaçamento: escala Tailwind com densidade robusta para campo/celular.
 - Radius: 10px base; cards e painéis até `rounded-lg`.

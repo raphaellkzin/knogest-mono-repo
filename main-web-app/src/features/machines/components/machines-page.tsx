@@ -5,13 +5,14 @@ import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 import Link from "next/link";
 import {
-  CalendarArrowDown,
   ChevronRight,
   Eye,
   FileSearch,
+  Gauge,
   Plus,
   Search,
-  UserRound,
+  Tag,
+  Truck,
   type LucideIcon,
 } from "lucide-react";
 
@@ -25,20 +26,20 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import type { EmployeeActionState } from "../employees-action-state";
-import type { EmployeeListItem, EmployeesListQuery } from "../employees.server";
+import type { MachineActionState } from "../machines-action-state";
+import type { MachineListItem, MachinesListQuery } from "../machines.server";
 
-type EmployeeAction = (
-  state: EmployeeActionState,
+type MachineAction = (
+  state: MachineActionState,
   formData: FormData,
-) => Promise<EmployeeActionState>;
+) => Promise<MachineActionState>;
 
 function SubmitButton() {
   const { pending } = useFormStatus();
   return (
     <Button type="submit" disabled={pending}>
       <Plus className="size-4" />
-      {pending ? "Salvando" : "Cadastrar funcionário"}
+      {pending ? "Salvando" : "Cadastrar máquina"}
     </Button>
   );
 }
@@ -62,24 +63,24 @@ function Field({
   );
 }
 
-export function EmployeesPageView({
+export function MachinesPageView({
   action,
   initialState,
   pageInfo,
   query,
   rows,
 }: {
-  action: EmployeeAction;
-  initialState: EmployeeActionState;
+  action: MachineAction;
+  initialState: MachineActionState;
   pageInfo: { hasNextPage: boolean; nextCursor: string | null };
-  query: EmployeesListQuery;
-  rows: EmployeeListItem[];
+  query: MachinesListQuery;
+  rows: MachineListItem[];
 }) {
   const [state, formAction] = useActionState(action, initialState);
-  const hasFilters = Boolean(query.search || query.availability || query.state);
+  const hasFilters = Boolean(query.search || query.availability || query.type);
   const nextParams = new URLSearchParams();
   if (query.search) nextParams.set("search", query.search);
-  if (query.state) nextParams.set("state", query.state);
+  if (query.type) nextParams.set("type", query.type);
   if (query.availability) nextParams.set("availability", query.availability);
   if (query.sortBy) nextParams.set("sortBy", query.sortBy);
   if (query.sortDirection) nextParams.set("sortDirection", query.sortDirection);
@@ -88,7 +89,7 @@ export function EmployeesPageView({
   return (
     <div className="space-y-4">
       <section className="grid gap-3 md:grid-cols-3" aria-label="Resumo">
-        <Summary label="Vínculos ativos" value={String(rows.length)} />
+        <Summary label="Máquinas nesta página" value={String(rows.length)} />
         <Summary
           label="Disponíveis"
           value={String(
@@ -96,10 +97,8 @@ export function EmployeesPageView({
           )}
         />
         <Summary
-          label="Sem alocação"
-          value={String(
-            rows.filter((row) => !row.availability.hasOpenAllocation).length,
-          )}
+          label="Com leitura confirmada"
+          value={String(rows.filter((row) => row.latestMeterReading).length)}
         />
       </section>
 
@@ -107,27 +106,27 @@ export function EmployeesPageView({
         <div className="border-b border-border bg-secondary/60 p-3">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <form
-              action="/home/funcionarios"
+              action="/home/maquinas"
               className="grid gap-2 md:grid-cols-[minmax(220px,360px)_150px_150px_auto]"
             >
               <label className="relative block">
-                <span className="sr-only">Buscar funcionário</span>
+                <span className="sr-only">Buscar máquina</span>
                 <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   name="search"
                   defaultValue={query.search}
-                  placeholder="Buscar por nome ou matrícula"
+                  placeholder="Buscar por nome, placa ou patrimônio"
                   className="h-10 bg-background pl-9"
                 />
               </label>
               <select
-                name="state"
-                defaultValue={query.state ?? ""}
+                name="type"
+                defaultValue={query.type ?? ""}
                 className="h-10 rounded-md border border-input bg-background px-3 text-sm font-semibold"
               >
                 <option value="">Todos</option>
-                <option value="active">Ativos</option>
-                <option value="terminated">Encerrados</option>
+                <option value="YELLOW_LINE">Linha amarela</option>
+                <option value="WHITE_LINE">Linha branca</option>
               </select>
               <select
                 name="sortBy"
@@ -146,27 +145,36 @@ export function EmployeesPageView({
             <Dialog>
               <DialogTrigger render={<Button />}>
                 <Plus className="size-4" />
-                Novo funcionário
+                Nova máquina
               </DialogTrigger>
-              <DialogContent className="sm:max-w-xl">
+              <DialogContent className="sm:max-w-2xl">
                 <DialogHeader>
-                  <DialogTitle>Cadastrar funcionário</DialogTitle>
+                  <DialogTitle>Cadastrar máquina</DialogTitle>
                 </DialogHeader>
                 <form action={formAction} className="grid gap-4">
                   <div className="grid gap-3 md:grid-cols-2">
-                    <Field label="CPF" name="document" required />
-                    <Field label="Nome completo" name="fullName" required />
+                    <Field label="Nome" name="name" required />
+                    <label className="grid gap-1.5 text-sm font-semibold">
+                      <span>Tipo</span>
+                      <select
+                        name="type"
+                        required
+                        className="h-10 rounded-md border border-input bg-background px-3 text-sm font-semibold"
+                      >
+                        <option value="YELLOW_LINE">Linha amarela</option>
+                        <option value="WHITE_LINE">Linha branca</option>
+                      </select>
+                    </label>
+                    <Field label="Fabricante" name="manufacturer" required />
+                    <Field label="Modelo" name="model" required />
+                    <Field label="Placa" name="plate" />
+                    <Field label="Patrimônio" name="companyTag" />
                     <Field
-                      label="Matrícula"
-                      name="companyRegistrationNumber"
+                      label="Leitura inicial"
+                      name="initialMeterReading"
                       required
                     />
-                    <Field
-                      label="Admissão"
-                      name="admissionDate"
-                      required
-                      type="date"
-                    />
+                    <Field label="Descrição" name="description" />
                   </div>
                   {state.message && (
                     <p
@@ -190,14 +198,15 @@ export function EmployeesPageView({
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[760px] text-left text-sm">
+          <table className="w-full min-w-[860px] text-left text-sm">
             <thead>
               <tr className="border-b border-border">
-                <TableHead icon={UserRound} label="Nome" />
-                <TableHead icon={FileSearch} label="CPF" />
-                <TableHead label="Matrícula" />
+                <TableHead icon={Truck} label="Máquina" />
+                <TableHead icon={Tag} label="Identificadores" />
+                <TableHead label="Tipo" />
+                <TableHead label="Fabricante / modelo" />
+                <TableHead icon={Gauge} label="Leitura atual" />
                 <TableHead label="Disponibilidade" />
-                <TableHead icon={CalendarArrowDown} label="Admissão" />
                 <th className="px-4 py-3 text-right text-xs font-bold text-muted-foreground">
                   Detalhe
                 </th>
@@ -208,31 +217,30 @@ export function EmployeesPageView({
                 rows.map((row) => (
                   <tr key={row.id} className="border-b border-border">
                     <td className="px-4 py-3 font-bold">
-                      <span className="block max-w-[28ch] truncate">
-                        {row.person.fullName}
+                      <span className="block max-w-[24ch] truncate">
+                        {row.name}
                       </span>
                     </td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {identifierLabel(row)}
+                    </td>
                     <td className="px-4 py-3 font-semibold">
-                      {row.person.document.maskedDocument}
+                      {typeLabel(row.type)}
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">
-                      {row.employment.companyRegistrationNumber}
+                      {row.manufacturer} / {row.model}
+                    </td>
+                    <td className="px-4 py-3 font-semibold">
+                      {row.latestMeterReading?.value ?? "Sem leitura"}
                     </td>
                     <td className="px-4 py-3 font-semibold">
                       {row.availability.state === "available"
                         ? "Disponível"
                         : "Indisponível"}
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground">
-                      {row.employment.admissionDate
-                        ? new Intl.DateTimeFormat("pt-BR", {
-                            timeZone: "UTC",
-                          }).format(new Date(row.employment.admissionDate))
-                        : "Sem período atual"}
-                    </td>
                     <td className="px-4 py-3 text-right">
                       <Link
-                        href={`/home/funcionarios/${row.id}`}
+                        href={`/home/maquinas/${row.id}`}
                         className={buttonVariants({
                           size: "sm",
                           variant: "outline",
@@ -246,13 +254,13 @@ export function EmployeesPageView({
                 ))
               ) : (
                 <tr>
-                  <td colSpan={6} className="px-4 py-14 text-center">
+                  <td colSpan={7} className="px-4 py-14 text-center">
                     <p className="text-base font-bold">
-                      Nenhum funcionário encontrado
+                      Nenhuma máquina encontrada
                     </p>
                     <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">
-                      Funcionários cadastrados aparecem aqui sem função, obra ou
-                      alocação inventada.
+                      Máquinas cadastradas aparecem aqui com identificadores,
+                      leitura atual e disponibilidade derivada do backend.
                     </p>
                   </td>
                 </tr>
@@ -263,13 +271,13 @@ export function EmployeesPageView({
 
         <div className="flex flex-col gap-3 bg-secondary/40 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
           <p className="font-semibold text-muted-foreground">
-            {rows.length} vínculos nesta página
+            {rows.length} máquinas nesta página
             {hasFilters ? " · filtros ativos" : ""}
           </p>
           {pageInfo.nextCursor ? (
             <Link
               className={buttonVariants({ size: "sm", variant: "outline" })}
-              href={`/home/funcionarios?${nextParams.toString()}`}
+              href={`/home/maquinas?${nextParams.toString()}`}
             >
               Próxima
               <ChevronRight className="size-4" />
@@ -283,6 +291,17 @@ export function EmployeesPageView({
       </section>
     </div>
   );
+}
+
+function identifierLabel(row: MachineListItem) {
+  const plate = row.identifiers.plate?.value;
+  const tag = row.identifiers.companyTag?.value;
+  if (plate && tag) return `${plate} · ${tag}`;
+  return plate ?? tag ?? "Sem identificador";
+}
+
+function typeLabel(type: MachineListItem["type"]) {
+  return type === "YELLOW_LINE" ? "Linha amarela" : "Linha branca";
 }
 
 function Summary({ label, value }: { label: string; value: string }) {

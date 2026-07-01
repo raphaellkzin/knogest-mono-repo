@@ -1,15 +1,17 @@
 import { AppShell } from "@/components/layout/app-shell";
 import { requireCompanyWorkspace } from "@/features/company-selection/company-selection.server";
-import { MachinesPage } from "@/features/machines/machines-page";
+import { MachineDetailPage } from "@/features/machines/components/machine-detail-page";
+import { getMachineDetail } from "@/features/machines/machines.server";
 
 export default async function Page({
-  searchParams,
+  params,
 }: {
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
+  params: Promise<{ machineId: string }>;
 }) {
   const { companies, selectedCompany, session } =
     await requireCompanyWorkspace();
-  const resolvedSearchParams = await searchParams;
+  const { machineId } = await params;
+  const machine = await getMachineDetail(machineId);
 
   return (
     <AppShell
@@ -18,7 +20,7 @@ export default async function Page({
       userId={session.user.id}
       currentArea="machines"
     >
-      <MachinesPage searchParams={resolvedSearchParams} />
+      <MachineDetailPage machine={machine} />
     </AppShell>
   );
 }

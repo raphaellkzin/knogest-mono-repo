@@ -1,5 +1,5 @@
 # generated: 2026-06-19T19:48:27-03:00
-# last_updated: 2026-07-01T14:30:00-03:00
+# last_updated: 2026-07-01T13:45:22-03:00
 # project: knogest
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: "2026-06-19T19:48:27-03:00"
-last_updated: "2026-07-01T16:00:00-03:00"
+last_updated: "2026-07-01T13:45:22-03:00"
 project: knogest
 project_key: NOKEY
 tracking_system: file-system
@@ -57,12 +57,12 @@ development_status:
   2-4-register-and-find-fuel-suppliers: review
   2-5-remove-clients-and-fuel-suppliers-from-operational-use: review
   2-6-register-persons-and-company-employments: review
-  2-7-maintain-admission-and-rehire-periods: ready-for-dev
+  2-7-maintain-admission-and-rehire-periods: in-progress
   epic-2-retrospective: optional
 
-  epic-3: backlog
-  3-1-register-and-find-machines: backlog
-  3-2-maintain-a-monotonic-meter-reading-chain: backlog
+  epic-3: in-progress
+  3-1-register-and-find-machines: in-progress
+  3-2-maintain-a-monotonic-meter-reading-chain: in-progress
   epic-3-retrospective: optional
 
   epic-4: backlog

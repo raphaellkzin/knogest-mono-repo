@@ -2290,6 +2290,1409 @@
         }
       }
     },
+    "/api/v1/machines": {
+      "post": {
+        "summary": "Create a Machine in the selected Company",
+        "tags": ["Fleet"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "name",
+                  "type",
+                  "manufacturer",
+                  "model",
+                  "initialMeterReading"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "description": { "type": "string", "maxLength": 500 },
+                  "type": {
+                    "type": "string",
+                    "enum": ["YELLOW_LINE", "WHITE_LINE"]
+                  },
+                  "manufacturer": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "model": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "plate": { "type": "string", "maxLength": 80 },
+                  "companyTag": { "type": "string", "maxLength": 80 },
+                  "initialMeterReading": {
+                    "type": "string",
+                    "pattern": "^[0-9]+(\\.[0-9]{1,2})?$"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "201": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["success", "message", "data"],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [true] },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "name",
+                        "description",
+                        "type",
+                        "manufacturer",
+                        "model",
+                        "identifiers",
+                        "latestMeterReading",
+                        "availability",
+                        "createdAt",
+                        "updatedAt",
+                        "ownership"
+                      ],
+                      "properties": {
+                        "id": { "type": "string", "format": "uuid" },
+                        "name": { "type": "string" },
+                        "description": { "type": "string", "nullable": true },
+                        "type": {
+                          "type": "string",
+                          "enum": ["YELLOW_LINE", "WHITE_LINE"]
+                        },
+                        "manufacturer": { "type": "string" },
+                        "model": { "type": "string" },
+                        "identifiers": {
+                          "type": "object",
+                          "required": ["plate", "companyTag"],
+                          "properties": {
+                            "plate": {
+                              "type": "object",
+                              "required": ["value", "normalizedValue"],
+                              "properties": {
+                                "value": { "type": "string" },
+                                "normalizedValue": { "type": "string" }
+                              },
+                              "additionalProperties": false,
+                              "nullable": true
+                            },
+                            "companyTag": {
+                              "type": "object",
+                              "required": ["value", "normalizedValue"],
+                              "properties": {
+                                "value": { "type": "string" },
+                                "normalizedValue": { "type": "string" }
+                              },
+                              "additionalProperties": false,
+                              "nullable": true
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "latestMeterReading": {
+                          "type": "object",
+                          "nullable": true,
+                          "required": ["id", "value", "purpose", "recordedAt"],
+                          "properties": {
+                            "id": { "type": "string", "format": "uuid" },
+                            "value": { "type": "string" },
+                            "purpose": {
+                              "type": "string",
+                              "enum": [
+                                "INITIAL",
+                                "OWNERSHIP_TRANSFER",
+                                "ORDINARY"
+                              ]
+                            },
+                            "recordedAt": {
+                              "type": "string",
+                              "format": "date-time"
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "availability": {
+                          "type": "object",
+                          "required": ["state", "hasOpenAllocation"],
+                          "properties": {
+                            "state": {
+                              "type": "string",
+                              "enum": ["available", "unavailable"]
+                            },
+                            "hasOpenAllocation": { "type": "boolean" }
+                          },
+                          "additionalProperties": false
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "updatedAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "ownership": {
+                          "type": "object",
+                          "nullable": true,
+                          "required": [
+                            "companyId",
+                            "effectiveFrom",
+                            "effectiveTo"
+                          ],
+                          "properties": {
+                            "companyId": { "type": "string", "format": "uuid" },
+                            "effectiveFrom": {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            "effectiveTo": {
+                              "type": "string",
+                              "format": "date-time",
+                              "nullable": true
+                            }
+                          },
+                          "additionalProperties": false
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "List Machines in the selected Company",
+        "tags": ["Fleet"],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 25
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          },
+          {
+            "schema": { "type": "string", "minLength": 1, "maxLength": 2048 },
+            "in": "query",
+            "name": "cursor",
+            "required": false
+          },
+          {
+            "schema": { "type": "string", "maxLength": 120 },
+            "in": "query",
+            "name": "search",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": ["YELLOW_LINE", "WHITE_LINE"]
+            },
+            "in": "query",
+            "name": "type",
+            "required": false
+          },
+          {
+            "schema": { "type": "string", "enum": ["available"] },
+            "in": "query",
+            "name": "availability",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": ["name", "createdAt"],
+              "default": "createdAt"
+            },
+            "in": "query",
+            "name": "sortBy",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": ["asc", "desc"],
+              "default": "desc"
+            },
+            "in": "query",
+            "name": "sortDirection",
+            "required": false
+          }
+        ],
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["success", "message", "data"],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [true] },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "required": ["data", "pageInfo"],
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "id",
+                              "name",
+                              "description",
+                              "type",
+                              "manufacturer",
+                              "model",
+                              "identifiers",
+                              "latestMeterReading",
+                              "availability",
+                              "createdAt",
+                              "updatedAt"
+                            ],
+                            "properties": {
+                              "id": { "type": "string", "format": "uuid" },
+                              "name": { "type": "string" },
+                              "description": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "type": {
+                                "type": "string",
+                                "enum": ["YELLOW_LINE", "WHITE_LINE"]
+                              },
+                              "manufacturer": { "type": "string" },
+                              "model": { "type": "string" },
+                              "identifiers": {
+                                "type": "object",
+                                "required": ["plate", "companyTag"],
+                                "properties": {
+                                  "plate": {
+                                    "type": "object",
+                                    "required": ["value", "normalizedValue"],
+                                    "properties": {
+                                      "value": { "type": "string" },
+                                      "normalizedValue": { "type": "string" }
+                                    },
+                                    "additionalProperties": false,
+                                    "nullable": true
+                                  },
+                                  "companyTag": {
+                                    "type": "object",
+                                    "required": ["value", "normalizedValue"],
+                                    "properties": {
+                                      "value": { "type": "string" },
+                                      "normalizedValue": { "type": "string" }
+                                    },
+                                    "additionalProperties": false,
+                                    "nullable": true
+                                  }
+                                },
+                                "additionalProperties": false
+                              },
+                              "latestMeterReading": {
+                                "type": "object",
+                                "nullable": true,
+                                "required": [
+                                  "id",
+                                  "value",
+                                  "purpose",
+                                  "recordedAt"
+                                ],
+                                "properties": {
+                                  "id": { "type": "string", "format": "uuid" },
+                                  "value": { "type": "string" },
+                                  "purpose": {
+                                    "type": "string",
+                                    "enum": [
+                                      "INITIAL",
+                                      "OWNERSHIP_TRANSFER",
+                                      "ORDINARY"
+                                    ]
+                                  },
+                                  "recordedAt": {
+                                    "type": "string",
+                                    "format": "date-time"
+                                  }
+                                },
+                                "additionalProperties": false
+                              },
+                              "availability": {
+                                "type": "object",
+                                "required": ["state", "hasOpenAllocation"],
+                                "properties": {
+                                  "state": {
+                                    "type": "string",
+                                    "enum": ["available", "unavailable"]
+                                  },
+                                  "hasOpenAllocation": { "type": "boolean" }
+                                },
+                                "additionalProperties": false
+                              },
+                              "createdAt": {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              "updatedAt": {
+                                "type": "string",
+                                "format": "date-time"
+                              }
+                            },
+                            "additionalProperties": false
+                          }
+                        },
+                        "pageInfo": {
+                          "type": "object",
+                          "required": ["hasNextPage", "nextCursor"],
+                          "properties": {
+                            "hasNextPage": { "type": "boolean" },
+                            "nextCursor": { "type": "string", "nullable": true }
+                          },
+                          "additionalProperties": false
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/machines/{machineId}": {
+      "get": {
+        "summary": "Get a Machine detail in the selected Company",
+        "tags": ["Fleet"],
+        "parameters": [
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "in": "path",
+            "name": "machineId",
+            "required": true
+          }
+        ],
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["success", "message", "data"],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [true] },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "name",
+                        "description",
+                        "type",
+                        "manufacturer",
+                        "model",
+                        "identifiers",
+                        "latestMeterReading",
+                        "availability",
+                        "createdAt",
+                        "updatedAt",
+                        "ownership"
+                      ],
+                      "properties": {
+                        "id": { "type": "string", "format": "uuid" },
+                        "name": { "type": "string" },
+                        "description": { "type": "string", "nullable": true },
+                        "type": {
+                          "type": "string",
+                          "enum": ["YELLOW_LINE", "WHITE_LINE"]
+                        },
+                        "manufacturer": { "type": "string" },
+                        "model": { "type": "string" },
+                        "identifiers": {
+                          "type": "object",
+                          "required": ["plate", "companyTag"],
+                          "properties": {
+                            "plate": {
+                              "type": "object",
+                              "required": ["value", "normalizedValue"],
+                              "properties": {
+                                "value": { "type": "string" },
+                                "normalizedValue": { "type": "string" }
+                              },
+                              "additionalProperties": false,
+                              "nullable": true
+                            },
+                            "companyTag": {
+                              "type": "object",
+                              "required": ["value", "normalizedValue"],
+                              "properties": {
+                                "value": { "type": "string" },
+                                "normalizedValue": { "type": "string" }
+                              },
+                              "additionalProperties": false,
+                              "nullable": true
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "latestMeterReading": {
+                          "type": "object",
+                          "nullable": true,
+                          "required": ["id", "value", "purpose", "recordedAt"],
+                          "properties": {
+                            "id": { "type": "string", "format": "uuid" },
+                            "value": { "type": "string" },
+                            "purpose": {
+                              "type": "string",
+                              "enum": [
+                                "INITIAL",
+                                "OWNERSHIP_TRANSFER",
+                                "ORDINARY"
+                              ]
+                            },
+                            "recordedAt": {
+                              "type": "string",
+                              "format": "date-time"
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "availability": {
+                          "type": "object",
+                          "required": ["state", "hasOpenAllocation"],
+                          "properties": {
+                            "state": {
+                              "type": "string",
+                              "enum": ["available", "unavailable"]
+                            },
+                            "hasOpenAllocation": { "type": "boolean" }
+                          },
+                          "additionalProperties": false
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "updatedAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "ownership": {
+                          "type": "object",
+                          "nullable": true,
+                          "required": [
+                            "companyId",
+                            "effectiveFrom",
+                            "effectiveTo"
+                          ],
+                          "properties": {
+                            "companyId": { "type": "string", "format": "uuid" },
+                            "effectiveFrom": {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            "effectiveTo": {
+                              "type": "string",
+                              "format": "date-time",
+                              "nullable": true
+                            }
+                          },
+                          "additionalProperties": false
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/machines/{machineId}/meter-readings": {
+      "post": {
+        "summary": "Append a confirmed Machine Meter Reading",
+        "tags": ["Fleet"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["value"],
+                "properties": {
+                  "value": {
+                    "type": "string",
+                    "pattern": "^[0-9]+(\\.[0-9]{1,2})?$"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "in": "path",
+            "name": "machineId",
+            "required": true
+          }
+        ],
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["success", "message", "data"],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [true] },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "name",
+                        "description",
+                        "type",
+                        "manufacturer",
+                        "model",
+                        "identifiers",
+                        "latestMeterReading",
+                        "availability",
+                        "createdAt",
+                        "updatedAt",
+                        "ownership"
+                      ],
+                      "properties": {
+                        "id": { "type": "string", "format": "uuid" },
+                        "name": { "type": "string" },
+                        "description": { "type": "string", "nullable": true },
+                        "type": {
+                          "type": "string",
+                          "enum": ["YELLOW_LINE", "WHITE_LINE"]
+                        },
+                        "manufacturer": { "type": "string" },
+                        "model": { "type": "string" },
+                        "identifiers": {
+                          "type": "object",
+                          "required": ["plate", "companyTag"],
+                          "properties": {
+                            "plate": {
+                              "type": "object",
+                              "required": ["value", "normalizedValue"],
+                              "properties": {
+                                "value": { "type": "string" },
+                                "normalizedValue": { "type": "string" }
+                              },
+                              "additionalProperties": false,
+                              "nullable": true
+                            },
+                            "companyTag": {
+                              "type": "object",
+                              "required": ["value", "normalizedValue"],
+                              "properties": {
+                                "value": { "type": "string" },
+                                "normalizedValue": { "type": "string" }
+                              },
+                              "additionalProperties": false,
+                              "nullable": true
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "latestMeterReading": {
+                          "type": "object",
+                          "nullable": true,
+                          "required": ["id", "value", "purpose", "recordedAt"],
+                          "properties": {
+                            "id": { "type": "string", "format": "uuid" },
+                            "value": { "type": "string" },
+                            "purpose": {
+                              "type": "string",
+                              "enum": [
+                                "INITIAL",
+                                "OWNERSHIP_TRANSFER",
+                                "ORDINARY"
+                              ]
+                            },
+                            "recordedAt": {
+                              "type": "string",
+                              "format": "date-time"
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "availability": {
+                          "type": "object",
+                          "required": ["state", "hasOpenAllocation"],
+                          "properties": {
+                            "state": {
+                              "type": "string",
+                              "enum": ["available", "unavailable"]
+                            },
+                            "hasOpenAllocation": { "type": "boolean" }
+                          },
+                          "additionalProperties": false
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "updatedAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "ownership": {
+                          "type": "object",
+                          "nullable": true,
+                          "required": [
+                            "companyId",
+                            "effectiveFrom",
+                            "effectiveTo"
+                          ],
+                          "properties": {
+                            "companyId": { "type": "string", "format": "uuid" },
+                            "effectiveFrom": {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            "effectiveTo": {
+                              "type": "string",
+                              "format": "date-time",
+                              "nullable": true
+                            }
+                          },
+                          "additionalProperties": false
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/machines/{machineId}/meter-readings/{readingId}/correction": {
+      "post": {
+        "summary": "Correct an eligible Machine Meter Reading",
+        "tags": ["Fleet"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["value", "reason"],
+                "properties": {
+                  "value": {
+                    "type": "string",
+                    "pattern": "^[0-9]+(\\.[0-9]{1,2})?$"
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "in": "path",
+            "name": "machineId",
+            "required": true
+          },
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "in": "path",
+            "name": "readingId",
+            "required": true
+          }
+        ],
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["success", "message", "data"],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [true] },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "name",
+                        "description",
+                        "type",
+                        "manufacturer",
+                        "model",
+                        "identifiers",
+                        "latestMeterReading",
+                        "availability",
+                        "createdAt",
+                        "updatedAt",
+                        "ownership"
+                      ],
+                      "properties": {
+                        "id": { "type": "string", "format": "uuid" },
+                        "name": { "type": "string" },
+                        "description": { "type": "string", "nullable": true },
+                        "type": {
+                          "type": "string",
+                          "enum": ["YELLOW_LINE", "WHITE_LINE"]
+                        },
+                        "manufacturer": { "type": "string" },
+                        "model": { "type": "string" },
+                        "identifiers": {
+                          "type": "object",
+                          "required": ["plate", "companyTag"],
+                          "properties": {
+                            "plate": {
+                              "type": "object",
+                              "required": ["value", "normalizedValue"],
+                              "properties": {
+                                "value": { "type": "string" },
+                                "normalizedValue": { "type": "string" }
+                              },
+                              "additionalProperties": false,
+                              "nullable": true
+                            },
+                            "companyTag": {
+                              "type": "object",
+                              "required": ["value", "normalizedValue"],
+                              "properties": {
+                                "value": { "type": "string" },
+                                "normalizedValue": { "type": "string" }
+                              },
+                              "additionalProperties": false,
+                              "nullable": true
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "latestMeterReading": {
+                          "type": "object",
+                          "nullable": true,
+                          "required": ["id", "value", "purpose", "recordedAt"],
+                          "properties": {
+                            "id": { "type": "string", "format": "uuid" },
+                            "value": { "type": "string" },
+                            "purpose": {
+                              "type": "string",
+                              "enum": [
+                                "INITIAL",
+                                "OWNERSHIP_TRANSFER",
+                                "ORDINARY"
+                              ]
+                            },
+                            "recordedAt": {
+                              "type": "string",
+                              "format": "date-time"
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "availability": {
+                          "type": "object",
+                          "required": ["state", "hasOpenAllocation"],
+                          "properties": {
+                            "state": {
+                              "type": "string",
+                              "enum": ["available", "unavailable"]
+                            },
+                            "hasOpenAllocation": { "type": "boolean" }
+                          },
+                          "additionalProperties": false
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "updatedAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "ownership": {
+                          "type": "object",
+                          "nullable": true,
+                          "required": [
+                            "companyId",
+                            "effectiveFrom",
+                            "effectiveTo"
+                          ],
+                          "properties": {
+                            "companyId": { "type": "string", "format": "uuid" },
+                            "effectiveFrom": {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            "effectiveTo": {
+                              "type": "string",
+                              "format": "date-time",
+                              "nullable": true
+                            }
+                          },
+                          "additionalProperties": false
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/employees": {
       "post": {
         "summary": "Create a Person Employment in the selected Company",
