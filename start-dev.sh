@@ -144,8 +144,8 @@ require_command grep
 if command -v setsid >/dev/null 2>&1; then
   USE_SETSID=1
 else
-  # Necessário no macOS para conseguir encerrar o grupo dos processos filhos.
-  set -m
+  # macOS não tem setsid; o job control é ativado apenas ao iniciar os dev servers.
+  USE_SETSID=0
 fi
 
 [[ -f "${API_DIR}/.env" ]] || fail "arquivo main-api/.env não encontrado. Copie main-api/.env.example e configure-o."
@@ -186,12 +186,20 @@ log "Gerando Prisma Client..."
 pnpm --dir "${API_DIR}" db:generate
 
 log "Iniciando API em modo de desenvolvimento..."
+if (( ! USE_SETSID )); then
+  set -m
+fi
+
 start_process_group "${API_DIR}"
 API_PID="${STARTED_PID}"
 
 log "Iniciando web app em modo de desenvolvimento..."
 start_process_group "${WEB_DIR}"
 WEB_PID="${STARTED_PID}"
+
+if (( ! USE_SETSID )); then
+  set +m
+fi
 
 log "Ambiente iniciado. Pressione Ctrl+C para encerrar tudo."
 

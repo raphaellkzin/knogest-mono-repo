@@ -7,7 +7,6 @@ import { putApiV1AuthSessionCompany } from "@/generated/clients/putApiV1AuthSess
 import { ApiClientError } from "@/lib/api/server-client";
 import { setAccessCookie } from "@/lib/auth/auth-cookies.server";
 import { requireAuthenticatedSession } from "@/lib/auth/session";
-import type { CompanyOption } from "./types";
 
 export async function getCompanySelectionViewModel() {
   const session = await requireAuthenticatedSession();

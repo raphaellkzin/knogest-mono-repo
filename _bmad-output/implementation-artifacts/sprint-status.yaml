@@ -1,5 +1,5 @@
 # generated: 2026-06-19T19:48:27-03:00
-# last_updated: 2026-06-30T16:29:13-03:00
+# last_updated: 2026-07-01T14:30:00-03:00
 # project: knogest
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: "2026-06-19T19:48:27-03:00"
-last_updated: "2026-06-30T19:24:54-03:00"
+last_updated: "2026-07-01T16:00:00-03:00"
 project: knogest
 project_key: NOKEY
 tracking_system: file-system
@@ -50,14 +50,14 @@ development_status:
   1-5-reset-a-master-administrator-password-administratively: in-progress
   epic-1-retrospective: optional
 
-  epic-2: backlog
-  2-1-approve-the-pilot-personal-data-gate: backlog
-  2-2-protect-cpf-and-cnpj-technically: backlog
-  2-3-register-and-find-clients: backlog
-  2-4-register-and-find-fuel-suppliers: backlog
-  2-5-remove-clients-and-fuel-suppliers-from-operational-use: backlog
-  2-6-register-persons-and-company-employments: backlog
-  2-7-maintain-admission-and-rehire-periods: backlog
+  epic-2: in-progress
+  2-1-approve-the-pilot-personal-data-gate: review
+  2-2-protect-cpf-and-cnpj-technically: review
+  2-3-register-and-find-clients: review
+  2-4-register-and-find-fuel-suppliers: review
+  2-5-remove-clients-and-fuel-suppliers-from-operational-use: review
+  2-6-register-persons-and-company-employments: review
+  2-7-maintain-admission-and-rehire-periods: ready-for-dev
   epic-2-retrospective: optional
 
   epic-3: backlog

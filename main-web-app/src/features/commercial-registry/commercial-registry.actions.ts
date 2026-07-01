@@ -2,22 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 
+import { deleteApiV1ClientsClientid } from "@/generated/clients/deleteApiV1ClientsClientid";
+import { deleteApiV1FuelSuppliersFuelsupplierid } from "@/generated/clients/deleteApiV1FuelSuppliersFuelsupplierid";
 import { postApiV1Clients } from "@/generated/clients/postApiV1Clients";
 import { postApiV1FuelSuppliers } from "@/generated/clients/postApiV1FuelSuppliers";
 import type { PostApiV1ClientsMutationRequest } from "@/generated/models/PostApiV1Clients";
 import type { PostApiV1FuelSuppliersMutationRequest } from "@/generated/models/PostApiV1FuelSuppliers";
 import { ApiClientError } from "@/lib/api/server-client";
-
-export type RegistryActionState = {
-  ok: boolean;
-  message: string;
-};
-
-const initialState: RegistryActionState = { ok: false, message: "" };
-
-export function getInitialRegistryActionState() {
-  return initialState;
-}
+import type { RegistryActionState } from "./commercial-registry-action-state";
 
 function optionalString(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -53,6 +45,15 @@ function failureMessage(error: unknown) {
     if (error.code === "VALIDATION_ERROR") {
       return "Revise os dados informados e tente novamente.";
     }
+    if (error.code === "REGISTRY_RECORD_UNAVAILABLE") {
+      return "Este registro já não está disponível para uso operacional.";
+    }
+    if (error.code === "CLIENT_REMOVAL_BLOCKED_BY_PROJECTS") {
+      return "Substitua este cliente nas obras atuais antes de removê-lo.";
+    }
+    if (error.code === "FUEL_SUPPLIER_REMOVAL_BLOCKED_BY_AGREEMENTS") {
+      return "Encerre os acordos atuais deste fornecedor antes de removê-lo.";
+    }
     if (error.status === 401 || error.status === 403) {
       return "Sua sessão não tem permissão para concluir esta operação.";
     }
@@ -82,6 +83,42 @@ export async function createFuelSupplierAction(
     await postApiV1FuelSuppliers({ data: formPayload(formData) });
     revalidatePath("/home/fornecedores");
     return { ok: true, message: "Fornecedor de combustível cadastrado." };
+  } catch (error) {
+    return { ok: false, message: failureMessage(error) };
+  }
+}
+
+function idFromFormData(formData: FormData) {
+  const id = formData.get("id");
+  return typeof id === "string" ? id : "";
+}
+
+export async function removeClientAction(
+  _state: RegistryActionState,
+  formData: FormData,
+): Promise<RegistryActionState> {
+  try {
+    await deleteApiV1ClientsClientid({ clientId: idFromFormData(formData) });
+    revalidatePath("/home/clientes");
+    return { ok: true, message: "Cliente removido do uso operacional." };
+  } catch (error) {
+    return { ok: false, message: failureMessage(error) };
+  }
+}
+
+export async function removeFuelSupplierAction(
+  _state: RegistryActionState,
+  formData: FormData,
+): Promise<RegistryActionState> {
+  try {
+    await deleteApiV1FuelSuppliersFuelsupplierid({
+      fuelSupplierId: idFromFormData(formData),
+    });
+    revalidatePath("/home/fornecedores");
+    return {
+      ok: true,
+      message: "Fornecedor removido do uso operacional.",
+    };
   } catch (error) {
     return { ok: false, message: failureMessage(error) };
   }

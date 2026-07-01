@@ -1,7 +1,8 @@
 import {
   createClientAction,
-  getInitialRegistryActionState,
+  removeClientAction,
 } from "@/features/commercial-registry/commercial-registry.actions";
+import { getInitialRegistryActionState } from "@/features/commercial-registry/commercial-registry-action-state";
 import {
   getRegistryList,
   parseRegistrySearchParams,
@@ -21,16 +22,18 @@ export async function ClientsPage({
       copy={{
         basePath: "/home/clientes",
         createLabel: "Novo cliente",
-        detailPath: (id) => `/home/clientes/${id}`,
+        detailBasePath: "/home/clientes",
         documentLabel: "CPF ou CNPJ",
         emptyDescription: "Clientes cadastrados aparecem aqui por empresa.",
         emptyTitle: "Nenhum cliente encontrado",
         newTitle: "Cadastrar cliente",
+        removeLabel: "Remover",
         searchPlaceholder: "Buscar por nome, contato ou telefone",
       }}
       initialState={getInitialRegistryActionState()}
       pageInfo={page.pageInfo}
       query={query}
+      removeAction={removeClientAction}
       rows={page.data}
     />
   );

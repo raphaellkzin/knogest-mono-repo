@@ -41,8 +41,8 @@ const areaMeta: Record<
   },
   employees: {
     label: "Funcionários",
-    title: "Equipe e permissões",
-    subtitle: "Cadastro, função, disponibilidade e vínculo com obras",
+    title: "Funcionários",
+    subtitle: "Cadastro, vínculo empregatício e disponibilidade atual",
   },
   clients: {
     label: "Clientes",

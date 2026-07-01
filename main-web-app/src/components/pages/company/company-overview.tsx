@@ -96,7 +96,7 @@ const resourceLinks = [
   {
     href: "/home/funcionarios",
     label: "Funcionários",
-    detail: "Equipe, função e obra atual",
+    detail: "Cadastro e vínculo por empresa",
     icon: UsersRound,
   },
   {

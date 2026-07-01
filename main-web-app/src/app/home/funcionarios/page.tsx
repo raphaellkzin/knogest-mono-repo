@@ -1,10 +1,15 @@
 import { AppShell } from "@/components/layout/app-shell";
-import { CompanyResourcePage } from "@/components/pages/company/company-resource-page";
 import { requireCompanyWorkspace } from "@/features/company-selection/company-selection.server";
+import { EmployeesPage } from "@/features/employees/employees-page";
 
-export default async function Page() {
+export default async function Page({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { companies, selectedCompany, session } =
     await requireCompanyWorkspace();
+  const resolvedSearchParams = await searchParams;
 
   return (
     <AppShell
@@ -13,7 +18,7 @@ export default async function Page() {
       userId={session.user.id}
       currentArea="employees"
     >
-      <CompanyResourcePage resource="employees" />
+      <EmployeesPage searchParams={resolvedSearchParams} />
     </AppShell>
   );
 }

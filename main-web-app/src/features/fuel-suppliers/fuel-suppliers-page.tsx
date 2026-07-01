@@ -1,7 +1,8 @@
 import {
   createFuelSupplierAction,
-  getInitialRegistryActionState,
+  removeFuelSupplierAction,
 } from "@/features/commercial-registry/commercial-registry.actions";
+import { getInitialRegistryActionState } from "@/features/commercial-registry/commercial-registry-action-state";
 import {
   getRegistryList,
   parseRegistrySearchParams,
@@ -21,17 +22,19 @@ export async function FuelSuppliersPage({
       copy={{
         basePath: "/home/fornecedores",
         createLabel: "Novo fornecedor",
-        detailPath: (id) => `/home/fornecedores/${id}`,
+        detailBasePath: "/home/fornecedores",
         documentLabel: "CPF ou CNPJ",
         emptyDescription:
           "Fornecedores de combustível ativos aparecem aqui por empresa.",
         emptyTitle: "Nenhum fornecedor encontrado",
         newTitle: "Cadastrar fornecedor de combustível",
+        removeLabel: "Remover",
         searchPlaceholder: "Buscar por razão social, nome ou contato",
       }}
       initialState={getInitialRegistryActionState()}
       pageInfo={page.pageInfo}
       query={query}
+      removeAction={removeFuelSupplierAction}
       rows={page.data}
     />
   );

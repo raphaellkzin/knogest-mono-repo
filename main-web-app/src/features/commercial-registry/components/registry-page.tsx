@@ -12,6 +12,7 @@ import {
   FileSearch,
   Plus,
   Search,
+  Trash2,
 } from "lucide-react";
 
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -25,7 +26,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import type { RegistryActionState } from "../commercial-registry.actions";
+import type { RegistryActionState } from "../commercial-registry-action-state";
 import type {
   RegistryListItem,
   RegistryListQuery,
@@ -34,11 +35,12 @@ import type {
 type RegistryCopy = {
   basePath: string;
   createLabel: string;
-  detailPath: (id: string) => string;
+  detailBasePath: string;
   documentLabel: string;
   emptyDescription: string;
   emptyTitle: string;
   newTitle: string;
+  removeLabel: string;
   searchPlaceholder: string;
 };
 
@@ -47,12 +49,30 @@ type RegistryAction = (
   formData: FormData,
 ) => Promise<RegistryActionState>;
 
+type RemoveAction = RegistryAction;
+
 function SubmitButton({ label }: { label: string }) {
   const { pending } = useFormStatus();
   return (
     <Button type="submit" disabled={pending}>
       <Plus className="size-4" />
       {pending ? "Salvando" : label}
+    </Button>
+  );
+}
+
+function RemoveSubmitButton({ label }: { label: string }) {
+  const { pending } = useFormStatus();
+  return (
+    <Button
+      type="submit"
+      disabled={pending}
+      size="sm"
+      variant="outline"
+      className="border-red-200 text-red-900 hover:bg-red-50"
+    >
+      <Trash2 className="size-4" />
+      {pending ? "Removendo" : label}
     </Button>
   );
 }
@@ -82,6 +102,7 @@ export function RegistryPage({
   initialState,
   pageInfo,
   query,
+  removeAction,
   rows,
 }: {
   action: RegistryAction;
@@ -89,12 +110,17 @@ export function RegistryPage({
   initialState: RegistryActionState;
   pageInfo: { hasNextPage: boolean; nextCursor: string | null };
   query: RegistryListQuery;
+  removeAction: RemoveAction;
   rows: RegistryListItem[];
 }) {
   const [entityType, setEntityType] = React.useState<
     "individual" | "legal_entity"
   >("individual");
   const [state, formAction] = useActionState(action, initialState);
+  const [removeState, removeFormAction] = useActionState(
+    removeAction,
+    initialState,
+  );
   const hasFilters = Boolean(query.search || query.entityType);
   const nextParams = new URLSearchParams();
   if (query.search) nextParams.set("search", query.search);
@@ -250,7 +276,7 @@ export function RegistryPage({
                 <TableHead label="Contato" />
                 <TableHead icon={CalendarArrowDown} label="Cadastro" />
                 <th className="px-4 py-3 text-right text-xs font-bold text-muted-foreground">
-                  Detalhe
+                  Ações
                 </th>
               </tr>
             </thead>
@@ -284,17 +310,34 @@ export function RegistryPage({
                         new Date(row.createdAt),
                       )}
                     </td>
-                    <td className="px-4 py-3 text-right">
-                      <Link
-                        href={copy.detailPath(row.id)}
-                        className={buttonVariants({
-                          size: "sm",
-                          variant: "outline",
-                        })}
-                      >
-                        <Eye className="size-4" />
-                        Ver
-                      </Link>
+                    <td className="px-4 py-3">
+                      <div className="flex justify-end gap-2">
+                        <Link
+                          href={`${copy.detailBasePath}/${row.id}`}
+                          className={buttonVariants({
+                            size: "sm",
+                            variant: "outline",
+                          })}
+                        >
+                          <Eye className="size-4" />
+                          Ver
+                        </Link>
+                        <form
+                          action={removeFormAction}
+                          onSubmit={(event) => {
+                            if (
+                              !window.confirm(
+                                "Esta ação remove o registro do uso operacional e não oferece restauração no MVP.",
+                              )
+                            ) {
+                              event.preventDefault();
+                            }
+                          }}
+                        >
+                          <input type="hidden" name="id" value={row.id} />
+                          <RemoveSubmitButton label={copy.removeLabel} />
+                        </form>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -313,10 +356,24 @@ export function RegistryPage({
         </div>
 
         <div className="flex flex-col gap-3 bg-secondary/40 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
-          <p className="font-semibold text-muted-foreground">
-            {rows.length} registros nesta página
-            {hasFilters ? " · filtros ativos" : ""}
-          </p>
+          <div className="space-y-1">
+            <p className="font-semibold text-muted-foreground">
+              {rows.length} registros nesta página
+              {hasFilters ? " · filtros ativos" : ""}
+            </p>
+            {removeState.message && (
+              <p
+                role="status"
+                className={
+                  removeState.ok
+                    ? "font-semibold text-emerald-800"
+                    : "font-semibold text-red-900"
+                }
+              >
+                {removeState.message}
+              </p>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             {pageInfo.nextCursor ? (
               <Link
