@@ -8,6 +8,9 @@ import { getApiAccessToken } from "@/lib/auth/auth-cookies.server";
 import { normalizeHost } from "@/lib/auth/normalize-host";
 import { refreshSessionSingleFlight } from "@/lib/auth/session-refresh.server";
 import { serverEnv } from "@/lib/config/env.server";
+import { ApiClientError } from "./api-client-error";
+
+export { ApiClientError };
 
 export type RequestConfig<TData = unknown> = {
   baseURL?: string;
@@ -43,36 +46,6 @@ export type Client = <TResponseData, _TError = unknown, TRequestData = unknown>(
   config: RequestConfig<TRequestData>,
 ) => Promise<ResponseConfig<TResponseData>>;
 
-export class ApiClientError extends Error {
-  status?: number;
-  data?: unknown;
-  code?: string;
-
-  constructor({
-    cause,
-    data,
-    message,
-    status,
-  }: {
-    cause?: unknown;
-    data?: unknown;
-    message: string;
-    status?: number;
-  }) {
-    super(message, { cause });
-    this.name = "ApiClientError";
-    this.status = status;
-    this.data = data;
-    this.code =
-      data &&
-      typeof data === "object" &&
-      "code" in data &&
-      typeof data.code === "string"
-        ? data.code
-        : undefined;
-  }
-}
-
 const apiBaseURL = serverEnv.API_BASE_URL;
 
 function getErrorMessage(error: AxiosError) {
@@ -92,7 +65,6 @@ function getErrorMessage(error: AxiosError) {
 
 export const client: Client = async <
   TResponseData,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   _TError = unknown,
   TRequestData = unknown,
 >(
@@ -158,7 +130,6 @@ export const client: Client = async <
       }
 
       throw new ApiClientError({
-        cause: error,
         data: error.response?.data,
         message: getErrorMessage(error),
         status: error.response?.status,

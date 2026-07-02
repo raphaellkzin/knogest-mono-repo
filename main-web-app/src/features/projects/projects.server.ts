@@ -31,7 +31,6 @@ export async function getProjectWizardOptions() {
       getApiV1Clients({
         params: {
           limit: 100,
-          state: "active",
           sortBy: "name",
           sortDirection: "asc",
         },
@@ -55,7 +54,6 @@ export async function getProjectWizardOptions() {
       getApiV1FuelSuppliers({
         params: {
           limit: 100,
-          state: "active",
           sortBy: "name",
           sortDirection: "asc",
         },
@@ -65,7 +63,7 @@ export async function getProjectWizardOptions() {
   return {
     clients: clients.data.data.map((item) => ({
       id: item.id,
-      label: item.displayName,
+      label: item.name,
       detail: item.document.maskedDocument,
     })),
     employees: employees.data.data
@@ -88,7 +86,7 @@ export async function getProjectWizardOptions() {
       })),
     suppliers: suppliers.data.data.map((item) => ({
       id: item.id,
-      label: item.displayName,
+      label: item.name,
       detail: item.document.maskedDocument,
     })),
     fuelTypes: fuelTypes.data,
