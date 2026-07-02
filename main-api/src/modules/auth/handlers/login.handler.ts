@@ -167,7 +167,11 @@ export function findSessionByRefreshCredentialHandler(
     where: {
       OR: [
         { refreshTokenHash: input.refreshTokenHash },
-        { consumedRefreshTokenHash: input.refreshTokenHash },
+        {
+          consumedRefreshCredentials: {
+            some: { credentialHash: input.refreshTokenHash },
+          },
+        },
       ],
     },
     select: {
@@ -176,7 +180,11 @@ export function findSessionByRefreshCredentialHandler(
       userId: true,
       companyId: true,
       refreshTokenHash: true,
-      consumedRefreshTokenHash: true,
+      consumedRefreshCredentials: {
+        where: { credentialHash: input.refreshTokenHash },
+        select: { id: true },
+        take: 1,
+      },
       refreshVersion: true,
       revokedAt: true,
       idleExpiresAt: true,
@@ -207,12 +215,23 @@ export function rotateRefreshCredentialHandler(
     },
     data: {
       refreshTokenHash: input.replacementRefreshTokenHash,
-      consumedRefreshTokenHash: input.currentRefreshTokenHash,
-      refreshConsumedAt: input.now,
       refreshVersion: { increment: 1 },
       lastUsedAt: input.now,
       idleExpiresAt: input.idleExpiresAt,
     },
+  });
+}
+
+export function recordConsumedRefreshCredentialHandler(
+  context: HandlerContext,
+  input: {
+    sessionId: string;
+    credentialHash: string;
+    consumedAt: Date;
+  },
+) {
+  return context.prisma.sessionConsumedRefreshCredential.create({
+    data: input,
   });
 }
 

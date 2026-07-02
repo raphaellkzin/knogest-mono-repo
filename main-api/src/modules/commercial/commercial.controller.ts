@@ -458,7 +458,7 @@ export const v1CommercialController = async (app: FastifyInstance) => {
             type: "object",
             required: ["success", "message", "data"],
             properties: {
-              success: { const: true },
+              success: { type: "boolean", const: true },
               message: { type: "string" },
               data: {
                 type: "array",

@@ -13,6 +13,10 @@ import {
   createAccessClaims,
 } from "./auth-policy";
 import {
+  attachAuthAuditContext,
+  type AuthAuditContext,
+} from "./auth-audit-context";
+import {
   createSessionHandler,
   findActiveAdministratorByIdHandler,
   findSelectableCompanyHandler,
@@ -23,6 +27,7 @@ import {
   updateSessionCompanyHandler,
   revokeSessionHandler,
   revokeUserSessionsHandler,
+  recordConsumedRefreshCredentialHandler,
   rotateRefreshCredentialHandler,
 } from "./handlers/login.handler";
 
@@ -112,74 +117,130 @@ export class AuthService {
     const now = input.now ?? new Date();
     const presentedHash = hashRefreshCredential(input.refreshToken);
 
-    const result = await this.context.transaction(async (transactionContext) => {
-      const session = await findSessionByRefreshCredentialHandler(
-        transactionContext,
-        { refreshTokenHash: presentedHash },
-      );
-
-      if (!session) return null;
-
-      if (session.consumedRefreshTokenHash === presentedHash) {
-        await revokeSessionHandler(transactionContext, {
-          sessionId: session.id,
-          now,
-          reason: "refresh-reuse-detected",
-        });
-        return null;
-      }
-
-      if (
-        session.revokedAt ||
-        session.idleExpiresAt <= now ||
-        session.absoluteExpiresAt <= now ||
-        !session.user.isActive ||
-        !session.corporation.isActive ||
-        session.refreshTokenHash !== presentedHash
-      ) {
-        return null;
-      }
-
-      const replacementRefreshToken = createRefreshCredential();
-      const rotated = await rotateRefreshCredentialHandler(transactionContext, {
-        sessionId: session.id,
-        currentRefreshTokenHash: presentedHash,
-        replacementRefreshTokenHash: hashRefreshCredential(
-          replacementRefreshToken,
-        ),
-        now,
-        idleExpiresAt: new Date(now.getTime() + SESSION_IDLE_TTL_MS),
-      });
-
-      if (rotated.count !== 1) {
-        const replay = await findSessionByRefreshCredentialHandler(
+    const result = await this.context.transaction(
+      async (transactionContext) => {
+        const session = await findSessionByRefreshCredentialHandler(
           transactionContext,
           { refreshTokenHash: presentedHash },
         );
-        if (replay) {
-          await revokeSessionHandler(transactionContext, {
-            sessionId: replay.id,
-            now,
-            reason: "refresh-race-reuse-detected",
-          });
-        }
-        return null;
-      }
 
-      return {
-        claims: createAccessClaims({
+        if (!session) {
+          return {
+            invalid: true as const,
+            audit: {
+              operation: "session.refresh" as const,
+              reason: "refresh-credential-not-found",
+            },
+          };
+        }
+
+        const audit = (reason: string): AuthAuditContext => ({
+          operation: "session.refresh",
+          reason,
+          sessionId: session.id,
           userId: session.userId,
           corporationId: session.corporationId,
-          sessionId: session.id,
-          role: session.user.role,
-          tokenVersion: session.refreshVersion + 1,
-          ...(session.companyId ? { companyId: session.companyId } : {}),
-        }),
-        refreshToken: replacementRefreshToken,
-      };
-    });
+        });
 
-    if (!result) throw invalidSession();
+        if (session.consumedRefreshCredentials.length > 0) {
+          await revokeSessionHandler(transactionContext, {
+            sessionId: session.id,
+            now,
+            reason: "refresh-reuse-detected",
+          });
+          return {
+            invalid: true as const,
+            audit: audit("refresh-reuse-detected"),
+          };
+        }
+
+        if (
+          session.revokedAt ||
+          session.idleExpiresAt <= now ||
+          session.absoluteExpiresAt <= now ||
+          !session.user.isActive ||
+          !session.corporation.isActive ||
+          session.refreshTokenHash !== presentedHash
+        ) {
+          return {
+            invalid: true as const,
+            audit: audit(
+              session.revokedAt
+                ? "session-revoked"
+                : session.idleExpiresAt <= now
+                  ? "session-idle-expired"
+                  : session.absoluteExpiresAt <= now
+                    ? "session-absolute-expired"
+                    : !session.user.isActive
+                      ? "user-inactive"
+                      : !session.corporation.isActive
+                        ? "corporation-inactive"
+                        : "refresh-credential-mismatch",
+            ),
+          };
+        }
+
+        const replacementRefreshToken = createRefreshCredential();
+        const rotated = await rotateRefreshCredentialHandler(
+          transactionContext,
+          {
+            sessionId: session.id,
+            currentRefreshTokenHash: presentedHash,
+            replacementRefreshTokenHash: hashRefreshCredential(
+              replacementRefreshToken,
+            ),
+            now,
+            idleExpiresAt: new Date(now.getTime() + SESSION_IDLE_TTL_MS),
+          },
+        );
+
+        if (rotated.count !== 1) {
+          const replay = await findSessionByRefreshCredentialHandler(
+            transactionContext,
+            { refreshTokenHash: presentedHash },
+          );
+          if (replay) {
+            await revokeSessionHandler(transactionContext, {
+              sessionId: replay.id,
+              now,
+              reason: "refresh-race-reuse-detected",
+            });
+          }
+          return {
+            invalid: true as const,
+            audit: replay
+              ? {
+                  operation: "session.refresh" as const,
+                  reason: "refresh-race-reuse-detected",
+                  sessionId: replay.id,
+                  userId: replay.userId,
+                  corporationId: replay.corporationId,
+                }
+              : audit("refresh-race-lost"),
+          };
+        }
+
+        await recordConsumedRefreshCredentialHandler(transactionContext, {
+          sessionId: session.id,
+          credentialHash: presentedHash,
+          consumedAt: now,
+        });
+
+        return {
+          claims: createAccessClaims({
+            userId: session.userId,
+            corporationId: session.corporationId,
+            sessionId: session.id,
+            role: session.user.role,
+            tokenVersion: session.refreshVersion + 1,
+            ...(session.companyId ? { companyId: session.companyId } : {}),
+          }),
+          refreshToken: replacementRefreshToken,
+        };
+      },
+    );
+
+    if ("invalid" in result) throw invalidSession(result.audit);
     return result;
   }
 
@@ -312,10 +373,11 @@ export class AuthService {
   }
 }
 
-function invalidSession(): AppError {
-  return new AppError({
+function invalidSession(audit?: AuthAuditContext): AppError {
+  const error = new AppError({
     code: "SESSION_INVALID",
     message: "Invalid or expired session",
     statusCode: 401,
   });
+  return audit ? attachAuthAuditContext(error, audit) : error;
 }

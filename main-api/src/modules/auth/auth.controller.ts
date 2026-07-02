@@ -136,6 +136,7 @@ export const v1AuthController = async (app: FastifyInstance) => {
         async (request) => {
           assertTrustedOrigin({
             host: request.hostname,
+            protocol: request.protocol,
             origin: request.headers.origin,
             secFetchSite: request.headers["sec-fetch-site"]?.toString(),
           });
@@ -147,6 +148,9 @@ export const v1AuthController = async (app: FastifyInstance) => {
             {
               operation: "session.refresh",
               requestId: request.id,
+              sessionId: request.authContext?.sessionId,
+              userId: request.authContext?.userId,
+              corporationId: request.authContext?.corporationId,
               outcome: reply.statusCode < 400 ? "success" : "rejected",
               statusCode: reply.statusCode,
               durationMs: reply.elapsedTime,
@@ -196,6 +200,7 @@ export const v1AuthController = async (app: FastifyInstance) => {
     async (request, reply) => {
       const { refreshToken } = request.body as { refreshToken: string };
       const result = await authService.refresh({ refreshToken });
+      request.authContext = result.claims;
       const accessToken = app.jwt.sign(result.claims, {
         expiresIn: ACCESS_TOKEN_TTL_SECONDS,
       });
@@ -217,6 +222,7 @@ export const v1AuthController = async (app: FastifyInstance) => {
         async (request) => {
           assertTrustedOrigin({
             host: request.hostname,
+            protocol: request.protocol,
             origin: request.headers.origin,
             secFetchSite: request.headers["sec-fetch-site"]?.toString(),
           });
@@ -394,6 +400,7 @@ export const v1AuthController = async (app: FastifyInstance) => {
         async (request) => {
           assertTrustedOrigin({
             host: request.hostname,
+            protocol: request.protocol,
             origin: request.headers.origin,
             secFetchSite: request.headers["sec-fetch-site"]?.toString(),
           });

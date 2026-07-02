@@ -1,5 +1,6 @@
 import "server-only";
 
+import { randomUUID } from "node:crypto";
 import axios, { AxiosError, AxiosRequestConfig, AxiosResponse } from "axios";
 
 import { headers as requestHeaders } from "next/headers";
@@ -11,6 +12,15 @@ import { serverEnv } from "@/lib/config/env.server";
 import { ApiClientError } from "./api-client-error";
 
 export { ApiClientError };
+
+export type AuthRefreshPolicy = "redirect" | "retry" | "disabled";
+
+export class SessionRenewalRequiredError extends Error {
+  constructor() {
+    super("Session renewal must run through the controlled BFF boundary");
+    this.name = "SessionRenewalRequiredError";
+  }
+}
 
 export type RequestConfig<TData = unknown> = {
   baseURL?: string;
@@ -29,6 +39,8 @@ export type RequestConfig<TData = unknown> = {
   validateStatus?: (status: number) => boolean;
   headers?: AxiosRequestConfig["headers"];
   paramsSerializer?: AxiosRequestConfig["paramsSerializer"];
+  authRefreshPolicy?: AuthRefreshPolicy;
+  /** @deprecated Use authRefreshPolicy: "disabled". */
   skipAuthRefresh?: boolean;
 };
 
@@ -63,29 +75,56 @@ function getErrorMessage(error: AxiosError) {
   return "Não foi possível completar a requisição";
 }
 
-export const client: Client = async <
+async function executeRequest<
   TResponseData,
   _TError = unknown,
   TRequestData = unknown,
 >(
   config: RequestConfig<TRequestData>,
-) => {
+  correlationId: string,
+): Promise<ResponseConfig<TResponseData>> {
+  const {
+    authRefreshPolicy: configuredPolicy,
+    skipAuthRefresh,
+    ...requestConfig
+  } = config;
+  const authRefreshPolicy = skipAuthRefresh
+    ? "disabled"
+    : (configuredPolicy ?? "retry");
   const token = await getApiAccessToken();
   let trustedHost: string | undefined;
+  let trustedProtocol: "http" | "https" | undefined;
   try {
     const incoming = await requestHeaders();
     trustedHost = normalizeHost(
       incoming.get("x-forwarded-host") ?? incoming.get("host") ?? "",
     );
+    const forwardedProtocol = incoming
+      .get("x-forwarded-proto")
+      ?.split(",", 1)[0]
+      ?.trim()
+      .toLowerCase();
+    trustedProtocol =
+      forwardedProtocol === "http" || forwardedProtocol === "https"
+        ? forwardedProtocol
+        : serverEnv.AUTH_COOKIE_MODE === "secure"
+          ? "https"
+          : "http";
   } catch {
     trustedHost = undefined;
+    trustedProtocol = undefined;
   }
   const headers = {
-    ...(config.headers as Record<string, string> | undefined),
+    ...(requestConfig.headers as Record<string, string> | undefined),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...(trustedHost ? { "X-Forwarded-Host": trustedHost } : {}),
-    ...(trustedHost ? { Origin: `http://${trustedHost}` } : {}),
+    ...(trustedProtocol ? { "X-Forwarded-Proto": trustedProtocol } : {}),
+    ...(trustedHost && trustedProtocol
+      ? { Origin: `${trustedProtocol}://${trustedHost}` }
+      : {}),
     ...(trustedHost ? { "Sec-Fetch-Site": "same-origin" } : {}),
+    "X-Correlation-ID": correlationId,
+    "X-Request-ID": randomUUID(),
   };
 
   try {
@@ -94,7 +133,7 @@ export const client: Client = async <
       AxiosResponse<TResponseData>
     >({
       baseURL: apiBaseURL,
-      ...config,
+      ...requestConfig,
       headers,
     });
 
@@ -115,17 +154,24 @@ export const client: Client = async <
           : undefined;
 
       if (
-        !config.skipAuthRefresh &&
+        authRefreshPolicy !== "disabled" &&
         error.response?.status === 401 &&
         code === "SESSION_INVALID" &&
-        config.url !== "/api/v1/auth/refresh"
+        requestConfig.url !== "/api/v1/auth/refresh"
       ) {
-        const refreshed = await refreshSessionSingleFlight();
-        if (refreshed) {
-          return client<TResponseData, _TError, TRequestData>({
-            ...config,
-            skipAuthRefresh: true,
-          });
+        if (authRefreshPolicy === "redirect") {
+          throw new SessionRenewalRequiredError();
+        }
+        const refreshResult = await refreshSessionSingleFlight();
+        if (refreshResult.kind === "refreshed") {
+          return executeRequest<TResponseData, _TError, TRequestData>(
+            {
+              ...config,
+              authRefreshPolicy: "disabled",
+              skipAuthRefresh: true,
+            },
+            correlationId,
+          );
         }
       }
 
@@ -138,6 +184,9 @@ export const client: Client = async <
 
     throw error;
   }
-};
+}
+
+export const client: Client = (config) =>
+  executeRequest(config, randomUUID());
 
 export default client;

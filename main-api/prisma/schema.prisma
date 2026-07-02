@@ -157,27 +157,37 @@ model User {
 }
 
 model Session {
-  id                       String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  corporationId            String      @map("corporation_id") @db.Uuid
-  userId                   String      @map("user_id") @db.Uuid
-  companyId                String?     @map("company_id") @db.Uuid
-  refreshTokenHash         String?     @map("refresh_token_hash")
-  consumedRefreshTokenHash String?     @map("consumed_refresh_token_hash")
-  refreshVersion           Int         @default(0) @map("refresh_version")
-  refreshConsumedAt        DateTime?   @map("refresh_consumed_at") @db.Timestamptz(3)
-  createdAt                DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
-  lastUsedAt               DateTime    @default(now()) @map("last_used_at") @db.Timestamptz(3)
-  idleExpiresAt            DateTime    @map("idle_expires_at") @db.Timestamptz(3)
-  absoluteExpiresAt        DateTime    @map("absolute_expires_at") @db.Timestamptz(3)
-  revokedAt                DateTime?   @map("revoked_at") @db.Timestamptz(3)
-  revocationReason         String?     @map("revocation_reason") @db.VarChar(120)
-  corporation              Corporation @relation(fields: [corporationId], references: [id], onDelete: Restrict)
-  user                     User        @relation(fields: [corporationId, userId], references: [corporationId, id], onDelete: Restrict)
-  company                  Company?    @relation(fields: [corporationId, companyId], references: [corporationId, id], onDelete: Restrict)
+  id                         String                             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId              String                             @map("corporation_id") @db.Uuid
+  userId                     String                             @map("user_id") @db.Uuid
+  companyId                  String?                            @map("company_id") @db.Uuid
+  refreshTokenHash           String?                            @map("refresh_token_hash")
+  refreshVersion             Int                                @default(0) @map("refresh_version")
+  createdAt                  DateTime                           @default(now()) @map("created_at") @db.Timestamptz(3)
+  lastUsedAt                 DateTime                           @default(now()) @map("last_used_at") @db.Timestamptz(3)
+  idleExpiresAt              DateTime                           @map("idle_expires_at") @db.Timestamptz(3)
+  absoluteExpiresAt          DateTime                           @map("absolute_expires_at") @db.Timestamptz(3)
+  revokedAt                  DateTime?                          @map("revoked_at") @db.Timestamptz(3)
+  revocationReason           String?                            @map("revocation_reason") @db.VarChar(120)
+  corporation                Corporation                        @relation(fields: [corporationId], references: [id], onDelete: Restrict)
+  user                       User                               @relation(fields: [corporationId, userId], references: [corporationId, id], onDelete: Restrict)
+  company                    Company?                           @relation(fields: [corporationId, companyId], references: [corporationId, id], onDelete: Restrict)
+  consumedRefreshCredentials SessionConsumedRefreshCredential[]
 
   @@index([corporationId, userId])
   @@index([corporationId, companyId])
   @@map("sessions")
+}
+
+model SessionConsumedRefreshCredential {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sessionId      String   @map("session_id") @db.Uuid
+  credentialHash String   @unique @map("credential_hash")
+  consumedAt     DateTime @map("consumed_at") @db.Timestamptz(3)
+  session        Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, consumedAt])
+  @@map("session_consumed_refresh_credentials")
 }
 
 model SensitiveDocumentProtectionHarness {

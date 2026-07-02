@@ -4,6 +4,7 @@ import { AppError } from "../../lib/utils/appError";
 export function assertTrustedOrigin(input: {
   origin?: string | null;
   host: string;
+  protocol: string;
   secFetchSite?: string | null;
 }) {
   if (input.secFetchSite && input.secFetchSite !== "same-origin") {
@@ -23,8 +24,11 @@ export function assertTrustedOrigin(input: {
   }
 
   let originHost: string;
+  let originProtocol: string;
   try {
-    originHost = normalizeHost(new URL(input.origin).host);
+    const origin = new URL(input.origin);
+    originHost = normalizeHost(origin.host);
+    originProtocol = origin.protocol;
   } catch {
     throw new AppError({
       code: "FORBIDDEN",
@@ -33,7 +37,12 @@ export function assertTrustedOrigin(input: {
     });
   }
 
-  if (originHost !== normalizeHost(input.host)) {
+  const trustedProtocol = input.protocol.toLowerCase().replace(/:$/, "");
+  if (
+    !["http", "https"].includes(trustedProtocol) ||
+    originProtocol !== `${trustedProtocol}:` ||
+    originHost !== normalizeHost(input.host)
+  ) {
     throw new AppError({
       code: "FORBIDDEN",
       message: "Untrusted origin",

@@ -11,7 +11,7 @@ const errorSchema = {
   type: "object",
   required: ["success", "code", "message", "details", "requestId"],
   properties: {
-    success: { const: false },
+    success: { type: "boolean", const: false },
     code: { type: "string" },
     message: { type: "string" },
     details: { type: "object", nullable: true, additionalProperties: true },
@@ -21,7 +21,11 @@ const errorSchema = {
 const successSchema = (data: object) => ({
   type: "object",
   required: ["success", "message", "data"],
-  properties: { success: { const: true }, message: { type: "string" }, data },
+  properties: {
+    success: { type: "boolean", const: true },
+    message: { type: "string" },
+    data,
+  },
 });
 const projectItemSchema = {
   type: "object",

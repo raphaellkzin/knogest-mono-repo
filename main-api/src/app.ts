@@ -9,6 +9,7 @@ import { authPlugin } from "./lib/plugins/auth.plugin";
 import { env } from "./lib/config/env";
 import { jsonResponse } from "./lib/utils/jsonResponse";
 import { isAppError } from "./lib/utils/appError";
+import { getAuthAuditContext } from "./modules/auth/auth-audit-context";
 
 export const buildApp = async (options: FastifyServerOptions = {}) => {
   const { logger: configuredLogger, ...restOptions } = options;
@@ -32,7 +33,7 @@ export const buildApp = async (options: FastifyServerOptions = {}) => {
     ajv: options.ajv ?? { customOptions: { removeAdditional: false } },
   });
 
-  app.setErrorHandler((error: unknown, _request, reply) => {
+  app.setErrorHandler((error: unknown, request, reply) => {
     if (
       typeof error === "object" &&
       error !== null &&
@@ -71,6 +72,18 @@ export const buildApp = async (options: FastifyServerOptions = {}) => {
     }
 
     if (isAppError(error)) {
+      const audit = getAuthAuditContext(error);
+      if (audit) {
+        request.log.warn(
+          {
+            ...audit,
+            requestId: request.id,
+            outcome: "rejected",
+            statusCode: error.statusCode,
+          },
+          "Authentication session request rejected",
+        );
+      }
       return jsonResponse.fromError({ reply, error });
     }
 

@@ -41,19 +41,20 @@ export function proxy(request: NextRequest) {
   const { csp, nonce } = createCsp();
   const environment =
     process.env.AUTH_COOKIE_MODE === "secure" ? "production" : "development";
-  const hasCredential = request.cookies.has(
-    getAuthCookiePolicy(environment).accessName,
-  );
+  const cookiePolicy = getAuthCookiePolicy(environment);
+  const hasAccessCredential = request.cookies.has(cookiePolicy.accessName);
+  const hasRefreshCredential = request.cookies.has(cookiePolicy.refreshName);
+  const isRenewalState = request.nextUrl.searchParams.get("renew") === "1";
   const isProtected = PROTECTED_PREFIXES.some((route) =>
     pathname.startsWith(route),
   );
 
-  if (isProtected && !hasCredential) {
+  if (isProtected && !hasAccessCredential && !hasRefreshCredential) {
     const loginUrl = new URL(AUTH_ROUTE, request.url);
     loginUrl.searchParams.set("callbackUrl", pathname);
     return applySecurityHeaders(NextResponse.redirect(loginUrl), csp);
   }
-  if (pathname === AUTH_ROUTE && hasCredential) {
+  if (pathname === AUTH_ROUTE && hasAccessCredential && !isRenewalState) {
     return applySecurityHeaders(
       NextResponse.redirect(new URL(HOME_ROUTE, request.url)),
       csp,
@@ -62,6 +63,7 @@ export function proxy(request: NextRequest) {
 
   const headers = new Headers(request.headers);
   headers.set("x-nonce", nonce);
+  headers.set("x-knogest-pathname", pathname);
   headers.set("Content-Security-Policy", csp);
   return applySecurityHeaders(NextResponse.next({ request: { headers } }), csp);
 }

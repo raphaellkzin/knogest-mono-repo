@@ -216,6 +216,14 @@ GPT-5 Codex
 
 ### Debug Log References
 
+- 2026-07-02 RED phase: authored protocol/origin, consumed-credential ledger, historical replay, refresh-race, expiry-boundary, scoped logging, BFF policy/single-flight, proxy recovery, and browser lifecycle tests. Execution is intentionally pending user-provided RED results; no task was marked complete.
+- 2026-07-02 GREEN candidate: origin validation now compares the normalized host and trusted Fastify protocol for refresh, logout, and Company-selection mutations. Awaiting user rerun before any task completion.
+- 2026-07-02 RED harness correction: configured Vitest aliases to match the frontend TypeScript paths after the first BFF run failed before collecting tests. Functional RED results remain pending.
+- 2026-07-02 GREEN candidate: implemented explicit refresh policies, controlled renewal signaling, per-waiter single-flight settlement, terminal/retryable classification, request correlation, forwarded protocol handling, and refresh-only proxy recovery. Awaiting user rerun.
+- 2026-07-02 GREEN correction: reserve the single-flight Promise before refresh transport performs any asynchronous I/O, closing the duplicate-request race exposed by the concurrent unit test.
+- 2026-07-02 GREEN correction #2: compute the non-secret single-flight SHA-256 key synchronously so concurrent callers cannot pass through an asynchronous digest window before map reservation.
+- 2026-07-02 GREEN candidate from PostgreSQL RED results: replaced the single consumed hash with a backfilled, cascade-owned credential ledger; rotation records consumption atomically, historical/racing replay revokes the Session family, and refresh audit failures carry safe internal scope through a non-serialized WeakMap. Prisma Client regenerated; user rerun pending.
+
 ### Completion Notes List
 
 - Ultimate context engine analysis completed - comprehensive developer guide created.
