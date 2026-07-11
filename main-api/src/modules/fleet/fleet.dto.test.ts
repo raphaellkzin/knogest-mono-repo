@@ -15,11 +15,12 @@ describe("fleet DTOs", () => {
           companyTag: "MX-001",
           initialMeterReading: "10.25",
           manufacturer: "Synthetic",
+          meterType: "HOUR_METER",
           model: "Loader",
           name: `Machine ${type}`,
           type,
         }),
-      ).toMatchObject({ type });
+      ).toMatchObject({ type, meterType: "HOUR_METER" });
     }
   });
 
@@ -30,6 +31,7 @@ describe("fleet DTOs", () => {
         initialMeterReading: "1.00",
         isActive: false,
         manufacturer: "Synthetic",
+        meterType: "HOUR_METER",
         model: "Loader",
         name: "Machine",
         type: "YELLOW_LINE",
@@ -39,6 +41,7 @@ describe("fleet DTOs", () => {
       createMachineSchema.parse({
         initialMeterReading: "1.234",
         manufacturer: "Synthetic",
+        meterType: "HOUR_METER",
         model: "Loader",
         name: "Machine",
         plate: "ABC1D23",
@@ -49,6 +52,7 @@ describe("fleet DTOs", () => {
       createMachineSchema.parse({
         initialMeterReading: "1.00",
         manufacturer: "Synthetic",
+        meterType: "HOUR_METER",
         model: "Loader",
         name: "Machine",
         plate: "---",
@@ -59,6 +63,17 @@ describe("fleet DTOs", () => {
       createMachineSchema.parse({
         companyTag: "MCH-001",
         initialMeterReading: "0001.00",
+        manufacturer: "Synthetic",
+        meterType: "HOUR_METER",
+        model: "Loader",
+        name: "Machine",
+        type: "YELLOW_LINE",
+      }),
+    ).toThrow();
+    expect(() =>
+      createMachineSchema.parse({
+        companyTag: "MCH-001",
+        initialMeterReading: "1.00",
         manufacturer: "Synthetic",
         model: "Loader",
         name: "Machine",

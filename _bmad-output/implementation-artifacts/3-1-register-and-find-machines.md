@@ -17,7 +17,7 @@ so that the Company has trustworthy equipment available for future Project alloc
 ## Acceptance Criteria
 
 1. **Given** an authenticated Session with a selected Company
-   **When** the administrator submits a Machine with name, description, fixed type, manufacturer, model, identifiers, and initial Meter Reading
+   **When** the administrator submits a Machine with name, description, fixed type, manufacturer, model, identifiers, immutable meter type, and initial Meter Reading
    **Then** the Machine, first Machine Ownership Period, identifiers, and initial confirmed Meter Reading are created atomically
    **And** Corporation and Company ownership come only from trusted Session context.
 
@@ -44,6 +44,7 @@ so that the Company has trustworthy equipment available for future Project alloc
 6. **Given** an initial Meter Reading is submitted
    **When** it is validated
    **Then** it must be a non-negative decimal represented without binary floating-point persistence
+   **And** its immutable Machine meter type is either hour-meter or odometer and applies to the whole reading chain
    **And** it is recorded as the first confirmed reading with trusted actor and server transaction instant.
 
 7. **Given** Machines exist in the selected Company
@@ -143,7 +144,7 @@ so that the Company has trustworthy equipment available for future Project alloc
 
 ### Technical Requirements
 
-- Fixed Machine types are exactly `YELLOW_LINE` and `WHITE_LINE`; do not create an editable type catalog.
+- Fixed Machine types are exactly `YELLOW_LINE` and `WHITE_LINE`; do not create an editable type catalog. Every Machine also has an immutable meter type: `HOUR_METER` or `ODOMETER`.
 - Machine identifiers are normalized before persistence and conflict checks. At least one of plate or Company tag is required; both are allowed.
 - Active identifier uniqueness is scoped to current selected Company ownership. The same normalized identifier in another Company or Corporation must not leak or block unless the approved ownership scope says it should.
 - Meter Reading values cross API boundaries as normalized decimal strings and persist as non-negative `numeric(14,2)` to avoid binary floating-point rounding.

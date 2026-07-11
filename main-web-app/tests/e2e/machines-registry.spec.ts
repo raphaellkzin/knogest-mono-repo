@@ -8,7 +8,9 @@ async function login(page: import("@playwright/test").Page) {
   await expect(page).toHaveURL(/\/home$/);
 }
 
-test("creates, lists, and opens a synthetic Machine detail", async ({ page }) => {
+test("creates, lists, and opens a synthetic Machine detail", async ({
+  page,
+}) => {
   await login(page);
   await page.getByRole("link", { name: "Máquinas" }).click();
   await page.getByRole("button", { name: "Nova máquina" }).click();
@@ -22,7 +24,7 @@ test("creates, lists, and opens a synthetic Machine detail", async ({ page }) =>
   await expect(page.getByText("Máquina cadastrada.")).toBeVisible();
   await expect(page.getByText("Synthetic E2E Machine")).toBeVisible();
   await expect(page.getByText("MCH-E2E-001")).toBeVisible();
-  await expect(page.getByText("12.50")).toBeVisible();
+  await expect(page.getByText("12,50 h")).toBeVisible();
 
   await page.getByRole("link", { name: "Ver" }).first().click();
   await expect(page.getByText("Linha amarela")).toBeVisible();

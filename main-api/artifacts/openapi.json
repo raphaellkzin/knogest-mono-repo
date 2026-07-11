@@ -2390,6 +2390,7 @@
                   "type",
                   "manufacturer",
                   "model",
+                  "meterType",
                   "initialMeterReading"
                 ],
                 "anyOf": [
@@ -2416,6 +2417,10 @@
                     "type": "string",
                     "minLength": 1,
                     "maxLength": 120
+                  },
+                  "meterType": {
+                    "type": "string",
+                    "enum": ["HOUR_METER", "ODOMETER"]
                   },
                   "plate": {
                     "type": "string",
@@ -2457,6 +2462,7 @@
                         "type",
                         "manufacturer",
                         "model",
+                        "meterType",
                         "identifiers",
                         "latestMeterReading",
                         "availability",
@@ -2474,6 +2480,10 @@
                         },
                         "manufacturer": { "type": "string" },
                         "model": { "type": "string" },
+                        "meterType": {
+                          "type": "string",
+                          "enum": ["HOUR_METER", "ODOMETER"]
+                        },
                         "identifiers": {
                           "type": "object",
                           "required": ["plate", "companyTag"],
@@ -2761,6 +2771,7 @@
                               "type",
                               "manufacturer",
                               "model",
+                              "meterType",
                               "identifiers",
                               "latestMeterReading",
                               "availability",
@@ -2780,6 +2791,10 @@
                               },
                               "manufacturer": { "type": "string" },
                               "model": { "type": "string" },
+                              "meterType": {
+                                "type": "string",
+                                "enum": ["HOUR_METER", "ODOMETER"]
+                              },
                               "identifiers": {
                                 "type": "object",
                                 "required": ["plate", "companyTag"],
@@ -2983,6 +2998,7 @@
                         "type",
                         "manufacturer",
                         "model",
+                        "meterType",
                         "identifiers",
                         "latestMeterReading",
                         "availability",
@@ -3000,6 +3016,10 @@
                         },
                         "manufacturer": { "type": "string" },
                         "model": { "type": "string" },
+                        "meterType": {
+                          "type": "string",
+                          "enum": ["HOUR_METER", "ODOMETER"]
+                        },
                         "identifiers": {
                           "type": "object",
                           "required": ["plate", "companyTag"],
@@ -3249,6 +3269,7 @@
                         "type",
                         "manufacturer",
                         "model",
+                        "meterType",
                         "identifiers",
                         "latestMeterReading",
                         "availability",
@@ -3266,6 +3287,10 @@
                         },
                         "manufacturer": { "type": "string" },
                         "model": { "type": "string" },
+                        "meterType": {
+                          "type": "string",
+                          "enum": ["HOUR_METER", "ODOMETER"]
+                        },
                         "identifiers": {
                           "type": "object",
                           "required": ["plate", "companyTag"],
@@ -3550,6 +3575,7 @@
                         "type",
                         "manufacturer",
                         "model",
+                        "meterType",
                         "identifiers",
                         "latestMeterReading",
                         "availability",
@@ -3567,6 +3593,10 @@
                         },
                         "manufacturer": { "type": "string" },
                         "model": { "type": "string" },
+                        "meterType": {
+                          "type": "string",
+                          "enum": ["HOUR_METER", "ODOMETER"]
+                        },
                         "identifiers": {
                           "type": "object",
                           "required": ["plate", "companyTag"],

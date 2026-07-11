@@ -4,6 +4,8 @@ baseline_commit: 90c73e276e509f583785b4841867ee1c8c681033
 
 # Story 3.2: Maintain a Monotonic Meter Reading Chain
 
+> Meter values inherit the immutable `meterType` of their Machine (`HOUR_METER` or `ODOMETER`). Reading append and correction commands never accept or change a unit, preventing a mixed-unit chain.
+
 Status: in-progress
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->

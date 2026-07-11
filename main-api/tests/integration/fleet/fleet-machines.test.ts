@@ -66,6 +66,7 @@ describe("fleet Machine registry and meter readings", () => {
     return {
       companyTag: identifier,
       initialMeterReading: "10.25",
+      meterType: "HOUR_METER",
       manufacturer: "Synthetic",
       model: "Loader 200",
       name: `Synthetic Machine ${identifier}`,
@@ -76,6 +77,7 @@ describe("fleet Machine registry and meter readings", () => {
   function platePayload(identifier = "ABC-1D23") {
     return {
       initialMeterReading: "0",
+      meterType: "ODOMETER",
       manufacturer: "Synthetic",
       model: "Truck 100",
       name: `Plate Machine ${identifier}`,
@@ -124,6 +126,7 @@ describe("fleet Machine registry and meter readings", () => {
     expect(response.json().data).toMatchObject({
       identifiers: { companyTag: { normalizedValue: "MCH001" } },
       latestMeterReading: { value: "10.25", purpose: "INITIAL" },
+      meterType: "HOUR_METER",
     });
     expect(await app.prisma.machine.count()).toBe(1);
     expect(await app.prisma.machineOwnershipPeriod.count()).toBe(1);
@@ -146,6 +149,7 @@ describe("fleet Machine registry and meter readings", () => {
       payload: platePayload(),
     });
     expect(plateOnly.statusCode).toBe(201);
+    expect(plateOnly.json().data.meterType).toBe("ODOMETER");
     expect(plateOnly.json().data.identifiers).toMatchObject({
       plate: { normalizedValue: "ABC1D23" },
       companyTag: null,
@@ -532,9 +536,7 @@ describe("fleet Machine registry and meter readings", () => {
       payload: { value: "999999999999.99" },
     });
     expect(append.statusCode).toBe(200);
-    expect(append.json().data.latestMeterReading.value).toBe(
-      "999999999999.99",
-    );
+    expect(append.json().data.latestMeterReading.value).toBe("999999999999.99");
 
     const readings = await app.prisma.machineMeterReading.findMany({
       where: { machineId: created.id },

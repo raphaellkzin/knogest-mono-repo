@@ -18,6 +18,7 @@ export interface MachineRecord {
   type: "YELLOW_LINE" | "WHITE_LINE";
   manufacturer: string;
   model: string;
+  meterType: "HOUR_METER" | "ODOMETER";
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -60,6 +61,7 @@ function machineSelect(companyId: string) {
     type: true,
     manufacturer: true,
     model: true,
+    meterType: true,
     isActive: true,
     createdAt: true,
     updatedAt: true,
@@ -291,6 +293,7 @@ export async function createMachineHandler(
     type: "YELLOW_LINE" | "WHITE_LINE";
     manufacturer: string;
     model: string;
+    meterType: "HOUR_METER" | "ODOMETER";
     identifiers: {
       kind: "PLATE" | "COMPANY_TAG";
       value: string;
@@ -308,6 +311,7 @@ export async function createMachineHandler(
         type: input.type,
         manufacturer: input.manufacturer,
         model: input.model,
+        meterType: input.meterType,
       },
       select: { id: true },
     });

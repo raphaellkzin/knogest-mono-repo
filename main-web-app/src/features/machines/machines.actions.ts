@@ -18,12 +18,20 @@ function optionalPayloadString(formData: FormData, key: string) {
   return value.length > 0 ? value : undefined;
 }
 
+function decimalPayloadValue(formData: FormData, key: string) {
+  return optionalString(formData, key).replace(",", ".");
+}
+
 function payload(formData: FormData): PostApiV1MachinesMutationRequest {
   const type = optionalString(formData, "type");
   return {
     companyTag: optionalPayloadString(formData, "companyTag"),
     description: optionalPayloadString(formData, "description"),
-    initialMeterReading: optionalString(formData, "initialMeterReading"),
+    initialMeterReading: decimalPayloadValue(formData, "initialMeterReading"),
+    meterType:
+      optionalString(formData, "meterType") === "ODOMETER"
+        ? "ODOMETER"
+        : "HOUR_METER",
     manufacturer: optionalString(formData, "manufacturer"),
     model: optionalString(formData, "model"),
     name: optionalString(formData, "name"),

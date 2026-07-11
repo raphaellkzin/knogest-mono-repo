@@ -35,6 +35,7 @@ export const createMachineSchema = z
     type: z.enum(["YELLOW_LINE", "WHITE_LINE"]),
     manufacturer: z.string().trim().min(1).max(120),
     model: z.string().trim().min(1).max(120),
+    meterType: z.enum(["HOUR_METER", "ODOMETER"]),
     plate: optionalIdentifier,
     companyTag: optionalIdentifier,
     initialMeterReading: decimalStringSchema,

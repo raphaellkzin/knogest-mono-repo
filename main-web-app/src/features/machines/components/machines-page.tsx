@@ -1,8 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useActionState } from "react";
-import { useFormStatus } from "react-dom";
+import { useActionState, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ChevronRight,
@@ -17,27 +16,32 @@ import {
 } from "lucide-react";
 
 import { Button, buttonVariants } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { FormSection } from "@/components/ui/form-section";
+import { OperationsModal } from "@/components/ui/operations-modal";
 import type { MachineActionState } from "../machines-action-state";
 import type { MachineListItem, MachinesListQuery } from "../machines.server";
+import {
+  formatMeterReading,
+  meterTypeLabel,
+  meterUnit,
+  type MeterType,
+} from "../meter-format";
 
 type MachineAction = (
   state: MachineActionState,
   formData: FormData,
 ) => Promise<MachineActionState>;
 
-function SubmitButton() {
-  const { pending } = useFormStatus();
+function SubmitButton({
+  formId,
+  pending,
+}: {
+  formId?: string;
+  pending: boolean;
+}) {
   return (
-    <Button type="submit" disabled={pending}>
+    <Button form={formId} type="submit" disabled={pending}>
       <Plus className="size-4" />
       {pending ? "Salvando" : "Cadastrar máquina"}
     </Button>
@@ -45,11 +49,13 @@ function SubmitButton() {
 }
 
 function Field({
+  defaultValue,
   label,
   name,
   required = false,
   type = "text",
 }: {
+  defaultValue?: string;
   label: string;
   name: string;
   required?: boolean;
@@ -58,7 +64,13 @@ function Field({
   return (
     <label className="grid gap-1.5 text-sm font-semibold">
       <span>{label}</span>
-      <Input name={name} required={required} type={type} className="h-10" />
+      <Input
+        name={name}
+        required={required}
+        type={type}
+        defaultValue={defaultValue}
+        className="h-11"
+      />
     </label>
   );
 }
@@ -76,7 +88,10 @@ export function MachinesPageView({
   query: MachinesListQuery;
   rows: MachineListItem[];
 }) {
-  const [state, formAction] = useActionState(action, initialState);
+  const [isMachineModalOpen, setIsMachineModalOpen] = useState(false);
+  const [meterType, setMeterType] = useState<MeterType>("HOUR_METER");
+  const [machineDraft, setMachineDraft] = useState<Record<string, string>>({});
+  const formRef = useRef<HTMLFormElement>(null);
   const hasFilters = Boolean(query.search || query.availability || query.type);
   const nextParams = new URLSearchParams();
   if (query.search) nextParams.set("search", query.search);
@@ -85,6 +100,33 @@ export function MachinesPageView({
   if (query.sortBy) nextParams.set("sortBy", query.sortBy);
   if (query.sortDirection) nextParams.set("sortDirection", query.sortDirection);
   if (pageInfo.nextCursor) nextParams.set("cursor", pageInfo.nextCursor);
+
+  function resetMachineForm() {
+    formRef.current?.reset();
+    setMeterType("HOUR_METER");
+    setMachineDraft({});
+  }
+
+  function handleMachineModalChange(open: boolean) {
+    setIsMachineModalOpen(open);
+  }
+
+  async function createMachine(
+    previousState: MachineActionState,
+    formData: FormData,
+  ) {
+    const nextState = await action(previousState, formData);
+    if (nextState.ok) {
+      resetMachineForm();
+      setIsMachineModalOpen(false);
+    }
+    return nextState;
+  }
+
+  const [state, formAction, isPending] = useActionState(
+    createMachine,
+    initialState,
+  );
 
   return (
     <div className="space-y-4">
@@ -142,59 +184,181 @@ export function MachinesPageView({
               </Button>
             </form>
 
-            <Dialog>
-              <DialogTrigger render={<Button />}>
-                <Plus className="size-4" />
-                Nova máquina
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-2xl">
-                <DialogHeader>
-                  <DialogTitle>Cadastrar máquina</DialogTitle>
-                </DialogHeader>
-                <form action={formAction} className="grid gap-4">
+            <OperationsModal
+              icon={Truck}
+              open={isMachineModalOpen}
+              onOpenChange={handleMachineModalChange}
+              size="lg"
+              title="Cadastrar máquina"
+              description="Registre a identificação, as características e a leitura que acompanhará a máquina durante toda a operação."
+              footer={
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      resetMachineForm();
+                      setIsMachineModalOpen(false);
+                    }}
+                  >
+                    Cancelar
+                  </Button>
+                  <SubmitButton
+                    formId="machine-create-form"
+                    pending={isPending}
+                  />
+                </>
+              }
+              trigger={
+                <Button>
+                  <Plus className="size-4" />
+                  Nova máquina
+                </Button>
+              }
+            >
+              <form
+                ref={formRef}
+                id="machine-create-form"
+                action={formAction}
+                className="grid gap-4"
+                onChange={(event) => {
+                  const target = event.target;
+                  if (
+                    target instanceof HTMLInputElement ||
+                    target instanceof HTMLSelectElement
+                  ) {
+                    setMachineDraft((draft) => ({
+                      ...draft,
+                      [target.name]: target.value,
+                    }));
+                  }
+                }}
+              >
+                <FormSection
+                  title="Identificação"
+                  description="Informe a placa, o patrimônio ou ambos. Pelo menos um identificador é obrigatório."
+                >
                   <div className="grid gap-3 md:grid-cols-2">
-                    <Field label="Nome" name="name" required />
+                    <Field
+                      defaultValue={machineDraft.name}
+                      label="Nome"
+                      name="name"
+                      required
+                    />
+                    <Field
+                      defaultValue={machineDraft.plate}
+                      label="Placa"
+                      name="plate"
+                    />
+                    <Field
+                      defaultValue={machineDraft.companyTag}
+                      label="Patrimônio"
+                      name="companyTag"
+                    />
+                  </div>
+                </FormSection>
+
+                <FormSection title="Características">
+                  <div className="grid gap-3 md:grid-cols-2">
                     <label className="grid gap-1.5 text-sm font-semibold">
                       <span>Tipo</span>
                       <select
                         name="type"
                         required
-                        className="h-10 rounded-md border border-input bg-background px-3 text-sm font-semibold"
+                        defaultValue={machineDraft.type ?? "YELLOW_LINE"}
+                        className="min-h-11 rounded-md border border-input bg-background px-3 text-sm font-semibold"
                       >
                         <option value="YELLOW_LINE">Linha amarela</option>
                         <option value="WHITE_LINE">Linha branca</option>
                       </select>
                     </label>
-                    <Field label="Fabricante" name="manufacturer" required />
-                    <Field label="Modelo" name="model" required />
-                    <Field label="Placa" name="plate" />
-                    <Field label="Patrimônio" name="companyTag" />
                     <Field
-                      label="Leitura inicial"
-                      name="initialMeterReading"
+                      defaultValue={machineDraft.manufacturer}
+                      label="Fabricante"
+                      name="manufacturer"
                       required
                     />
-                    <Field label="Descrição" name="description" />
+                    <Field
+                      defaultValue={machineDraft.model}
+                      label="Modelo"
+                      name="model"
+                      required
+                    />
+                    <Field
+                      defaultValue={machineDraft.description}
+                      label="Descrição"
+                      name="description"
+                    />
                   </div>
-                  {state.message && (
-                    <p
-                      role="status"
-                      className={`rounded-md border px-3 py-2 text-sm font-semibold ${
-                        state.ok
-                          ? "border-emerald-200 bg-emerald-50 text-emerald-950"
-                          : "border-red-200 bg-red-50 text-red-950"
-                      }`}
-                    >
-                      {state.message}
-                    </p>
-                  )}
-                  <DialogFooter>
-                    <SubmitButton />
-                  </DialogFooter>
-                </form>
-              </DialogContent>
-            </Dialog>
+                </FormSection>
+
+                <FormSection
+                  title="Medição inicial"
+                  description="Escolha a unidade que será usada nas leituras futuras. Essa escolha não poderá ser alterada depois do cadastro."
+                >
+                  <div
+                    className="grid gap-2 sm:grid-cols-2"
+                    role="group"
+                    aria-label="Tipo de leitura"
+                  >
+                    {(["HOUR_METER", "ODOMETER"] as const).map((option) => (
+                      <Button
+                        key={option}
+                        type="button"
+                        variant={meterType === option ? "default" : "outline"}
+                        aria-pressed={meterType === option}
+                        className="min-h-11 justify-start font-bold"
+                        onClick={() => setMeterType(option)}
+                      >
+                        {meterTypeLabel(option)} ({meterUnit(option)})
+                      </Button>
+                    ))}
+                  </div>
+                  <input type="hidden" name="meterType" value={meterType} />
+                  <label className="grid gap-1.5 text-sm font-semibold">
+                    <span>Leitura inicial ({meterUnit(meterType)})</span>
+                    <Input
+                      name="initialMeterReading"
+                      required
+                      defaultValue={machineDraft.initialMeterReading}
+                      inputMode="decimal"
+                      placeholder="0,00"
+                      aria-describedby="meter-reading-help"
+                      className="h-11"
+                    />
+                  </label>
+                  <p
+                    id="meter-reading-help"
+                    className="text-sm text-muted-foreground"
+                  >
+                    Use um valor igual ou maior que zero. Aceita vírgula ou
+                    ponto decimal.
+                  </p>
+                </FormSection>
+
+                {!state.ok && state.message && (
+                  <p
+                    role="status"
+                    className={`rounded-md border px-3 py-2 text-sm font-semibold ${
+                      state.ok
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-950"
+                        : "border-red-200 bg-red-50 text-red-950"
+                    }`}
+                  >
+                    {state.message}
+                  </p>
+                )}
+              </form>
+            </OperationsModal>
           </div>
+          {state.ok && state.message && (
+            <p
+              role="status"
+              className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-950"
+            >
+              {state.message}
+            </p>
+          )}
         </div>
 
         <div className="overflow-x-auto">
@@ -231,7 +395,12 @@ export function MachinesPageView({
                       {row.manufacturer} / {row.model}
                     </td>
                     <td className="px-4 py-3 font-semibold">
-                      {row.latestMeterReading?.value ?? "Sem leitura"}
+                      {row.latestMeterReading
+                        ? formatMeterReading(
+                            row.latestMeterReading.value,
+                            row.meterType,
+                          )
+                        : "Sem leitura"}
                     </td>
                     <td className="px-4 py-3 font-semibold">
                       {row.availability.state === "available"

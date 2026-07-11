@@ -4,6 +4,7 @@ import { ArrowLeft, Gauge, Tag, Truck } from "lucide-react";
 
 import { buttonVariants } from "@/components/ui/button";
 import type { MachineDetail } from "../machines.server";
+import { formatMeterReading, meterTypeLabel } from "../meter-format";
 
 export function MachineDetailPage({ machine }: { machine: MachineDetail }) {
   return (
@@ -39,8 +40,15 @@ export function MachineDetailPage({ machine }: { machine: MachineDetail }) {
           />
           <DetailBlock
             icon={Gauge}
-            label="Leitura confirmada"
-            value={machine.latestMeterReading?.value ?? "Sem leitura"}
+            label={meterTypeLabel(machine.meterType)}
+            value={
+              machine.latestMeterReading
+                ? formatMeterReading(
+                    machine.latestMeterReading.value,
+                    machine.meterType,
+                  )
+                : "Sem leitura"
+            }
           />
         </div>
 
@@ -58,12 +66,18 @@ export function MachineDetailPage({ machine }: { machine: MachineDetail }) {
               ? formatDateTime(machine.latestMeterReading.recordedAt)
               : "Sem leitura"}
           </Info>
+          <Info label="Tipo de leitura">
+            {meterTypeLabel(machine.meterType)} ({" "}
+            {machine.meterType === "HOUR_METER" ? "h" : "km"})
+          </Info>
           <Info label="Propriedade atual">
             {machine.ownership
               ? `Desde ${formatDateTime(machine.ownership.effectiveFrom)}`
               : "Sem propriedade atual"}
           </Info>
-          <Info label="Descrição">{machine.description ?? "Sem descrição"}</Info>
+          <Info label="Descrição">
+            {machine.description ?? "Sem descrição"}
+          </Info>
         </div>
       </section>
     </div>

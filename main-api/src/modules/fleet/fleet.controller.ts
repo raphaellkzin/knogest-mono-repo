@@ -52,6 +52,7 @@ const machineSchema = {
     "type",
     "manufacturer",
     "model",
+    "meterType",
     "identifiers",
     "latestMeterReading",
     "availability",
@@ -65,6 +66,7 @@ const machineSchema = {
     type: { type: "string", enum: ["YELLOW_LINE", "WHITE_LINE"] },
     manufacturer: { type: "string" },
     model: { type: "string" },
+    meterType: { type: "string", enum: ["HOUR_METER", "ODOMETER"] },
     identifiers: {
       type: "object",
       required: ["plate", "companyTag"],
@@ -162,7 +164,14 @@ const listResponseSchema = {
 const createMachineBodySchema = {
   type: "object",
   additionalProperties: false,
-  required: ["name", "type", "manufacturer", "model", "initialMeterReading"],
+  required: [
+    "name",
+    "type",
+    "manufacturer",
+    "model",
+    "meterType",
+    "initialMeterReading",
+  ],
   anyOf: [{ required: ["plate"] }, { required: ["companyTag"] }],
   properties: {
     name: { type: "string", minLength: 1, maxLength: 160 },
@@ -170,6 +179,7 @@ const createMachineBodySchema = {
     type: { type: "string", enum: ["YELLOW_LINE", "WHITE_LINE"] },
     manufacturer: { type: "string", minLength: 1, maxLength: 120 },
     model: { type: "string", minLength: 1, maxLength: 120 },
+    meterType: { type: "string", enum: ["HOUR_METER", "ODOMETER"] },
     plate: { type: "string", maxLength: 80, pattern: identifierOpenApiPattern },
     companyTag: {
       type: "string",

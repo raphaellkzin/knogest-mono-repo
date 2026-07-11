@@ -112,6 +112,7 @@ function toMachineDto(
     type: record.type,
     manufacturer: record.manufacturer,
     model: record.model,
+    meterType: record.meterType,
     identifiers: {
       plate: plate
         ? { value: plate.value, normalizedValue: plate.normalizedValue }
@@ -188,6 +189,7 @@ export class FleetService {
         type: input.type,
         manufacturer: input.manufacturer,
         model: input.model,
+        meterType: input.meterType,
         initialMeterReading: normalizeDecimal(input.initialMeterReading),
       });
       return toMachineDetailDto(record);
