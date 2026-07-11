@@ -37,6 +37,7 @@ Componentes auditados:
 - `src/components/pages/home/home-dashboard.tsx`
 - `src/components/ui/operations-table.tsx`
 - `src/components/ui/operations-modal.tsx`
+- `src/components/ui/form-section.tsx`
 - `src/components/pages/company/company-overview.tsx`
 - `src/components/pages/company/company-resource-page.tsx`
 
@@ -56,6 +57,20 @@ Critérios para considerar a identidade visual pronta:
 ```
 
 Com `Status da estilização: Oficial`, a fonte de verdade registrada acima passa a orientar alterações visuais futuras.
+
+## Formulários Operacionais
+
+- Use `OperationsModal` para criação e edição administrativa: ícone, título,
+  descrição curta, corpo rolável e rodapé de ações fixo fora da rolagem.
+- Separe campos por `FormSection`; uma seção representa uma tarefa clara como
+  Identificação, Contato ou Endereço. Não aninhe seções nem crie cartões dentro
+  delas.
+- Inputs de operação devem ter ao menos 44px de altura, label visível, foco
+  perceptível e `inputMode="numeric"` quando a entrada for numérica.
+- Máscaras são reservadas a formatos estruturais brasileiros (CPF, CNPJ,
+  telefone e CEP). Nome, e-mail e endereço permanecem sem máscara.
+- Em formulários com PF/PJ, preserve os rascunhos específicos de cada tipo e
+  mantenha contato e endereço compartilhados ao alternar.
 
 ## Componentes Reutilizáveis Do MVP
 

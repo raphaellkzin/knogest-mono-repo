@@ -33,6 +33,7 @@ export function OperationsModal({
   children,
   className,
   description,
+  footer,
   icon: Icon,
   onOpenChange,
   open,
@@ -44,6 +45,7 @@ export function OperationsModal({
   children: ReactNode;
   className?: string;
   description?: string;
+  footer?: ReactNode;
   icon?: LucideIcon;
   onOpenChange?: (open: boolean) => void;
   open?: boolean;
@@ -57,11 +59,12 @@ export function OperationsModal({
       <DialogContent
         className={cn(
           "max-h-[calc(100vh-1.5rem)] overflow-hidden rounded-lg border border-border bg-popover p-0 text-popover-foreground ring-1 ring-foreground/10",
+          "flex flex-col gap-0",
           modalSizeClasses[size],
           className,
         )}
       >
-        <DialogHeader className="border-b border-border bg-secondary/70 px-5 py-4">
+        <DialogHeader className="shrink-0 border-b border-border bg-secondary/70 px-5 py-4">
           <div className="flex items-start gap-3 pr-8">
             {Icon && (
               <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
@@ -83,12 +86,17 @@ export function OperationsModal({
 
         <div
           className={cn(
-            "max-h-[calc(100vh-9rem)] overflow-y-auto px-5 py-4",
+            "min-h-0 flex-1 overflow-y-auto px-5 py-4",
             bodyClassName,
           )}
         >
           {children}
         </div>
+        {footer && (
+          <footer className="flex shrink-0 flex-col-reverse gap-2 border-t border-border bg-popover px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            {footer}
+          </footer>
+        )}
       </DialogContent>
     </Dialog>
   );

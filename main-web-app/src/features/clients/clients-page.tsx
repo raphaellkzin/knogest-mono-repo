@@ -23,7 +23,6 @@ export async function ClientsPage({
         basePath: "/home/clientes",
         createLabel: "Novo cliente",
         detailBasePath: "/home/clientes",
-        documentLabel: "CPF ou CNPJ",
         emptyDescription: "Clientes cadastrados aparecem aqui por empresa.",
         emptyTitle: "Nenhum cliente encontrado",
         newTitle: "Cadastrar cliente",

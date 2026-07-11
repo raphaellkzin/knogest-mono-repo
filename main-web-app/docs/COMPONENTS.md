@@ -48,3 +48,16 @@ src/components/pages/home/home-dashboard.tsx
 ## Páginas
 
 Arquivos em `src/app` devem compor dados, auth e layout. A UI específica deve ficar em `src/components/pages`.
+
+## Formulário Operacional
+
+Use `OperationsModal` para a casca de criação/edição e
+`src/components/ui/form-section.tsx` para agrupar campos relacionados. A seção
+é um `fieldset` com título obrigatório e descrição opcional; não deve conter
+regras de negócio nem controlar o envio.
+
+Anatomia: cabeçalho com ícone, título e descrição; corpo rolável com seções;
+feedback com `role="status"`; e rodapé fixo, fora da rolagem, com cancelar e
+ação primária.
+Funcionários, clientes e fornecedores de combustível são as referências do
+padrão reutilizável.

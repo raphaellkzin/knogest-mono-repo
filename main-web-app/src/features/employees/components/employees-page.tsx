@@ -16,15 +16,9 @@ import {
 } from "lucide-react";
 
 import { Button, buttonVariants } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+import { FormSection } from "@/components/ui/form-section";
 import { Input } from "@/components/ui/input";
+import { OperationsModal } from "@/components/ui/operations-modal";
 import { createJobRoleForEmployee } from "@/features/job-roles/job-roles.actions";
 import { formatCpf } from "../cpf-mask";
 import type { EmployeeActionState } from "../employees-action-state";
@@ -35,10 +29,10 @@ type EmployeeAction = (
   formData: FormData,
 ) => Promise<EmployeeActionState>;
 
-function SubmitButton() {
+function SubmitButton({ formId }: { formId?: string }) {
   const { pending } = useFormStatus();
   return (
-    <Button type="submit" disabled={pending}>
+    <Button form={formId} type="submit" disabled={pending}>
       <Plus className="size-4" />
       {pending ? "Salvando" : "Cadastrar funcionário"}
     </Button>
@@ -64,28 +58,6 @@ function Field({
   );
 }
 
-function FormSection({
-  title,
-  description,
-  children,
-}: {
-  title: string;
-  description?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <fieldset className="grid gap-3 rounded-md border border-border bg-secondary/20 p-4">
-      <legend className="px-1 text-sm font-bold">{title}</legend>
-      {description && (
-        <p className="-mt-1 text-sm leading-5 text-muted-foreground">
-          {description}
-        </p>
-      )}
-      {children}
-    </fieldset>
-  );
-}
-
 export function EmployeesPageView({
   action,
   initialState,
@@ -108,6 +80,7 @@ export function EmployeesPageView({
   const [roleMessage, setRoleMessage] = React.useState("");
   const [isCreatingRole, setIsCreatingRole] = React.useState(false);
   const [selectedRoleId, setSelectedRoleId] = React.useState("");
+  const [isEmployeeModalOpen, setIsEmployeeModalOpen] = React.useState(false);
   const hasFilters = Boolean(query.search || query.availability || query.state);
   const nextParams = new URLSearchParams();
   if (query.search) nextParams.set("search", query.search);
@@ -175,151 +148,166 @@ export function EmployeesPageView({
               </Button>
             </form>
 
-            <Dialog>
-              <DialogTrigger render={<Button />}>
-                <Plus className="size-4" />
-                Novo funcionário
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-xl">
-                <DialogHeader>
-                  <DialogTitle>Cadastrar funcionário</DialogTitle>
-                </DialogHeader>
-                <form action={formAction} className="grid gap-4">
-                  <FormSection title="Dados pessoais">
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <label className="grid gap-1.5 text-sm font-semibold">
-                        <span>CPF</span>
-                        <Input
-                          name="document"
-                          required
-                          inputMode="numeric"
-                          autoComplete="off"
-                          placeholder="000.000.000-00"
-                          maxLength={14}
-                          onChange={(event) => {
-                            event.currentTarget.value = formatCpf(
-                              event.currentTarget.value,
-                            );
-                          }}
-                          className="h-11"
-                          aria-describedby="cpf-help"
-                        />
-                      </label>
-                      <Field label="Nome completo" name="fullName" required />
-                    </div>
-                  </FormSection>
-                  <FormSection title="Vínculo">
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <Field
-                        label="Matrícula"
-                        name="companyRegistrationNumber"
-                        required
-                      />
-                      <Field
-                        label="Admissão"
-                        name="admissionDate"
-                        required
-                        type="date"
-                      />
-                    </div>
-                  </FormSection>
-                  <FormSection
-                    title="Função"
-                    description="A função fica registrada no vínculo e será confirmada ao alocar o funcionário na obra."
+            <OperationsModal
+              icon={UserRound}
+              open={isEmployeeModalOpen}
+              onOpenChange={setIsEmployeeModalOpen}
+              size="lg"
+              title="Cadastrar funcionário"
+              description="Registre os dados do vínculo e a função que será confirmada na alocação da obra."
+              footer={
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setIsEmployeeModalOpen(false)}
                   >
+                    Cancelar
+                  </Button>
+                  <SubmitButton formId="employee-create-form" />
+                </>
+              }
+              trigger={
+                <Button>
+                  <Plus className="size-4" />
+                  Novo funcionário
+                </Button>
+              }
+            >
+              <form
+                id="employee-create-form"
+                action={formAction}
+                className="grid gap-4"
+              >
+                <FormSection title="Dados pessoais">
+                  <div className="grid gap-3 md:grid-cols-2">
                     <label className="grid gap-1.5 text-sm font-semibold">
-                      <span>Função</span>
-                      <select
-                        name="jobRoleId"
+                      <span>CPF</span>
+                      <Input
+                        name="document"
                         required
-                        value={selectedRoleId}
-                        onChange={(event) =>
-                          setSelectedRoleId(event.target.value)
-                        }
-                        className="min-h-11 rounded-md border border-input bg-background px-3"
-                      >
-                        <option value="">Selecione a função</option>
-                        {roles
-                          .filter((role) => role.isActive)
-                          .map((role) => (
-                            <option key={role.id} value={role.id}>
-                              {role.name}
-                            </option>
-                          ))}
-                      </select>
+                        inputMode="numeric"
+                        autoComplete="off"
+                        placeholder="000.000.000-00"
+                        maxLength={14}
+                        onChange={(event) => {
+                          event.currentTarget.value = formatCpf(
+                            event.currentTarget.value,
+                          );
+                        }}
+                        className="h-11"
+                        aria-describedby="cpf-help"
+                      />
                     </label>
-                    {showRoleCreator ? (
-                      <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-                        <Input
-                          value={newRoleName}
-                          onChange={(event) =>
-                            setNewRoleName(event.target.value)
-                          }
-                          placeholder="Nome da nova função"
-                          maxLength={120}
-                          className="min-h-11"
-                        />
-                        <Button
-                          type="button"
-                          variant="outline"
-                          disabled={!newRoleName.trim() || isCreatingRole}
-                          onClick={async () => {
-                            setIsCreatingRole(true);
-                            setRoleMessage("");
-                            const data = new FormData();
-                            data.set("name", newRoleName);
-                            const result = await createJobRoleForEmployee(data);
-                            setIsCreatingRole(false);
-                            setRoleMessage(result.message);
-                            const role = result.ok ? result.data : undefined;
-                            if (role) {
-                              setRoles((current) => [...current, role]);
-                              setSelectedRoleId(role.id);
-                              setNewRoleName("");
-                              setShowRoleCreator(false);
-                            }
-                          }}
-                        >
-                          {isCreatingRole ? "Criando…" : "Criar e selecionar"}
-                        </Button>
-                      </div>
-                    ) : (
+                    <Field label="Nome completo" name="fullName" required />
+                  </div>
+                </FormSection>
+                <FormSection title="Vínculo">
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <Field
+                      label="Matrícula"
+                      name="companyRegistrationNumber"
+                      required
+                    />
+                    <Field
+                      label="Admissão"
+                      name="admissionDate"
+                      required
+                      type="date"
+                    />
+                  </div>
+                </FormSection>
+                <FormSection
+                  title="Função"
+                  description="A função fica registrada no vínculo e será confirmada ao alocar o funcionário na obra."
+                >
+                  <label className="grid gap-1.5 text-sm font-semibold">
+                    <span>Função</span>
+                    <select
+                      name="jobRoleId"
+                      required
+                      value={selectedRoleId}
+                      onChange={(event) =>
+                        setSelectedRoleId(event.target.value)
+                      }
+                      className="min-h-11 rounded-md border border-input bg-background px-3"
+                    >
+                      <option value="">Selecione a função</option>
+                      {roles
+                        .filter((role) => role.isActive)
+                        .map((role) => (
+                          <option key={role.id} value={role.id}>
+                            {role.name}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                  {showRoleCreator ? (
+                    <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                      <Input
+                        value={newRoleName}
+                        onChange={(event) => setNewRoleName(event.target.value)}
+                        placeholder="Nome da nova função"
+                        maxLength={120}
+                        className="min-h-11"
+                      />
                       <Button
                         type="button"
                         variant="outline"
-                        className="justify-self-start min-h-11"
-                        onClick={() => setShowRoleCreator(true)}
+                        disabled={!newRoleName.trim() || isCreatingRole}
+                        onClick={async () => {
+                          setIsCreatingRole(true);
+                          setRoleMessage("");
+                          const data = new FormData();
+                          data.set("name", newRoleName);
+                          const result = await createJobRoleForEmployee(data);
+                          setIsCreatingRole(false);
+                          setRoleMessage(result.message);
+                          const role = result.ok ? result.data : undefined;
+                          if (role) {
+                            setRoles((current) => [...current, role]);
+                            setSelectedRoleId(role.id);
+                            setNewRoleName("");
+                            setShowRoleCreator(false);
+                          }
+                        }}
                       >
-                        Criar nova função
+                        {isCreatingRole ? "Criando…" : "Criar e selecionar"}
                       </Button>
-                    )}
-                    {roleMessage && (
-                      <p
-                        role="status"
-                        className="text-sm font-medium text-muted-foreground"
-                      >
-                        {roleMessage}
-                      </p>
-                    )}
-                  </FormSection>
-                  {state.message && (
+                    </div>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="justify-self-start min-h-11"
+                      onClick={() => setShowRoleCreator(true)}
+                    >
+                      Criar nova função
+                    </Button>
+                  )}
+                  {roleMessage && (
                     <p
                       role="status"
-                      className={`rounded-md border px-3 py-2 text-sm font-semibold ${
-                        state.ok
-                          ? "border-emerald-200 bg-emerald-50 text-emerald-950"
-                          : "border-red-200 bg-red-50 text-red-950"
-                      }`}
+                      className="text-sm font-medium text-muted-foreground"
                     >
-                      {state.message}
+                      {roleMessage}
                     </p>
                   )}
-                  <DialogFooter>
-                    <SubmitButton />
-                  </DialogFooter>
-                </form>
-              </DialogContent>
-            </Dialog>
+                </FormSection>
+                {state.message && (
+                  <p
+                    role="status"
+                    className={`rounded-md border px-3 py-2 text-sm font-semibold ${
+                      state.ok
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-950"
+                        : "border-red-200 bg-red-50 text-red-950"
+                    }`}
+                  >
+                    {state.message}
+                  </p>
+                )}
+              </form>
+            </OperationsModal>
           </div>
         </div>
 

@@ -23,7 +23,6 @@ export async function FuelSuppliersPage({
         basePath: "/home/fornecedores",
         createLabel: "Novo fornecedor",
         detailBasePath: "/home/fornecedores",
-        documentLabel: "CPF ou CNPJ",
         emptyDescription:
           "Fornecedores de combustível ativos aparecem aqui por empresa.",
         emptyTitle: "Nenhum fornecedor encontrado",

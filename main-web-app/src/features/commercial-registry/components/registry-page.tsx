@@ -6,6 +6,7 @@ import { useFormStatus } from "react-dom";
 import Link from "next/link";
 import {
   ArrowDownAZ,
+  Building2,
   CalendarArrowDown,
   ChevronRight,
   Eye,
@@ -16,16 +17,15 @@ import {
 } from "lucide-react";
 
 import { Button, buttonVariants } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+import { FormSection } from "@/components/ui/form-section";
 import { Input } from "@/components/ui/input";
+import { OperationsModal } from "@/components/ui/operations-modal";
+import {
+  formatBrazilianPhone,
+  formatCep,
+  formatCnpj,
+  formatCpf,
+} from "@/lib/brazilian-input-mask";
 import type { RegistryActionState } from "../commercial-registry-action-state";
 import type {
   RegistryListItem,
@@ -36,7 +36,6 @@ type RegistryCopy = {
   basePath: string;
   createLabel: string;
   detailBasePath: string;
-  documentLabel: string;
   emptyDescription: string;
   emptyTitle: string;
   newTitle: string;
@@ -51,10 +50,10 @@ type RegistryAction = (
 
 type RemoveAction = RegistryAction;
 
-function SubmitButton({ label }: { label: string }) {
+function SubmitButton({ formId, label }: { formId?: string; label: string }) {
   const { pending } = useFormStatus();
   return (
-    <Button type="submit" disabled={pending}>
+    <Button form={formId} type="submit" disabled={pending}>
       <Plus className="size-4" />
       {pending ? "Salvando" : label}
     </Button>
@@ -82,19 +81,99 @@ function Field({
   name,
   required = false,
   type = "text",
+  value,
+  onChange,
+  className,
+  ...inputProps
 }: {
   label: string;
   name: string;
   required?: boolean;
   type?: string;
-}) {
+  value: string;
+  onChange: React.ChangeEventHandler<HTMLInputElement>;
+  className?: string;
+} & Omit<
+  React.ComponentProps<typeof Input>,
+  "className" | "name" | "onChange" | "required" | "type" | "value"
+>) {
+  const id = `registry-${name}`;
   return (
-    <label className="grid gap-1.5 text-sm font-semibold">
-      <span>{label}</span>
-      <Input name={name} required={required} type={type} className="h-10" />
-    </label>
+    <div className={`grid gap-1.5 text-sm font-semibold ${className ?? ""}`}>
+      <label htmlFor={id}>{label}</label>
+      <Input
+        id={id}
+        name={name}
+        required={required}
+        type={type}
+        value={value}
+        onChange={onChange}
+        className="min-h-11"
+        {...inputProps}
+      />
+    </div>
   );
 }
+
+const BRAZILIAN_STATES = [
+  ["AC", "Acre"],
+  ["AL", "Alagoas"],
+  ["AP", "Amapá"],
+  ["AM", "Amazonas"],
+  ["BA", "Bahia"],
+  ["CE", "Ceará"],
+  ["DF", "Distrito Federal"],
+  ["ES", "Espírito Santo"],
+  ["GO", "Goiás"],
+  ["MA", "Maranhão"],
+  ["MT", "Mato Grosso"],
+  ["MS", "Mato Grosso do Sul"],
+  ["MG", "Minas Gerais"],
+  ["PA", "Pará"],
+  ["PB", "Paraíba"],
+  ["PR", "Paraná"],
+  ["PE", "Pernambuco"],
+  ["PI", "Piauí"],
+  ["RJ", "Rio de Janeiro"],
+  ["RN", "Rio Grande do Norte"],
+  ["RS", "Rio Grande do Sul"],
+  ["RO", "Rondônia"],
+  ["RR", "Roraima"],
+  ["SC", "Santa Catarina"],
+  ["SP", "São Paulo"],
+  ["SE", "Sergipe"],
+  ["TO", "Tocantins"],
+] as const;
+
+type IndividualDraft = { document: string; fullName: string };
+type LegalEntityDraft = {
+  document: string;
+  legalName: string;
+  tradeName: string;
+};
+type SharedDraft = {
+  phone: string;
+  email: string;
+  addressLine: string;
+  city: string;
+  state: string;
+  postalCode: string;
+};
+
+const emptyIndividualDraft: IndividualDraft = { document: "", fullName: "" };
+const emptyLegalEntityDraft: LegalEntityDraft = {
+  document: "",
+  legalName: "",
+  tradeName: "",
+};
+const emptySharedDraft: SharedDraft = {
+  phone: "",
+  email: "",
+  addressLine: "",
+  city: "",
+  state: "",
+  postalCode: "",
+};
 
 export function RegistryPage({
   action,
@@ -116,7 +195,13 @@ export function RegistryPage({
   const [entityType, setEntityType] = React.useState<
     "individual" | "legal_entity"
   >("individual");
-  const [state, formAction] = useActionState(action, initialState);
+  const [individualDraft, setIndividualDraft] =
+    React.useState<IndividualDraft>(emptyIndividualDraft);
+  const [legalEntityDraft, setLegalEntityDraft] =
+    React.useState<LegalEntityDraft>(emptyLegalEntityDraft);
+  const [sharedDraft, setSharedDraft] =
+    React.useState<SharedDraft>(emptySharedDraft);
+  const [isCreateModalOpen, setIsCreateModalOpen] = React.useState(false);
   const [removeState, removeFormAction] = useActionState(
     removeAction,
     initialState,
@@ -129,13 +214,47 @@ export function RegistryPage({
   if (query.sortDirection) nextParams.set("sortDirection", query.sortDirection);
   if (pageInfo.nextCursor) nextParams.set("cursor", pageInfo.nextCursor);
 
+  const setIndividual = (key: keyof IndividualDraft, value: string) =>
+    setIndividualDraft((draft) => ({ ...draft, [key]: value }));
+  const setLegalEntity = (key: keyof LegalEntityDraft, value: string) =>
+    setLegalEntityDraft((draft) => ({ ...draft, [key]: value }));
+  const setShared = (key: keyof SharedDraft, value: string) =>
+    setSharedDraft((draft) => ({ ...draft, [key]: value }));
+  const resetCreateForm = React.useCallback(() => {
+    setEntityType("individual");
+    setIndividualDraft(emptyIndividualDraft);
+    setLegalEntityDraft(emptyLegalEntityDraft);
+    setSharedDraft(emptySharedDraft);
+  }, []);
+  const handleCreateModalChange = React.useCallback(
+    (open: boolean) => {
+      setIsCreateModalOpen(open);
+      if (!open) resetCreateForm();
+    },
+    [resetCreateForm],
+  );
+
+  const [state, formAction] = useActionState(
+    async (previousState: RegistryActionState, formData: FormData) => {
+      const result = await action(previousState, formData);
+      if (result.ok) {
+        resetCreateForm();
+        setIsCreateModalOpen(false);
+      }
+      return result;
+    },
+    initialState,
+  );
+
   return (
     <div className="space-y-4">
       <section className="grid gap-3 md:grid-cols-3" aria-label="Resumo">
         <Summary label="Registros ativos" value={String(rows.length)} />
         <Summary
           label="Pessoa física"
-          value={String(rows.filter((row) => row.entityType === "individual").length)}
+          value={String(
+            rows.filter((row) => row.entityType === "individual").length,
+          )}
         />
         <Summary
           label="Pessoa jurídica"
@@ -185,84 +304,257 @@ export function RegistryPage({
               </Button>
             </form>
 
-            <Dialog>
-              <DialogTrigger render={<Button />}>
-                <Plus className="size-4" />
-                {copy.createLabel}
-              </DialogTrigger>
-              <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-2xl">
-                <DialogHeader>
-                  <DialogTitle>{copy.newTitle}</DialogTitle>
-                  <DialogDescription>
-                    O documento completo aparece somente no detalhe autorizado.
-                  </DialogDescription>
-                </DialogHeader>
-                <form action={formAction} className="grid gap-4">
-                  <input name="entityType" type="hidden" value={entityType} />
-                  <div className="grid grid-cols-2 gap-2 rounded-md bg-muted p-1">
-                    <button
+            <OperationsModal
+              icon={Building2}
+              open={isCreateModalOpen}
+              onOpenChange={handleCreateModalChange}
+              size="lg"
+              title={copy.newTitle}
+              description="O documento completo aparece somente no detalhe autorizado."
+              footer={
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => handleCreateModalChange(false)}
+                  >
+                    Cancelar
+                  </Button>
+                  <SubmitButton
+                    formId="commercial-registry-create-form"
+                    label={copy.createLabel}
+                  />
+                </>
+              }
+              trigger={
+                <Button>
+                  <Plus className="size-4" />
+                  {copy.createLabel}
+                </Button>
+              }
+            >
+              <form
+                id="commercial-registry-create-form"
+                action={formAction}
+                className="grid gap-4"
+              >
+                <input name="entityType" type="hidden" value={entityType} />
+                <FormSection
+                  title="Tipo de pessoa"
+                  description="Escolha como este cadastro será identificado. Seus dados ficam preservados ao alternar."
+                >
+                  <div
+                    className="grid grid-cols-2 gap-2 rounded-md bg-muted p-1"
+                    role="group"
+                    aria-label="Tipo de pessoa"
+                  >
+                    <Button
                       type="button"
+                      variant={
+                        entityType === "individual" ? "default" : "outline"
+                      }
+                      className="min-h-11 font-bold"
+                      aria-pressed={entityType === "individual"}
                       onClick={() => setEntityType("individual")}
-                      className={`h-10 rounded-sm text-sm font-bold ${
-                        entityType === "individual"
-                          ? "bg-background text-foreground shadow-sm"
-                          : "text-muted-foreground"
-                      }`}
                     >
                       Pessoa física
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       type="button"
+                      variant={
+                        entityType === "legal_entity" ? "default" : "outline"
+                      }
+                      className="min-h-11 font-bold"
+                      aria-pressed={entityType === "legal_entity"}
                       onClick={() => setEntityType("legal_entity")}
-                      className={`h-10 rounded-sm text-sm font-bold ${
-                        entityType === "legal_entity"
-                          ? "bg-background text-foreground shadow-sm"
-                          : "text-muted-foreground"
-                      }`}
                     >
                       Pessoa jurídica
-                    </button>
+                    </Button>
                   </div>
+                </FormSection>
 
+                <FormSection title="Identificação">
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {entityType === "individual" ? (
+                      <>
+                        <Field
+                          label="CPF"
+                          name="document"
+                          required
+                          value={individualDraft.document}
+                          onChange={(event) =>
+                            setIndividual(
+                              "document",
+                              formatCpf(event.target.value),
+                            )
+                          }
+                          inputMode="numeric"
+                          autoComplete="off"
+                          placeholder="000.000.000-00"
+                          maxLength={14}
+                          aria-describedby="registry-document-help"
+                        />
+                        <Field
+                          label="Nome completo"
+                          name="fullName"
+                          required
+                          value={individualDraft.fullName}
+                          onChange={(event) =>
+                            setIndividual("fullName", event.target.value)
+                          }
+                          autoComplete="name"
+                        />
+                      </>
+                    ) : (
+                      <>
+                        <Field
+                          label="CNPJ"
+                          name="document"
+                          required
+                          value={legalEntityDraft.document}
+                          onChange={(event) =>
+                            setLegalEntity(
+                              "document",
+                              formatCnpj(event.target.value),
+                            )
+                          }
+                          inputMode="numeric"
+                          autoComplete="off"
+                          placeholder="00.000.000/0000-00"
+                          maxLength={18}
+                          aria-describedby="registry-document-help"
+                        />
+                        <Field
+                          label="Razão social"
+                          name="legalName"
+                          required
+                          value={legalEntityDraft.legalName}
+                          onChange={(event) =>
+                            setLegalEntity("legalName", event.target.value)
+                          }
+                          autoComplete="organization"
+                        />
+                        <Field
+                          label="Nome fantasia"
+                          name="tradeName"
+                          value={legalEntityDraft.tradeName}
+                          onChange={(event) =>
+                            setLegalEntity("tradeName", event.target.value)
+                          }
+                          className="md:col-span-2"
+                        />
+                      </>
+                    )}
+                  </div>
+                  <p
+                    id="registry-document-help"
+                    className="text-sm text-muted-foreground"
+                  >
+                    Digite ou cole somente os números; o formato é aplicado
+                    automaticamente.
+                  </p>
+                </FormSection>
+
+                <FormSection title="Contato">
                   <div className="grid gap-3 md:grid-cols-2">
                     <Field
-                      label={copy.documentLabel}
-                      name="document"
-                      required
+                      label="Telefone"
+                      name="phone"
+                      value={sharedDraft.phone}
+                      onChange={(event) =>
+                        setShared(
+                          "phone",
+                          formatBrazilianPhone(event.target.value),
+                        )
+                      }
+                      inputMode="numeric"
+                      autoComplete="tel"
+                      placeholder="(00) 00000-0000"
+                      maxLength={15}
                     />
-                    {entityType === "individual" ? (
-                      <Field label="Nome completo" name="fullName" required />
-                    ) : (
-                      <Field label="Razão social" name="legalName" required />
-                    )}
-                    <Field label="Nome fantasia" name="tradeName" />
-                    <Field label="Telefone" name="phone" />
-                    <Field label="Email" name="email" type="email" />
-                    <Field label="Endereço" name="addressLine" />
-                    <Field label="Cidade" name="city" />
-                    <Field label="Estado" name="state" />
-                    <Field label="CEP" name="postalCode" />
+                    <Field
+                      label="E-mail"
+                      name="email"
+                      type="email"
+                      value={sharedDraft.email}
+                      onChange={(event) =>
+                        setShared("email", event.target.value)
+                      }
+                      autoComplete="email"
+                    />
                   </div>
+                </FormSection>
 
-                  {state.message && (
-                    <p
-                      role="status"
-                      className={`rounded-md border px-3 py-2 text-sm font-semibold ${
-                        state.ok
-                          ? "border-emerald-200 bg-emerald-50 text-emerald-950"
-                          : "border-red-200 bg-red-50 text-red-950"
-                      }`}
-                    >
-                      {state.message}
-                    </p>
-                  )}
+                <FormSection title="Endereço">
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <Field
+                      label="Endereço"
+                      name="addressLine"
+                      value={sharedDraft.addressLine}
+                      onChange={(event) =>
+                        setShared("addressLine", event.target.value)
+                      }
+                      autoComplete="street-address"
+                      className="md:col-span-2"
+                    />
+                    <Field
+                      label="Cidade"
+                      name="city"
+                      value={sharedDraft.city}
+                      onChange={(event) =>
+                        setShared("city", event.target.value)
+                      }
+                      autoComplete="address-level2"
+                    />
+                    <div className="grid gap-1.5 text-sm font-semibold">
+                      <label htmlFor="registry-state">Estado</label>
+                      <select
+                        id="registry-state"
+                        name="state"
+                        value={sharedDraft.state}
+                        onChange={(event) =>
+                          setShared("state", event.target.value)
+                        }
+                        autoComplete="address-level1"
+                        className="min-h-11 rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
+                      >
+                        <option value="">Selecione a UF</option>
+                        {BRAZILIAN_STATES.map(([code, name]) => (
+                          <option key={code} value={code}>
+                            {code} — {name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <Field
+                      label="CEP"
+                      name="postalCode"
+                      value={sharedDraft.postalCode}
+                      onChange={(event) =>
+                        setShared("postalCode", formatCep(event.target.value))
+                      }
+                      inputMode="numeric"
+                      autoComplete="postal-code"
+                      placeholder="00000-000"
+                      maxLength={9}
+                    />
+                  </div>
+                </FormSection>
 
-                  <DialogFooter>
-                    <SubmitButton label={copy.createLabel} />
-                  </DialogFooter>
-                </form>
-              </DialogContent>
-            </Dialog>
+                {state.message && (
+                  <p
+                    role="status"
+                    className={`rounded-md border px-3 py-2 text-sm font-semibold ${
+                      state.ok
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-950"
+                        : "border-red-200 bg-red-50 text-red-950"
+                    }`}
+                  >
+                    {state.message}
+                  </p>
+                )}
+              </form>
+            </OperationsModal>
           </div>
         </div>
 
