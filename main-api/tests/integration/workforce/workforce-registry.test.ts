@@ -27,13 +27,28 @@ describe("workforce Person and Employment registry", () => {
   afterAll(() => app.close());
 
   async function provision(suffix: string) {
-    return organization.provision({
+    const provisioned = await organization.provision({
       corporationName: `Workforce ${suffix}`,
       domainHost: `workforce-${suffix}.localhost`,
       adminEmail: "master@example.com",
       adminPassword: "correct integration password",
       companyNames: ["One", "Two"],
     });
+    const jobRoleIds = await Promise.all(
+      provisioned.companies.map(async (company) => {
+        const jobRole = await app.prisma.jobRole.create({
+          data: {
+            corporationId: provisioned.corporation.id,
+            companyId: company.id,
+            name: "Operador",
+            normalizedName: "operador",
+          },
+          select: { id: true },
+        });
+        return jobRole.id;
+      }),
+    );
+    return { ...provisioned, jobRoleIds };
   }
 
   async function authFor(input: {
@@ -66,12 +81,14 @@ describe("workforce Person and Employment registry", () => {
     registration = "EMP-001",
     document = syntheticCpfFixture,
     fullName = "Synthetic Worker",
+    jobRoleId = "",
   ) {
     return {
       document,
       fullName,
       companyRegistrationNumber: registration,
       admissionDate: "2026-07-01",
+      jobRoleId,
     };
   }
 
@@ -79,12 +96,18 @@ describe("workforce Person and Employment registry", () => {
     authorization: string,
     registration = "EMP-001",
     document = syntheticCpfFixture,
+    jobRoleId = "",
   ) {
     const response = await app.inject({
       method: "POST",
       url: "/api/v1/employees",
       headers: { authorization },
-      payload: payload(registration, document, `Synthetic Worker ${registration}`),
+      payload: payload(
+        registration,
+        document,
+        `Synthetic Worker ${registration}`,
+        jobRoleId,
+      ),
     });
     expect(response.statusCode).toBe(201);
     return response.json().data as {
@@ -142,7 +165,7 @@ describe("workforce Person and Employment registry", () => {
       method: "POST",
       url: "/api/v1/employees",
       headers: { authorization },
-      payload: payload(),
+      payload: payload(undefined, undefined, undefined, pilot.jobRoleIds[0]),
     });
     expect(created.statusCode).toBe(201);
     expect(created.json().data.person.document.plaintextDocument).toBe(
@@ -186,16 +209,16 @@ describe("workforce Person and Employment registry", () => {
       companyId: second.companies[0].id,
     });
 
-    for (const [authorization, registration] of [
-      [firstCompanyOne, "EMP-001"],
-      [firstCompanyTwo, "EMP-002"],
-      [secondCompany, "EMP-001"],
+    for (const [authorization, registration, jobRoleId] of [
+      [firstCompanyOne, "EMP-001", first.jobRoleIds[0]],
+      [firstCompanyTwo, "EMP-002", first.jobRoleIds[1]],
+      [secondCompany, "EMP-001", second.jobRoleIds[0]],
     ] as const) {
       const response = await app.inject({
         method: "POST",
         url: "/api/v1/employees",
         headers: { authorization },
-        payload: payload(registration),
+        payload: payload(registration, undefined, undefined, jobRoleId),
       });
       expect(response.statusCode).toBe(201);
     }
@@ -218,7 +241,12 @@ describe("workforce Person and Employment registry", () => {
           method: "POST",
           url: "/api/v1/employees",
           headers: { authorization },
-          payload: payload("EMP-001"),
+          payload: payload(
+            "EMP-001",
+            undefined,
+            undefined,
+            pilot.jobRoleIds[0],
+          ),
         })
       ).statusCode,
     ).toBe(201);
@@ -227,7 +255,7 @@ describe("workforce Person and Employment registry", () => {
       method: "POST",
       url: "/api/v1/employees",
       headers: { authorization },
-      payload: payload("EMP-002"),
+      payload: payload("EMP-002", undefined, undefined, pilot.jobRoleIds[0]),
     });
     expect(duplicateEmployment.statusCode).toBe(409);
     expect(duplicateEmployment.json()).toMatchObject({
@@ -243,6 +271,7 @@ describe("workforce Person and Employment registry", () => {
         fullName: "Synthetic Second Worker",
         companyRegistrationNumber: "EMP-001",
         admissionDate: "2026-07-02",
+        jobRoleId: pilot.jobRoleIds[0],
       },
     });
     expect(duplicateRegistration.statusCode).toBe(409);
@@ -259,7 +288,12 @@ describe("workforce Person and Employment registry", () => {
       userId: pilot.administrator.id,
       companyId: pilot.companies[0].id,
     });
-    const created = await createEmployee(authorization);
+    const created = await createEmployee(
+      authorization,
+      undefined,
+      undefined,
+      pilot.jobRoleIds[0],
+    );
     const closedPeriodId = created.periods[0].id;
     await terminateEmploymentDirectly({
       corporationId: pilot.corporation.id,
@@ -285,10 +319,11 @@ describe("workforce Person and Employment registry", () => {
       availability: { state: "available", hasOpenAllocation: false },
     });
     expect(response.json().data.periods).toHaveLength(2);
-    expect(response.json().data.periods.map((period: { state: string }) => period.state)).toEqual([
-      "current",
-      "closed",
-    ]);
+    expect(
+      response
+        .json()
+        .data.periods.map((period: { state: string }) => period.state),
+    ).toEqual(["current", "closed"]);
 
     const afterClosed = await app.prisma.employmentPeriod.findUniqueOrThrow({
       where: { id: closedPeriodId },
@@ -314,7 +349,12 @@ describe("workforce Person and Employment registry", () => {
       userId: pilot.administrator.id,
       companyId: pilot.companies[0].id,
     });
-    const active = await createEmployee(authorization, "EMP-ACTIVE");
+    const active = await createEmployee(
+      authorization,
+      "EMP-ACTIVE",
+      undefined,
+      pilot.jobRoleIds[0],
+    );
 
     const activeResponse = await app.inject({
       method: "POST",
@@ -332,6 +372,7 @@ describe("workforce Person and Employment registry", () => {
       authorization,
       "EMP-RACE",
       secondarySyntheticCpfFixture,
+      pilot.jobRoleIds[0],
     );
     await terminateEmploymentDirectly({
       corporationId: pilot.corporation.id,
@@ -391,7 +432,12 @@ describe("workforce Person and Employment registry", () => {
       userId: pilot.administrator.id,
       companyId: pilot.companies[1].id,
     });
-    const created = await createEmployee(firstCompany);
+    const created = await createEmployee(
+      firstCompany,
+      undefined,
+      undefined,
+      pilot.jobRoleIds[0],
+    );
     await terminateEmploymentDirectly({
       corporationId: pilot.corporation.id,
       companyId: pilot.companies[0].id,
@@ -445,7 +491,12 @@ describe("workforce Person and Employment registry", () => {
       userId: pilot.administrator.id,
       companyId: pilot.companies[0].id,
     });
-    const created = await createEmployee(authorization);
+    const created = await createEmployee(
+      authorization,
+      undefined,
+      undefined,
+      pilot.jobRoleIds[0],
+    );
     await terminateEmploymentDirectly({
       corporationId: pilot.corporation.id,
       companyId: pilot.companies[0].id,
