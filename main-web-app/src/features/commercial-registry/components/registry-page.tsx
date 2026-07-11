@@ -446,13 +446,6 @@ export function RegistryPage({
                       </>
                     )}
                   </div>
-                  <p
-                    id="registry-document-help"
-                    className="text-sm text-muted-foreground"
-                  >
-                    Digite ou cole somente os números; o formato é aplicado
-                    automaticamente.
-                  </p>
                 </FormSection>
 
                 <FormSection title="Contato">
