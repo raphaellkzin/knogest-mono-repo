@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { createJobRoleForEmployee } from "@/features/job-roles/job-roles.actions";
+import { formatCpf } from "../cpf-mask";
 import type { EmployeeActionState } from "../employees-action-state";
 import type { EmployeeListItem, EmployeesListQuery } from "../employees.server";
 
@@ -58,8 +59,30 @@ function Field({
   return (
     <label className="grid gap-1.5 text-sm font-semibold">
       <span>{label}</span>
-      <Input name={name} required={required} type={type} className="h-10" />
+      <Input name={name} required={required} type={type} className="h-11" />
     </label>
+  );
+}
+
+function FormSection({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <fieldset className="grid gap-3 rounded-md border border-border bg-secondary/20 p-4">
+      <legend className="px-1 text-sm font-bold">{title}</legend>
+      {description && (
+        <p className="-mt-1 text-sm leading-5 text-muted-foreground">
+          {description}
+        </p>
+      )}
+      {children}
+    </fieldset>
   );
 }
 
@@ -81,6 +104,9 @@ export function EmployeesPageView({
   const [state, formAction] = useActionState(action, initialState);
   const [roles, setRoles] = React.useState(jobRoles);
   const [newRoleName, setNewRoleName] = React.useState("");
+  const [showRoleCreator, setShowRoleCreator] = React.useState(false);
+  const [roleMessage, setRoleMessage] = React.useState("");
+  const [isCreatingRole, setIsCreatingRole] = React.useState(false);
   const [selectedRoleId, setSelectedRoleId] = React.useState("");
   const hasFilters = Boolean(query.search || query.availability || query.state);
   const nextParams = new URLSearchParams();
@@ -159,29 +185,123 @@ export function EmployeesPageView({
                   <DialogTitle>Cadastrar funcionário</DialogTitle>
                 </DialogHeader>
                 <form action={formAction} className="grid gap-4">
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <Field label="CPF" name="document" required />
-                    <Field label="Nome completo" name="fullName" required />
-                    <Field
-                      label="Matrícula"
-                      name="companyRegistrationNumber"
-                      required
-                    />
-                    <Field
-                      label="Admissão"
-                      name="admissionDate"
-                      required
-                      type="date"
-                    />
-                    <label className="grid gap-1.5 text-sm font-semibold md:col-span-2">
+                  <FormSection title="Dados pessoais">
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <label className="grid gap-1.5 text-sm font-semibold">
+                        <span>CPF</span>
+                        <Input
+                          name="document"
+                          required
+                          inputMode="numeric"
+                          autoComplete="off"
+                          placeholder="000.000.000-00"
+                          maxLength={14}
+                          onChange={(event) => {
+                            event.currentTarget.value = formatCpf(
+                              event.currentTarget.value,
+                            );
+                          }}
+                          className="h-11"
+                          aria-describedby="cpf-help"
+                        />
+                      </label>
+                      <Field label="Nome completo" name="fullName" required />
+                    </div>
+                  </FormSection>
+                  <FormSection title="Vínculo">
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <Field
+                        label="Matrícula"
+                        name="companyRegistrationNumber"
+                        required
+                      />
+                      <Field
+                        label="Admissão"
+                        name="admissionDate"
+                        required
+                        type="date"
+                      />
+                    </div>
+                  </FormSection>
+                  <FormSection
+                    title="Função"
+                    description="A função fica registrada no vínculo e será confirmada ao alocar o funcionário na obra."
+                  >
+                    <label className="grid gap-1.5 text-sm font-semibold">
                       <span>Função</span>
-                      <select name="jobRoleId" required value={selectedRoleId} onChange={(event) => setSelectedRoleId(event.target.value)} className="h-10 rounded-md border border-input bg-background px-3">
+                      <select
+                        name="jobRoleId"
+                        required
+                        value={selectedRoleId}
+                        onChange={(event) =>
+                          setSelectedRoleId(event.target.value)
+                        }
+                        className="min-h-11 rounded-md border border-input bg-background px-3"
+                      >
                         <option value="">Selecione a função</option>
-                        {roles.filter((role) => role.isActive).map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}
+                        {roles
+                          .filter((role) => role.isActive)
+                          .map((role) => (
+                            <option key={role.id} value={role.id}>
+                              {role.name}
+                            </option>
+                          ))}
                       </select>
-              <div className="flex gap-2"><Input value={newRoleName} onChange={(event) => setNewRoleName(event.target.value)} placeholder="Criar nova função" /><Button type="button" variant="outline" onClick={async () => { const data = new FormData(); data.set("name", newRoleName); const role = await createJobRoleForEmployee(data); if (role) { setRoles((current) => [...current, role]); setSelectedRoleId(role.id); setNewRoleName(""); } }} disabled={!newRoleName.trim()}>Criar</Button></div>
                     </label>
-                  </div>
+                    {showRoleCreator ? (
+                      <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                        <Input
+                          value={newRoleName}
+                          onChange={(event) =>
+                            setNewRoleName(event.target.value)
+                          }
+                          placeholder="Nome da nova função"
+                          maxLength={120}
+                          className="min-h-11"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          disabled={!newRoleName.trim() || isCreatingRole}
+                          onClick={async () => {
+                            setIsCreatingRole(true);
+                            setRoleMessage("");
+                            const data = new FormData();
+                            data.set("name", newRoleName);
+                            const result = await createJobRoleForEmployee(data);
+                            setIsCreatingRole(false);
+                            setRoleMessage(result.message);
+                            const role = result.ok ? result.data : undefined;
+                            if (role) {
+                              setRoles((current) => [...current, role]);
+                              setSelectedRoleId(role.id);
+                              setNewRoleName("");
+                              setShowRoleCreator(false);
+                            }
+                          }}
+                        >
+                          {isCreatingRole ? "Criando…" : "Criar e selecionar"}
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="justify-self-start min-h-11"
+                        onClick={() => setShowRoleCreator(true)}
+                      >
+                        Criar nova função
+                      </Button>
+                    )}
+                    {roleMessage && (
+                      <p
+                        role="status"
+                        className="text-sm font-medium text-muted-foreground"
+                      >
+                        {roleMessage}
+                      </p>
+                    )}
+                  </FormSection>
                   {state.message && (
                     <p
                       role="status"
@@ -204,15 +324,23 @@ export function EmployeesPageView({
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[760px] text-left text-sm">
+          <table className="w-full min-w-[600px] text-left text-sm">
             <thead>
               <tr className="border-b border-border">
                 <TableHead icon={UserRound} label="Nome" />
-                <TableHead icon={FileSearch} label="CPF" />
-                <TableHead label="Matrícula" />
+                <TableHead
+                  icon={FileSearch}
+                  label="CPF"
+                  className="hidden lg:table-cell"
+                />
+                <TableHead label="Matrícula" className="hidden lg:table-cell" />
                 <TableHead label="Função" />
                 <TableHead label="Disponibilidade" />
-                <TableHead icon={CalendarArrowDown} label="Admissão" />
+                <TableHead
+                  icon={CalendarArrowDown}
+                  label="Admissão"
+                  className="hidden xl:table-cell"
+                />
                 <th className="px-4 py-3 text-right text-xs font-bold text-muted-foreground">
                   Detalhe
                 </th>
@@ -227,19 +355,25 @@ export function EmployeesPageView({
                         {row.person.fullName}
                       </span>
                     </td>
-                    <td className="px-4 py-3 font-semibold">
+                    <td className="hidden px-4 py-3 font-semibold lg:table-cell">
                       {row.person.document.maskedDocument}
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground">
+                    <td className="hidden px-4 py-3 text-muted-foreground lg:table-cell">
                       {row.employment.companyRegistrationNumber}
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground">{row.employment.jobRole?.name ?? "Função pendente"}</td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {row.employment.jobRole?.name ?? (
+                        <span className="font-semibold text-destructive">
+                          Função pendente
+                        </span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 font-semibold">
                       {row.availability.state === "available"
                         ? "Disponível"
                         : "Indisponível"}
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground">
+                    <td className="hidden px-4 py-3 text-muted-foreground xl:table-cell">
                       {row.employment.admissionDate
                         ? new Intl.DateTimeFormat("pt-BR", {
                             timeZone: "UTC",
@@ -267,8 +401,8 @@ export function EmployeesPageView({
                       Nenhum funcionário encontrado
                     </p>
                     <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">
-                      Funcionários cadastrados aparecem aqui sem função, obra ou
-                      alocação inventada.
+                      Cadastre o primeiro funcionário com matrícula, função e
+                      informações de admissão para começar a montar sua equipe.
                     </p>
                   </td>
                 </tr>
@@ -313,12 +447,16 @@ function Summary({ label, value }: { label: string; value: string }) {
 function TableHead({
   icon: Icon,
   label,
+  className,
 }: {
   icon?: LucideIcon;
   label: string;
+  className?: string;
 }) {
   return (
-    <th className="px-4 py-3 text-xs font-bold text-muted-foreground">
+    <th
+      className={`px-4 py-3 text-xs font-bold text-muted-foreground ${className ?? ""}`}
+    >
       <span className="inline-flex items-center gap-1.5">
         {Icon && <Icon className="size-3.5" />}
         {label}

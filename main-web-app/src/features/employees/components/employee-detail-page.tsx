@@ -14,6 +14,7 @@ import {
 import type { ReactNode } from "react";
 
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import type { EmployeeActionState } from "../employees-action-state";
 import type { EmployeeDetail } from "../employees.server";
 
@@ -109,10 +110,10 @@ export function EmployeeDetailPage({
               value={record.availability.hasOpenAllocation ? "Sim" : "Não"}
             />
             <Detail label="Função atual" value={record.employment.jobRole?.name ?? "Função pendente"} />
-            {record.availability.functionPending && <p className="text-sm text-destructive">Defina uma função antes de alocar este funcionário.</p>}
+            {record.availability.functionPending && <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive">Função pendente: defina uma função antes de alocar este funcionário.</p>}
           </DetailGroup>
           <DetailGroup icon={UserRound} title="Histórico de funções">
-            {record.jobRolePeriods.map((period) => <div key={period.id} className="rounded-md bg-muted p-3"><Detail label="Função" value={period.jobRole.name} /><Detail label="Estado" value={period.state === "current" ? "Atual" : "Encerrada"} /><Detail label="Início" value={formatDate(period.effectiveFrom)} />{period.reason && <Detail label="Motivo" value={period.reason} />}</div>)}
+            {record.jobRolePeriods.length ? record.jobRolePeriods.map((period) => <div key={period.id} className="rounded-md bg-muted p-3"><Detail label="Função" value={period.jobRole.name} /><Detail label="Estado" value={period.state === "current" ? "Atual" : "Encerrada"} /><Detail label="Início" value={formatDate(period.effectiveFrom)} />{period.reason && <Detail label="Motivo" value={period.reason} />}</div>) : <p className="text-sm text-muted-foreground">Nenhuma função registrada neste vínculo.</p>}
           </DetailGroup>
           <DetailGroup icon={CalendarDays} title="Histórico de períodos">
             {record.periods.map((period) => (
@@ -142,7 +143,7 @@ export function EmployeeDetailPage({
             ))}
           </DetailGroup>
         </div>
-        {record.employment.state === "active" && <form action={jobRoleFormAction} className="grid gap-3 border-t p-4 sm:grid-cols-3"><input type="hidden" name="employmentId" value={record.id} /><select name="jobRoleId" required defaultValue="" className="h-10 rounded-md border px-3"><option value="">Alterar função…</option>{jobRoles.filter((role) => role.isActive && role.id !== record.employment.jobRole?.id).map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}</select><input name="reason" required maxLength={240} placeholder="Motivo da alteração" className="h-10 rounded-md border px-3" /><Button type="submit">Salvar função</Button>{jobRoleState.message && <p role="status" className="text-sm sm:col-span-3">{jobRoleState.message}</p>}</form>}
+        {record.employment.state === "active" && <form action={jobRoleFormAction} className="grid gap-3 border-t bg-secondary/20 p-4 sm:grid-cols-3"><div className="sm:col-span-3"><h2 className="text-sm font-bold">Alterar função</h2><p className="mt-1 text-sm text-muted-foreground">A mudança cria um novo período no histórico. Obras com alocação aberta poderão exigir reconfirmação.</p></div><input type="hidden" name="employmentId" value={record.id} /><label className="grid gap-1.5 text-sm font-semibold"><span>Nova função</span><select name="jobRoleId" required defaultValue="" className="min-h-11 rounded-md border border-input bg-background px-3"><option value="">Selecione a função</option>{jobRoles.filter((role) => role.isActive && role.id !== record.employment.jobRole?.id).map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}</select></label><label className="grid gap-1.5 text-sm font-semibold"><span>Motivo</span><Input name="reason" required maxLength={240} placeholder="Ex.: promoção" className="min-h-11" /></label><div className="flex items-end"><JobRoleSubmit /></div>{jobRoleState.message && <p role="status" className={jobRoleState.ok ? "text-sm font-medium text-emerald-700 sm:col-span-3" : "text-sm font-medium text-destructive sm:col-span-3"}>{jobRoleState.message}</p>}</form>}
       </section>
     </div>
   );
@@ -156,6 +157,11 @@ function RehireButton() {
       {pending ? "Recontratando" : "Recontratar funcionário"}
     </Button>
   );
+}
+
+function JobRoleSubmit() {
+  const { pending } = useFormStatus();
+  return <Button type="submit" disabled={pending} className="min-h-11">{pending ? "Salvando…" : "Salvar função"}</Button>;
 }
 
 function formatDate(value: string) {
