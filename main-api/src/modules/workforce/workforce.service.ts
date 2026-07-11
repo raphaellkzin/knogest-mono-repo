@@ -9,7 +9,7 @@ import {
   toMaskedDocumentDto,
   toProtectedDocumentDto,
 } from "../../lib/security/sensitive-document";
-import type { CreateEmployeeInput, ListEmployeesQuery } from "./workforce.dto";
+import type { ChangeEmployeeJobRoleInput, CreateEmployeeInput, CreateJobRoleInput, ListEmployeesQuery, UpdateJobRoleInput } from "./workforce.dto";
 import {
   assertEmploymentCanBeCreatedHandler,
   createEmploymentWithFirstPeriodHandler,
@@ -17,6 +17,10 @@ import {
   findOrCreatePersonHandler,
   listEmployeesHandler,
   rehireEmploymentHandler,
+  changeEmploymentJobRoleHandler,
+  createJobRoleHandler,
+  listJobRolesHandler,
+  updateJobRoleHandler,
   type EmploymentRecord,
   type PersonRecord,
 } from "./handlers/workforce.handler";
@@ -106,12 +110,14 @@ function isCurrentEmployment(record: EmploymentRecord) {
 }
 
 function availabilityDto(record: EmploymentRecord, hasOpenAllocation = false) {
+  const hasCurrentJobRole = record.jobRolePeriods.some((period) => period.effectiveTo === null);
   return {
     state:
-      isCurrentEmployment(record) && !hasOpenAllocation
+      isCurrentEmployment(record) && hasCurrentJobRole && !hasOpenAllocation
         ? ("available" as const)
         : ("unavailable" as const),
     hasOpenAllocation,
+    functionPending: !hasCurrentJobRole,
   };
 }
 
@@ -120,6 +126,7 @@ function toListDto(
   allocatedPersonIds = new Set<string>(),
 ) {
   const openPeriod = currentPeriod(record);
+  const currentJobRole = record.jobRolePeriods.find((period) => period.effectiveTo === null) ?? null;
   return {
     id: record.id,
     person: {
@@ -137,6 +144,7 @@ function toListDto(
         openPeriod?.admissionDate.toISOString().slice(0, 10) ?? null,
       createdAt: record.createdAt.toISOString(),
       updatedAt: record.updatedAt.toISOString(),
+      jobRole: currentJobRole ? { id: currentJobRole.jobRole.id, name: currentJobRole.jobRole.name, periodId: currentJobRole.id } : null,
     },
     availability: availabilityDto(
       record,
@@ -157,6 +165,7 @@ function toDetailDto(record: EmploymentRecord) {
       updatedAt: record.person.updatedAt.toISOString(),
     },
     periods: periodsForDetail(record).map(periodDto),
+    jobRolePeriods: record.jobRolePeriods.map((period) => ({ id: period.id, jobRole: { id: period.jobRole.id, name: period.jobRole.name }, effectiveFrom: period.effectiveFrom.toISOString().slice(0, 10), effectiveTo: period.effectiveTo?.toISOString().slice(0, 10) ?? null, reason: period.reason, state: period.effectiveTo === null ? "current" as const : "closed" as const })),
   };
 }
 
@@ -193,6 +202,7 @@ export class WorkforceService {
           personId: person.id,
           companyRegistrationNumber: input.companyRegistrationNumber,
           admissionDate: parseAdmissionDate(input.admissionDate),
+          jobRoleId: input.jobRoleId,
         },
       );
       return toDetailDto(employment);
@@ -275,6 +285,13 @@ export class WorkforceService {
         { isolationLevel: "Serializable" },
       ),
     );
+  }
+
+  async listJobRoles(scope: AuthenticatedCompanyScope) { return listJobRolesHandler(this.context, scope); }
+  async createJobRole(scope: AuthenticatedCompanyScope, input: CreateJobRoleInput) { return createJobRoleHandler(this.context, { ...scope, ...input }); }
+  async updateJobRole(scope: AuthenticatedCompanyScope, jobRoleId: string, input: UpdateJobRoleInput) { return updateJobRoleHandler(this.context, { ...scope, jobRoleId, ...input }); }
+  async changeJobRole(scope: AuthenticatedCompanyScope, employmentId: string, input: ChangeEmployeeJobRoleInput) {
+    return runSerializableWithRetry(() => this.context.transaction(async (tx) => { const result = await changeEmploymentJobRoleHandler(tx, { ...scope, employmentId, ...input, effectiveDate: todayUtc() }); return toDetailDto(result); }, { isolationLevel: "Serializable" }));
   }
 }
 

@@ -71,7 +71,8 @@ export async function getProjectWizardOptions() {
       .map((item) => ({
         id: item.employment.id,
         label: item.person.displayName,
-        detail: item.person.document.maskedDocument,
+        detail: item.employment.jobRole?.name ?? item.person.document.maskedDocument,
+        jobRolePeriodId: item.employment.jobRole?.periodId,
       })),
     machines: machines.data.data
       .filter(

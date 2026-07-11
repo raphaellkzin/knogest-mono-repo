@@ -2,10 +2,13 @@ import { Settings } from "lucide-react";
 
 import { AppShell } from "@/components/layout/app-shell";
 import { requireCompanyWorkspace } from "@/features/company-selection/company-selection.server";
+import { getJobRoles } from "@/features/employees/employees.server";
+import { JobRolesSettings } from "@/features/job-roles/job-roles-settings";
 
 export default async function Page() {
   const { companies, selectedCompany, session } =
     await requireCompanyWorkspace();
+  const jobRoles = await getJobRoles();
 
   return (
     <AppShell
@@ -14,6 +17,7 @@ export default async function Page() {
       userId={session.user.id}
       currentArea="settings"
     >
+      <JobRolesSettings roles={jobRoles ?? []} />
       <section
         className="rounded-lg border border-border bg-card px-5 py-12 text-center"
         aria-labelledby="settings-title"

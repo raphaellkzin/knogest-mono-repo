@@ -25,6 +25,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { createJobRoleForEmployee } from "@/features/job-roles/job-roles.actions";
 import type { EmployeeActionState } from "../employees-action-state";
 import type { EmployeeListItem, EmployeesListQuery } from "../employees.server";
 
@@ -68,14 +69,19 @@ export function EmployeesPageView({
   pageInfo,
   query,
   rows,
+  jobRoles,
 }: {
   action: EmployeeAction;
   initialState: EmployeeActionState;
   pageInfo: { hasNextPage: boolean; nextCursor: string | null };
   query: EmployeesListQuery;
   rows: EmployeeListItem[];
+  jobRoles: Array<{ id: string; name: string; isActive: boolean }>;
 }) {
   const [state, formAction] = useActionState(action, initialState);
+  const [roles, setRoles] = React.useState(jobRoles);
+  const [newRoleName, setNewRoleName] = React.useState("");
+  const [selectedRoleId, setSelectedRoleId] = React.useState("");
   const hasFilters = Boolean(query.search || query.availability || query.state);
   const nextParams = new URLSearchParams();
   if (query.search) nextParams.set("search", query.search);
@@ -167,6 +173,14 @@ export function EmployeesPageView({
                       required
                       type="date"
                     />
+                    <label className="grid gap-1.5 text-sm font-semibold md:col-span-2">
+                      <span>Função</span>
+                      <select name="jobRoleId" required value={selectedRoleId} onChange={(event) => setSelectedRoleId(event.target.value)} className="h-10 rounded-md border border-input bg-background px-3">
+                        <option value="">Selecione a função</option>
+                        {roles.filter((role) => role.isActive).map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}
+                      </select>
+              <div className="flex gap-2"><Input value={newRoleName} onChange={(event) => setNewRoleName(event.target.value)} placeholder="Criar nova função" /><Button type="button" variant="outline" onClick={async () => { const data = new FormData(); data.set("name", newRoleName); const role = await createJobRoleForEmployee(data); if (role) { setRoles((current) => [...current, role]); setSelectedRoleId(role.id); setNewRoleName(""); } }} disabled={!newRoleName.trim()}>Criar</Button></div>
+                    </label>
                   </div>
                   {state.message && (
                     <p
@@ -196,6 +210,7 @@ export function EmployeesPageView({
                 <TableHead icon={UserRound} label="Nome" />
                 <TableHead icon={FileSearch} label="CPF" />
                 <TableHead label="Matrícula" />
+                <TableHead label="Função" />
                 <TableHead label="Disponibilidade" />
                 <TableHead icon={CalendarArrowDown} label="Admissão" />
                 <th className="px-4 py-3 text-right text-xs font-bold text-muted-foreground">
@@ -218,6 +233,7 @@ export function EmployeesPageView({
                     <td className="px-4 py-3 text-muted-foreground">
                       {row.employment.companyRegistrationNumber}
                     </td>
+                    <td className="px-4 py-3 text-muted-foreground">{row.employment.jobRole?.name ?? "Função pendente"}</td>
                     <td className="px-4 py-3 font-semibold">
                       {row.availability.state === "available"
                         ? "Disponível"
@@ -246,7 +262,7 @@ export function EmployeesPageView({
                 ))
               ) : (
                 <tr>
-                  <td colSpan={6} className="px-4 py-14 text-center">
+                  <td colSpan={7} className="px-4 py-14 text-center">
                     <p className="text-base font-bold">
                       Nenhum funcionário encontrado
                     </p>

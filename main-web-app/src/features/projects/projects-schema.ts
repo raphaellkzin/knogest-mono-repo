@@ -22,7 +22,7 @@ const text = (max: number, multiline = false) =>
     );
 
 const optionalText = (max: number) =>
-  z
+  z.union([z.null(), z
     .string()
     .transform((value) => value.trim().normalize("NFC"))
     .pipe(
@@ -30,7 +30,7 @@ const optionalText = (max: number) =>
         .string()
         .max(max)
         .refine((value) => !controlPattern.test(value)),
-    )
+    )])
     .transform((value) => value || null);
 
 function decimal(scale: number, integral: number, positive: boolean) {
@@ -109,7 +109,7 @@ const breakTemplateSchema = z.object({
 
 const employeeAllocationSchema = z.object({
   employmentId: z.string().uuid(),
-  jobRole: text(120),
+  confirmedJobRolePeriodId: z.string().uuid(),
   expectedDailyWorkloadMinutes: z.coerce.number().int().min(1).max(1440),
   compensationMode: z.enum([
     "daily",

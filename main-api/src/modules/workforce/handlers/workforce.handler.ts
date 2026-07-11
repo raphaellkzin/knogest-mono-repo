@@ -48,6 +48,7 @@ export interface EmploymentRecord {
   updatedAt: Date;
   person: PersonRecord;
   periods: EmploymentPeriodRecord[];
+  jobRolePeriods: Array<{ id: string; jobRoleId: string; effectiveFrom: Date; effectiveTo: Date | null; reason: string | null; jobRole: { id: string; name: string; isActive: boolean } }>;
 }
 
 export interface WorkforceCreateData {
@@ -106,6 +107,7 @@ const employmentSelect = {
   updatedAt: true,
   person: { select: personSelect },
   periods: { orderBy: { effectiveFrom: "desc" as const }, select: periodSelect },
+  jobRolePeriods: { orderBy: { effectiveFrom: "desc" as const }, select: { id: true, jobRoleId: true, effectiveFrom: true, effectiveTo: true, reason: true, jobRole: { select: { id: true, name: true, isActive: true } } } },
 };
 
 function isUniqueError(error: unknown): error is { code: string; meta?: unknown } {
@@ -251,9 +253,11 @@ export async function assertEmploymentCanBeCreatedHandler(
 
 export async function createEmploymentWithFirstPeriodHandler(
   context: HandlerContext,
-  input: WorkforceCreateData & { personId: string },
+  input: WorkforceCreateData & { personId: string; jobRoleId: string },
 ): Promise<EmploymentRecord> {
   try {
+    const role = await context.prisma.jobRole.findFirst({ where: { id: input.jobRoleId, corporationId: input.corporationId, companyId: input.companyId, isActive: true }, select: { id: true } });
+    if (!role) throw new AppError({ code: "JOB_ROLE_UNAVAILABLE", message: "Job role is unavailable", statusCode: 409 });
     const employment = await context.prisma.employment.create({
       data: {
         corporationId: input.corporationId,
@@ -273,6 +277,7 @@ export async function createEmploymentWithFirstPeriodHandler(
       },
       select: { id: true },
     });
+    await context.prisma.employmentJobRolePeriod.create({ data: { corporationId: input.corporationId, companyId: input.companyId, employmentId: employment.id, jobRoleId: role.id, effectiveFrom: input.admissionDate } });
     return findEmployeeDetailHandler(context, {
       corporationId: input.corporationId,
       companyId: input.companyId,
@@ -285,6 +290,41 @@ export async function createEmploymentWithFirstPeriodHandler(
     }
     throw error;
   }
+}
+
+const normalizeRoleName = (value: string) => value.trim().normalize("NFC").toLocaleLowerCase("pt-BR");
+
+export async function listJobRolesHandler(context: HandlerContext, scope: { corporationId: string; companyId: string }) {
+  return context.prisma.jobRole.findMany({ where: { ...scope }, orderBy: [{ name: "asc" }, { id: "asc" }], select: { id: true, name: true, isActive: true, createdAt: true, updatedAt: true } });
+}
+
+export async function createJobRoleHandler(context: HandlerContext, input: { corporationId: string; companyId: string; name: string }) {
+  try { return await context.prisma.jobRole.create({ data: { ...input, normalizedName: normalizeRoleName(input.name) }, select: { id: true, name: true, isActive: true, createdAt: true, updatedAt: true } }); }
+  catch (error) { if (isUniqueError(error)) throw new AppError({ code: "JOB_ROLE_ALREADY_EXISTS", message: "A job role with this name already exists", statusCode: 409 }); throw error; }
+}
+
+export async function updateJobRoleHandler(context: HandlerContext, input: { corporationId: string; companyId: string; jobRoleId: string; name?: string; isActive?: boolean }) {
+  const existing = await context.prisma.jobRole.findFirst({ where: { id: input.jobRoleId, corporationId: input.corporationId, companyId: input.companyId }, select: { id: true } });
+  if (!existing) throw new AppError({ code: "NOT_FOUND", message: "Job role not found", statusCode: 404 });
+  try { return await context.prisma.jobRole.update({ where: { id: existing.id }, data: { ...(input.name === undefined ? {} : { name: input.name, normalizedName: normalizeRoleName(input.name) }), ...(input.isActive === undefined ? {} : { isActive: input.isActive }) }, select: { id: true, name: true, isActive: true, createdAt: true, updatedAt: true } }); }
+  catch (error) { if (isUniqueError(error)) throw new AppError({ code: "JOB_ROLE_ALREADY_EXISTS", message: "A job role with this name already exists", statusCode: 409 }); throw error; }
+}
+
+export async function changeEmploymentJobRoleHandler(context: HandlerContext, input: { corporationId: string; companyId: string; employmentId: string; jobRoleId: string; reason: string; effectiveDate: Date }) {
+  const employment = await context.prisma.employment.findFirst({ where: { id: input.employmentId, corporationId: input.corporationId, companyId: input.companyId, isActive: true, state: "ACTIVE" }, select: { id: true } });
+  const role = await context.prisma.jobRole.findFirst({ where: { id: input.jobRoleId, corporationId: input.corporationId, companyId: input.companyId, isActive: true }, select: { id: true } });
+  const current = await context.prisma.employmentJobRolePeriod.findFirst({ where: { corporationId: input.corporationId, companyId: input.companyId, employmentId: input.employmentId, effectiveTo: null }, select: { id: true, jobRoleId: true } });
+  if (!employment) throw notFoundError();
+  if (!role) throw new AppError({ code: "JOB_ROLE_UNAVAILABLE", message: "Job role is unavailable", statusCode: 409 });
+  if (!current || current.jobRoleId === role.id) throw new AppError({ code: "JOB_ROLE_CHANGE_CONFLICT", message: "Employment does not have a different current job role", statusCode: 409 });
+  try {
+    await context.prisma.employmentJobRolePeriod.update({ where: { id: current.id }, data: { effectiveTo: input.effectiveDate } });
+    await context.prisma.employmentJobRolePeriod.create({ data: { corporationId: input.corporationId, companyId: input.companyId, employmentId: input.employmentId, jobRoleId: role.id, reason: input.reason, effectiveFrom: input.effectiveDate } });
+  } catch (error) {
+    if (isUniqueError(error)) throw new AppError({ code: "JOB_ROLE_CHANGE_CONFLICT", message: "Employee job role changed concurrently", statusCode: 409 });
+    throw error;
+  }
+  return findEmployeeDetailHandler(context, input);
 }
 
 function boundaryWhere({

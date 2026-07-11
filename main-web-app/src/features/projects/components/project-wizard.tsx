@@ -24,6 +24,7 @@ type Option = {
   label: string;
   detail?: string;
   readingId?: string;
+  jobRolePeriodId?: string;
 };
 export type ProjectWizardOptions = {
   clients: Option[];
@@ -303,6 +304,8 @@ function EmployeeMobilization({
   options: ProjectWizardOptions;
 }) {
   const allocations = form.watch("initialEmployeeAllocations");
+  const replaceAllocation = (employmentId: string, patch: Partial<ProjectCommand["initialEmployeeAllocations"][number]>) =>
+    form.setValue("initialEmployeeAllocations", allocations.map((item) => item.employmentId === employmentId ? { ...item, ...patch } : item), { shouldDirty: true, shouldValidate: true });
   return (
     <div className="space-y-3">
       <p>{allocations.length} selecionado(s)</p>
@@ -311,14 +314,12 @@ function EmployeeMobilization({
           (item) => item.employmentId === option.id,
         );
         return (
-          <label
+          <div
             key={option.id}
-            className="flex min-h-11 items-center gap-3 rounded-md border p-3"
+            className="space-y-3 rounded-md border p-3"
           >
-            <input
-              type="checkbox"
-              checked={selected}
-              onChange={(event) =>
+            <label className="flex min-h-11 items-center gap-3">
+              <input type="checkbox" checked={selected} onChange={(event) =>
                 form.setValue(
                   "initialEmployeeAllocations",
                   event.target.checked
@@ -326,7 +327,7 @@ function EmployeeMobilization({
                         ...allocations,
                         {
                           employmentId: option.id,
-                          jobRole: "Operacional",
+                          confirmedJobRolePeriodId: "",
                           expectedDailyWorkloadMinutes: 480,
                           compensationMode: "monthly",
                           compensationValue: "0.00",
@@ -338,10 +339,21 @@ function EmployeeMobilization({
                       ),
                   { shouldDirty: true, shouldValidate: true },
                 )
-              }
-            />
-            {option.label}
-          </label>
+              } />
+              <span>{option.label}{option.detail ? ` — ${option.detail}` : ""}</span>
+            </label>
+            {selected && (() => {
+              const allocation = allocations.find((item) => item.employmentId === option.id)!;
+              const confirmed = allocation.confirmedJobRolePeriodId === option.jobRolePeriodId;
+              return <div className="grid gap-3 border-t pt-3 sm:grid-cols-2">
+                <label className="flex items-center gap-2 text-sm font-semibold sm:col-span-2"><input type="checkbox" checked={confirmed} onChange={(event) => replaceAllocation(option.id, { confirmedJobRolePeriodId: event.target.checked ? option.jobRolePeriodId! : "" })} />Confirmo a função {option.detail} para esta obra</label>
+                <label className="grid gap-1 text-sm font-medium">Carga diária (minutos)<input className={inputClass} type="number" min="1" max="1440" value={allocation.expectedDailyWorkloadMinutes} onChange={(event) => replaceAllocation(option.id, { expectedDailyWorkloadMinutes: Number(event.target.value) })} /></label>
+                <label className="grid gap-1 text-sm font-medium">Modalidade de pagamento<select className={inputClass} value={allocation.compensationMode} onChange={(event) => replaceAllocation(option.id, { compensationMode: event.target.value as typeof allocation.compensationMode })}><option value="daily">Diária</option><option value="hourly">Hora</option><option value="weekly">Semanal</option><option value="fortnightly">Quinzenal</option><option value="monthly">Mensal</option></select></label>
+                <label className="grid gap-1 text-sm font-medium">Valor<input className={inputClass} inputMode="decimal" value={allocation.compensationValue} onChange={(event) => replaceAllocation(option.id, { compensationValue: event.target.value })} /></label>
+                <label className="grid gap-1 text-sm font-medium">Hora extra<input className={inputClass} inputMode="decimal" value={allocation.overtimeRate} onChange={(event) => replaceAllocation(option.id, { overtimeRate: event.target.value })} /></label>
+              </div>;
+            })()}
+          </div>
         );
       })}
     </div>

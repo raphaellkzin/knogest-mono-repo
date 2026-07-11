@@ -88,6 +88,7 @@ model Corporation {
   fuelSuppliers                  FuelSupplier[]
   persons                        Person[]
   employments                    Employment[]
+  jobRoles                       JobRole[]
   machines                       Machine[]
   machineOwnershipPeriods        MachineOwnershipPeriod[]
   machineIdentifiers             MachineIdentifier[]
@@ -124,6 +125,7 @@ model Company {
   clients                        Client[]
   fuelSuppliers                  FuelSupplier[]
   employments                    Employment[]
+  jobRoles                       JobRole[]
   machineOwnershipPeriods        MachineOwnershipPeriod[]
   machineIdentifiers             MachineIdentifier[]
   machineMeterReadings           MachineMeterReading[]
@@ -341,6 +343,7 @@ model Employment {
   company                   Company            @relation(fields: [corporationId, companyId], references: [corporationId, id], onDelete: Restrict)
   person                    Person             @relation(fields: [corporationId, personId], references: [corporationId, id], onDelete: Restrict)
   periods                   EmploymentPeriod[]
+  jobRolePeriods            EmploymentJobRolePeriod[]
 
   @@unique([corporationId, companyId, id])
   @@index([corporationId, companyId, isActive])
@@ -348,6 +351,43 @@ model Employment {
   @@index([corporationId, companyId, companyRegistrationNumber], map: "employments_corporation_id_company_id_company_registration_numb")
   @@index([corporationId, personId])
   @@map("employments")
+}
+
+model JobRole {
+  id              String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId   String                     @map("corporation_id") @db.Uuid
+  companyId       String                     @map("company_id") @db.Uuid
+  name            String                     @db.VarChar(120)
+  normalizedName  String                     @map("normalized_name") @db.VarChar(120)
+  isActive        Boolean                    @default(true) @map("is_active")
+  createdAt       DateTime                   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime                   @updatedAt @map("updated_at") @db.Timestamptz(3)
+  corporation     Corporation                @relation(fields: [corporationId], references: [id], onDelete: Restrict)
+  company         Company                    @relation(fields: [corporationId, companyId], references: [corporationId, id], onDelete: Restrict)
+  employmentPeriods EmploymentJobRolePeriod[]
+
+  @@unique([corporationId, companyId, normalizedName])
+  @@index([corporationId, companyId, isActive, name, id])
+  @@map("job_roles")
+}
+
+model EmploymentJobRolePeriod {
+  id             String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId  String     @map("corporation_id") @db.Uuid
+  companyId      String     @map("company_id") @db.Uuid
+  employmentId   String     @map("employment_id") @db.Uuid
+  jobRoleId      String     @map("job_role_id") @db.Uuid
+  reason         String?    @db.VarChar(240)
+  effectiveFrom  DateTime   @map("effective_from") @db.Date
+  effectiveTo    DateTime?  @map("effective_to") @db.Date
+  createdAt      DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
+  employment     Employment @relation(fields: [corporationId, companyId, employmentId], references: [corporationId, companyId, id], onDelete: Restrict)
+  jobRole        JobRole    @relation(fields: [jobRoleId], references: [id], onDelete: Restrict)
+  allocations    ProjectEmployeeAllocation[]
+
+  @@index([corporationId, companyId, employmentId, effectiveFrom, id])
+  @@map("employment_job_role_periods")
 }
 
 model EmploymentPeriod {
@@ -617,14 +657,17 @@ model ProjectEmployeeAllocation {
   employmentId                 String    @map("employment_id") @db.Uuid
   personId                     String    @map("person_id") @db.Uuid
   jobRole                      String    @map("job_role") @db.VarChar(120)
+  employmentJobRolePeriodId    String?   @map("employment_job_role_period_id") @db.Uuid
   expectedDailyWorkloadMinutes Int       @map("expected_daily_workload_minutes")
   compensationMode             String    @map("compensation_mode") @db.VarChar(16)
   compensationValue            Decimal   @map("compensation_value") @db.Decimal(18, 2)
   overtimeRate                 Decimal   @map("overtime_rate") @db.Decimal(18, 2)
   effectiveFrom                DateTime  @map("effective_from") @db.Timestamptz(3)
   effectiveTo                  DateTime? @map("effective_to") @db.Timestamptz(3)
+  employmentJobRolePeriod      EmploymentJobRolePeriod? @relation(fields: [employmentJobRolePeriodId], references: [id], onDelete: Restrict)
 
   @@index([corporationId, companyId, projectId])
+  @@index([employmentJobRolePeriodId])
   @@map("project_employee_allocations")
 }
 

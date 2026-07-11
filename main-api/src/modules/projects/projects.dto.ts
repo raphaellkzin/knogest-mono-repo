@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+// eslint-disable-next-line no-control-regex -- rejects control characters from user text.
 const controlPattern = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/u;
 const text = (max: number, multiline = false) =>
   z
@@ -96,7 +97,7 @@ export const projectCommandSchema = z
         z
           .object({
             employmentId: uuid,
-            jobRole: text(120),
+            confirmedJobRolePeriodId: uuid,
             expectedDailyWorkloadMinutes: z.number().int().min(1).max(1440),
             compensationMode: z.enum([
               "daily",
@@ -218,6 +219,7 @@ export const projectResourceDetailSchema = z
       "fuelSupplier",
       "fuelType",
       "workspace",
+      "jobRole",
     ]),
     id: z.string(),
     section: z.enum([
@@ -236,6 +238,7 @@ export const projectResourceDetailSchema = z
       "latest-reading-changed",
       "workspace-changed",
       "catalog-inconsistent",
+      "job-role-changed",
     ]),
   })
   .strict();

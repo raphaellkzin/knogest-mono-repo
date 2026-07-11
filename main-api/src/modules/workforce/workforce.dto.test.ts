@@ -14,6 +14,7 @@ describe("workforce DTOs", () => {
         fullName: "Synthetic Worker",
         companyRegistrationNumber: "EMP-001",
         admissionDate: "2026-07-01",
+        jobRoleId: "00000000-0000-4000-8000-000000000001",
       }),
     ).toMatchObject({
       fullName: "Synthetic Worker",
@@ -28,6 +29,7 @@ describe("workforce DTOs", () => {
         fullName: "Synthetic Worker",
         companyRegistrationNumber: "EMP-001",
         admissionDate: "2026-07-01",
+        jobRoleId: "00000000-0000-4000-8000-000000000001",
         corporationId: "00000000-0000-0000-0000-000000000000",
         isActive: false,
       }),

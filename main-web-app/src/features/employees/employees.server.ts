@@ -3,6 +3,7 @@ import "server-only";
 import { getApiV1Employees } from "@/generated/clients/getApiV1Employees";
 import { getApiV1EmployeesEmploymentid } from "@/generated/clients/getApiV1EmployeesEmploymentid";
 import type { GetApiV1EmployeesQueryParams } from "@/generated/models/GetApiV1Employees";
+import { getApiV1JobRoles } from "@/generated/clients/getApiV1JobRoles";
 
 export type EmployeesListQuery = {
   availability?: "available";
@@ -62,4 +63,8 @@ export async function getEmployeesList(query: EmployeesListQuery) {
 export async function getEmployeeDetail(employmentId: string) {
   const response = await getApiV1EmployeesEmploymentid({ employmentId });
   return response.data as EmployeeDetail;
+}
+
+export async function getJobRoles() {
+  return (await getApiV1JobRoles()).data;
 }

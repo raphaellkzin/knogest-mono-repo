@@ -26,12 +26,17 @@ const initialState: EmployeeActionState = { ok: false, message: "" };
 
 export function EmployeeDetailPage({
   action,
+  jobRoleAction,
+  jobRoles,
   record,
 }: {
   action: EmployeeAction;
+  jobRoleAction: EmployeeAction;
+  jobRoles: Array<{ id: string; name: string; isActive: boolean }>;
   record: EmployeeDetail;
 }) {
   const [state, formAction] = useActionState(action, initialState);
+  const [jobRoleState, jobRoleFormAction] = useActionState(jobRoleAction, initialState);
   const canRehire = record.employment.state === "terminated";
 
   return (
@@ -103,6 +108,11 @@ export function EmployeeDetailPage({
               label="Alocação aberta"
               value={record.availability.hasOpenAllocation ? "Sim" : "Não"}
             />
+            <Detail label="Função atual" value={record.employment.jobRole?.name ?? "Função pendente"} />
+            {record.availability.functionPending && <p className="text-sm text-destructive">Defina uma função antes de alocar este funcionário.</p>}
+          </DetailGroup>
+          <DetailGroup icon={UserRound} title="Histórico de funções">
+            {record.jobRolePeriods.map((period) => <div key={period.id} className="rounded-md bg-muted p-3"><Detail label="Função" value={period.jobRole.name} /><Detail label="Estado" value={period.state === "current" ? "Atual" : "Encerrada"} /><Detail label="Início" value={formatDate(period.effectiveFrom)} />{period.reason && <Detail label="Motivo" value={period.reason} />}</div>)}
           </DetailGroup>
           <DetailGroup icon={CalendarDays} title="Histórico de períodos">
             {record.periods.map((period) => (
@@ -132,6 +142,7 @@ export function EmployeeDetailPage({
             ))}
           </DetailGroup>
         </div>
+        {record.employment.state === "active" && <form action={jobRoleFormAction} className="grid gap-3 border-t p-4 sm:grid-cols-3"><input type="hidden" name="employmentId" value={record.id} /><select name="jobRoleId" required defaultValue="" className="h-10 rounded-md border px-3"><option value="">Alterar função…</option>{jobRoles.filter((role) => role.isActive && role.id !== record.employment.jobRole?.id).map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}</select><input name="reason" required maxLength={240} placeholder="Motivo da alteração" className="h-10 rounded-md border px-3" /><Button type="submit">Salvar função</Button>{jobRoleState.message && <p role="status" className="text-sm sm:col-span-3">{jobRoleState.message}</p>}</form>}
       </section>
     </div>
   );

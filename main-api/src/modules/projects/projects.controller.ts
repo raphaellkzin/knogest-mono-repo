@@ -115,7 +115,7 @@ const projectCommandOpenApiSchema = {
         additionalProperties: false,
         required: [
           "employmentId",
-          "jobRole",
+          "confirmedJobRolePeriodId",
           "expectedDailyWorkloadMinutes",
           "compensationMode",
           "compensationValue",
@@ -123,7 +123,7 @@ const projectCommandOpenApiSchema = {
         ],
         properties: {
           employmentId: uuid,
-          jobRole: { type: "string", maxLength: 120 },
+          confirmedJobRolePeriodId: uuid,
           expectedDailyWorkloadMinutes: {
             type: "integer",
             minimum: 1,

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { postApiV1Employees } from "@/generated/clients/postApiV1Employees";
 import { postApiV1EmployeesEmploymentidRehire } from "@/generated/clients/postApiV1EmployeesEmploymentidRehire";
+import { putApiV1EmployeesEmploymentidJobRole } from "@/generated/clients/putApiV1EmployeesEmploymentidJobRole";
 import type { PostApiV1EmployeesMutationRequest } from "@/generated/models/PostApiV1Employees";
 import { ApiClientError } from "@/lib/api/server-client";
 import type { EmployeeActionState } from "./employees-action-state";
@@ -23,6 +24,7 @@ function payload(formData: FormData): PostApiV1EmployeesMutationRequest {
     ),
     document: optionalString(formData, "document"),
     fullName: optionalString(formData, "fullName"),
+    jobRoleId: optionalString(formData, "jobRoleId"),
   };
 }
 
@@ -80,4 +82,14 @@ export async function rehireEmployeeAction(
   } catch (error) {
     return { ok: false, message: failureMessage(error) };
   }
+}
+
+export async function changeEmployeeJobRoleAction(_state: EmployeeActionState, formData: FormData): Promise<EmployeeActionState> {
+  const employmentId = optionalString(formData, "employmentId");
+  try {
+    await putApiV1EmployeesEmploymentidJobRole({ employmentId, data: { jobRoleId: optionalString(formData, "jobRoleId"), reason: optionalString(formData, "reason") } });
+    revalidatePath("/home/funcionarios");
+    revalidatePath(`/home/funcionarios/${employmentId}`);
+    return { ok: true, message: "Função atualizada." };
+  } catch (error) { return { ok: false, message: failureMessage(error) }; }
 }

@@ -92,7 +92,7 @@ async function validateResources(
           isActive: true,
           periods: { some: { effectiveTo: null } },
         },
-        select: { id: true, personId: true },
+        select: { id: true, personId: true, jobRolePeriods: { where: { effectiveTo: null }, select: { id: true, jobRole: { select: { name: true, isActive: true } } } } },
       }),
       context.prisma.fuelSupplier.findMany({
         where: {
@@ -155,6 +155,12 @@ async function validateResources(
       throw conflict([
         resource("employee", allocation.employmentId, "employees"),
       ]);
+    else {
+      const employment = employmentMap.get(allocation.employmentId)!;
+      const currentRole = employment.jobRolePeriods[0];
+      if (!currentRole || !currentRole.jobRole.isActive || currentRole.id !== allocation.confirmedJobRolePeriodId)
+        throw conflict([resource("jobRole", allocation.employmentId, "employees", "job-role-changed")]);
+    }
   if (suppliers.length !== command.projectFuelAgreements.length)
     throw conflict();
   if (fuelTypes.length !== 2)
@@ -329,6 +335,7 @@ export class ProjectsService {
           });
         for (const allocation of command.initialEmployeeAllocations) {
           const employment = employments.get(allocation.employmentId)!;
+          const confirmedRole = employment.jobRolePeriods[0]!;
           await tx.prisma.projectEmployeeAllocation.create({
             data: {
               corporationId: scope.corporationId,
@@ -336,7 +343,13 @@ export class ProjectsService {
               projectId: project.id,
               personId: employment.personId,
               effectiveFrom: now,
-              ...allocation,
+              employmentId: allocation.employmentId,
+              employmentJobRolePeriodId: confirmedRole.id,
+              jobRole: confirmedRole.jobRole.name,
+              expectedDailyWorkloadMinutes: allocation.expectedDailyWorkloadMinutes,
+              compensationMode: allocation.compensationMode,
+              compensationValue: allocation.compensationValue,
+              overtimeRate: allocation.overtimeRate,
             },
           });
         }

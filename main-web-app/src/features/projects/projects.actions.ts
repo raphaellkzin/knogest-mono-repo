@@ -17,6 +17,7 @@ const resourceSchema = z.object({
     "fuelSupplier",
     "fuelType",
     "workspace",
+    "jobRole",
   ]),
   id: z.string(),
   section: z.enum([
