@@ -1,5 +1,5 @@
 # generated: 2026-06-19T19:48:27-03:00
-# last_updated: 2026-07-01T15:59:08-03:00
+# last_updated: 2026-07-11T23:08:00-03:00
 # project: knogest
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: "2026-06-19T19:48:27-03:00"
-last_updated: "2026-07-01T15:59:08-03:00"
+last_updated: "2026-07-11T23:08:00-03:00"
 project: knogest
 project_key: NOKEY
 tracking_system: file-system
@@ -77,29 +77,29 @@ development_status:
   4-9-submit-the-wizard-and-recover-finalization-conflicts: in-progress
   epic-4-retrospective: optional
 
-  epic-5: backlog
-  5-1-allocate-an-employee-with-effective-work-terms: backlog
-  5-2-release-an-employee-from-a-project: backlog
-  5-3-reallocate-an-employee-between-projects: backlog
-  5-4-change-effective-employee-terms-on-the-same-project: backlog
-  5-5-terminate-an-employment-safely: backlog
-  5-6-allocate-a-machine-to-a-project: backlog
-  5-7-reallocate-or-release-a-machine: backlog
-  5-8-transfer-machine-ownership-between-companies: backlog
-  5-9-retire-a-machine-permanently: backlog
-  5-10-activate-a-planned-project-explicitly: backlog
-  5-11-pause-and-reactivate-a-project: backlog
-  5-12-complete-or-cancel-a-project-safely: backlog
+  epic-5: in-progress
+  5-1-allocate-an-employee-with-effective-work-terms: in-progress
+  5-2-release-an-employee-from-a-project: ready-for-dev
+  5-3-reallocate-an-employee-between-projects: ready-for-dev
+  5-4-change-effective-employee-terms-on-the-same-project: ready-for-dev
+  5-5-terminate-an-employment-safely: ready-for-dev
+  5-6-allocate-a-machine-to-a-project: ready-for-dev
+  5-7-reallocate-or-release-a-machine: ready-for-dev
+  5-8-transfer-machine-ownership-between-companies: ready-for-dev
+  5-9-retire-a-machine-permanently: ready-for-dev
+  5-10-activate-a-planned-project-explicitly: ready-for-dev
+  5-11-pause-and-reactivate-a-project: ready-for-dev
+  5-12-complete-or-cancel-a-project-safely: ready-for-dev
   epic-5-retrospective: optional
 
-  epic-6: backlog
-  6-1-revise-the-project-budget-and-planned-dates: backlog
-  6-2-correct-or-replace-the-current-project-client: backlog
-  6-3-replace-the-current-project-manager: backlog
-  6-4-maintain-technical-responsibilities: backlog
-  6-5-revise-the-weekly-schedule-and-break-templates: backlog
-  6-6-maintain-project-fuel-agreements-and-effective-prices: backlog
-  6-7-inspect-project-history: backlog
-  6-8-inspect-employee-history: backlog
-  6-9-inspect-machine-history: backlog
+  epic-6: in-progress
+  6-1-revise-the-project-budget-and-planned-dates: ready-for-dev
+  6-2-correct-or-replace-the-current-project-client: ready-for-dev
+  6-3-replace-the-current-project-manager: ready-for-dev
+  6-4-maintain-technical-responsibilities: ready-for-dev
+  6-5-revise-the-weekly-schedule-and-break-templates: ready-for-dev
+  6-6-maintain-project-fuel-agreements-and-effective-prices: ready-for-dev
+  6-7-inspect-project-history: ready-for-dev
+  6-8-inspect-employee-history: ready-for-dev
+  6-9-inspect-machine-history: ready-for-dev
   epic-6-retrospective: optional

@@ -48,7 +48,14 @@ export interface EmploymentRecord {
   updatedAt: Date;
   person: PersonRecord;
   periods: EmploymentPeriodRecord[];
-  jobRolePeriods: Array<{ id: string; jobRoleId: string; effectiveFrom: Date; effectiveTo: Date | null; reason: string | null; jobRole: { id: string; name: string; isActive: boolean } }>;
+  jobRolePeriods: Array<{
+    id: string;
+    jobRoleId: string;
+    effectiveFrom: Date;
+    effectiveTo: Date | null;
+    reason: string | null;
+    jobRole: { id: string; name: string; isActive: boolean };
+  }>;
 }
 
 export interface WorkforceCreateData {
@@ -64,6 +71,54 @@ export interface WorkforceCreateData {
   companyRegistrationNumber: string;
   admissionDate: Date;
 }
+
+export interface CreateEmployeeAllocationData {
+  corporationId: string;
+  companyId: string;
+  actorUserId: string;
+  employmentId: string;
+  projectId: string;
+  jobRole: string;
+  expectedDailyWorkloadMinutes: number;
+  compensationMode: string;
+  compensationValue: string;
+  overtimeRate: string;
+  effectiveFrom: Date;
+}
+
+export interface AllocationLifecycleScope {
+  corporationId: string;
+  companyId: string;
+  actorUserId: string;
+  sessionId: string;
+}
+
+export interface AllocationTerms {
+  jobRole: string;
+  expectedDailyWorkloadMinutes: number;
+  compensationMode: string;
+  compensationValue: string;
+  overtimeRate: string;
+}
+
+const allocationSelect = {
+  id: true,
+  corporationId: true,
+  companyId: true,
+  projectId: true,
+  employmentId: true,
+  personId: true,
+  jobRole: true,
+  expectedDailyWorkloadMinutes: true,
+  compensationMode: true,
+  compensationValue: true,
+  overtimeRate: true,
+  effectiveFrom: true,
+  effectiveTo: true,
+  createdByUserId: true,
+  endedByUserId: true,
+  endedReason: true,
+};
 
 const personSelect = {
   id: true,
@@ -106,11 +161,26 @@ const employmentSelect = {
   createdAt: true,
   updatedAt: true,
   person: { select: personSelect },
-  periods: { orderBy: { effectiveFrom: "desc" as const }, select: periodSelect },
-  jobRolePeriods: { orderBy: { effectiveFrom: "desc" as const }, select: { id: true, jobRoleId: true, effectiveFrom: true, effectiveTo: true, reason: true, jobRole: { select: { id: true, name: true, isActive: true } } } },
+  periods: {
+    orderBy: { effectiveFrom: "desc" as const },
+    select: periodSelect,
+  },
+  jobRolePeriods: {
+    orderBy: { effectiveFrom: "desc" as const },
+    select: {
+      id: true,
+      jobRoleId: true,
+      effectiveFrom: true,
+      effectiveTo: true,
+      reason: true,
+      jobRole: { select: { id: true, name: true, isActive: true } },
+    },
+  },
 };
 
-function isUniqueError(error: unknown): error is { code: string; meta?: unknown } {
+function isUniqueError(
+  error: unknown,
+): error is { code: string; meta?: unknown } {
   return (
     typeof error === "object" &&
     error !== null &&
@@ -165,6 +235,419 @@ function currentStateConflictError(): AppError {
     message: "Employment current state does not allow rehire",
     statusCode: 409,
   });
+}
+
+export async function createEmployeeAllocationHandler(
+  context: HandlerContext,
+  input: CreateEmployeeAllocationData,
+) {
+  const [actor, employment, project] = await Promise.all([
+    context.prisma.user.findFirst({
+      where: {
+        corporationId: input.corporationId,
+        id: input.actorUserId,
+        isActive: true,
+      },
+      select: { id: true },
+    }),
+    context.prisma.employment.findFirst({
+      where: {
+        corporationId: input.corporationId,
+        companyId: input.companyId,
+        id: input.employmentId,
+        isActive: true,
+        state: "ACTIVE",
+        person: { isActive: true },
+        periods: { some: { effectiveTo: null } },
+      },
+      select: { id: true, personId: true },
+    }),
+    context.prisma.project.findFirst({
+      where: {
+        corporationId: input.corporationId,
+        companyId: input.companyId,
+        id: input.projectId,
+        status: { in: ["PLANNED", "ACTIVE"] },
+      },
+      select: { id: true, name: true, status: true },
+    }),
+  ]);
+  if (!actor || !employment || !project) {
+    throw new AppError({
+      code: "EMPLOYEE_ALLOCATION_STATE_CONFLICT",
+      message: "Employee allocation is no longer eligible",
+      statusCode: 409,
+    });
+  }
+  try {
+    const allocation = await context.prisma.projectEmployeeAllocation.create({
+      data: {
+        corporationId: input.corporationId,
+        companyId: input.companyId,
+        employmentId: input.employmentId,
+        projectId: input.projectId,
+        personId: employment.personId,
+        jobRole: input.jobRole,
+        expectedDailyWorkloadMinutes: input.expectedDailyWorkloadMinutes,
+        compensationMode: input.compensationMode,
+        compensationValue: input.compensationValue,
+        overtimeRate: input.overtimeRate,
+        effectiveFrom: input.effectiveFrom,
+        createdByUserId: input.actorUserId,
+      },
+      select: {
+        id: true,
+        employmentId: true,
+        personId: true,
+        projectId: true,
+        jobRole: true,
+        expectedDailyWorkloadMinutes: true,
+        compensationMode: true,
+        compensationValue: true,
+        overtimeRate: true,
+        effectiveFrom: true,
+      },
+    });
+    return { allocation, project };
+  } catch (error) {
+    if (isUniqueError(error)) {
+      throw new AppError({
+        code: "EMPLOYEE_ALLOCATION_UNAVAILABLE",
+        message: "Employee is unavailable for operational allocation",
+        statusCode: 409,
+      });
+    }
+    throw error;
+  }
+}
+
+function lifecycleError(
+  code:
+    | "EMPLOYEE_ALLOCATION_CURRENT_STATE_CONFLICT"
+    | "EMPLOYEE_REALLOCATION_CURRENT_STATE_CONFLICT" = "EMPLOYEE_ALLOCATION_CURRENT_STATE_CONFLICT",
+) {
+  return new AppError({
+    code,
+    message: "Employee allocation is no longer in an eligible current state",
+    statusCode: 409,
+  });
+}
+
+async function assertTrustedLifecycleScope(
+  context: HandlerContext,
+  scope: AllocationLifecycleScope,
+) {
+  const session = await context.prisma.session.findFirst({
+    where: {
+      id: scope.sessionId,
+      corporationId: scope.corporationId,
+      userId: scope.actorUserId,
+      companyId: scope.companyId,
+      revokedAt: null,
+      user: { isActive: true },
+    },
+    select: { id: true },
+  });
+  if (!session) throw lifecycleError();
+}
+
+async function findOpenAllocation(
+  context: HandlerContext,
+  scope: AllocationLifecycleScope,
+  allocationId: string,
+) {
+  const allocation = await context.prisma.projectEmployeeAllocation.findFirst({
+    where: {
+      id: allocationId,
+      corporationId: scope.corporationId,
+      companyId: scope.companyId,
+      effectiveTo: null,
+    },
+    select: allocationSelect,
+  });
+  if (!allocation) throw lifecycleError();
+  const [employment, person, project] = await Promise.all([
+    context.prisma.employment.findFirst({
+      where: {
+        id: allocation.employmentId,
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        state: "ACTIVE",
+        isActive: true,
+        periods: { some: { effectiveTo: null } },
+      },
+      select: { id: true },
+    }),
+    context.prisma.person.findFirst({
+      where: {
+        id: allocation.personId,
+        corporationId: scope.corporationId,
+        isActive: true,
+      },
+      select: { id: true },
+    }),
+    context.prisma.project.findFirst({
+      where: {
+        id: allocation.projectId,
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        status: { in: ["PLANNED", "ACTIVE", "PAUSED"] },
+      },
+      select: { id: true, name: true, status: true },
+    }),
+  ]);
+  if (!employment || !person || !project) throw lifecycleError();
+  return { allocation, project };
+}
+
+async function closeOpenAllocation(
+  context: HandlerContext,
+  allocationId: string,
+  effectiveTo: Date,
+  actorUserId: string,
+  reason: string,
+  code:
+    | "EMPLOYEE_ALLOCATION_CURRENT_STATE_CONFLICT"
+    | "EMPLOYEE_REALLOCATION_CURRENT_STATE_CONFLICT" = "EMPLOYEE_ALLOCATION_CURRENT_STATE_CONFLICT",
+) {
+  const updated = await context.prisma.projectEmployeeAllocation.updateMany({
+    where: { id: allocationId, effectiveTo: null },
+    data: { effectiveTo, endedByUserId: actorUserId, endedReason: reason },
+  });
+  if (updated.count !== 1) throw lifecycleError(code);
+}
+
+export async function releaseEmployeeAllocationHandler(
+  context: HandlerContext,
+  input: AllocationLifecycleScope & {
+    allocationId: string;
+    reason: string;
+    effectiveTo: Date;
+  },
+) {
+  await assertTrustedLifecycleScope(context, input);
+  const { allocation, project } = await findOpenAllocation(
+    context,
+    input,
+    input.allocationId,
+  );
+  await closeOpenAllocation(
+    context,
+    allocation.id,
+    input.effectiveTo,
+    input.actorUserId,
+    input.reason,
+  );
+  return {
+    allocation: {
+      ...allocation,
+      effectiveTo: input.effectiveTo,
+      endedByUserId: input.actorUserId,
+      endedReason: input.reason,
+    },
+    project,
+  };
+}
+
+export async function reallocateEmployeeHandler(
+  context: HandlerContext,
+  input: AllocationLifecycleScope &
+    AllocationTerms & {
+      allocationId: string;
+      destinationCompanyId: string;
+      destinationProjectId: string;
+      reason: string;
+      effectiveAt: Date;
+    },
+) {
+  await assertTrustedLifecycleScope(context, input);
+  const { allocation: source, project: sourceProject } =
+    await findOpenAllocation(context, input, input.allocationId);
+  const [company, destinationProject, destinationEmployment] =
+    await Promise.all([
+      context.prisma.company.findFirst({
+        where: {
+          id: input.destinationCompanyId,
+          corporationId: input.corporationId,
+          isActive: true,
+        },
+        select: { id: true },
+      }),
+      context.prisma.project.findFirst({
+        where: {
+          id: input.destinationProjectId,
+          corporationId: input.corporationId,
+          companyId: input.destinationCompanyId,
+          status: { in: ["PLANNED", "ACTIVE"] },
+        },
+        select: { id: true, name: true, status: true },
+      }),
+      context.prisma.employment.findFirst({
+        where: {
+          corporationId: input.corporationId,
+          companyId: input.destinationCompanyId,
+          personId: source.personId,
+          state: "ACTIVE",
+          isActive: true,
+          periods: { some: { effectiveTo: null } },
+        },
+        select: { id: true },
+      }),
+    ]);
+  if (!company || !destinationProject)
+    throw new AppError({
+      code: "EMPLOYEE_REALLOCATION_DESTINATION_UNAVAILABLE",
+      message: "Destination is unavailable",
+      statusCode: 409,
+    });
+  if (!destinationEmployment)
+    throw new AppError({
+      code: "EMPLOYEE_REALLOCATION_DESTINATION_EMPLOYMENT_REQUIRED",
+      message: "Destination Employment is required",
+      statusCode: 409,
+    });
+  await closeOpenAllocation(
+    context,
+    source.id,
+    input.effectiveAt,
+    input.actorUserId,
+    input.reason,
+    "EMPLOYEE_REALLOCATION_CURRENT_STATE_CONFLICT",
+  );
+  try {
+    const destination = await context.prisma.projectEmployeeAllocation.create({
+      data: {
+        corporationId: input.corporationId,
+        companyId: input.destinationCompanyId,
+        projectId: input.destinationProjectId,
+        employmentId: destinationEmployment.id,
+        personId: source.personId,
+        jobRole: input.jobRole,
+        expectedDailyWorkloadMinutes: input.expectedDailyWorkloadMinutes,
+        compensationMode: input.compensationMode,
+        compensationValue: input.compensationValue,
+        overtimeRate: input.overtimeRate,
+        effectiveFrom: input.effectiveAt,
+        createdByUserId: input.actorUserId,
+      },
+      select: allocationSelect,
+    });
+    return {
+      source: {
+        ...source,
+        effectiveTo: input.effectiveAt,
+        endedByUserId: input.actorUserId,
+        endedReason: input.reason,
+      },
+      sourceProject,
+      destination,
+      destinationProject,
+    };
+  } catch (error) {
+    if (isUniqueError(error))
+      throw new AppError({
+        code: "EMPLOYEE_REALLOCATION_DESTINATION_UNAVAILABLE",
+        message: "Employee is unavailable for destination",
+        statusCode: 409,
+      });
+    throw error;
+  }
+}
+
+export async function replaceEmployeeAllocationTermsHandler(
+  context: HandlerContext,
+  input: AllocationLifecycleScope &
+    AllocationTerms & {
+      allocationId: string;
+      reason: string;
+      effectiveAt: Date;
+    },
+) {
+  await assertTrustedLifecycleScope(context, input);
+  const { allocation: previous, project } = await findOpenAllocation(
+    context,
+    input,
+    input.allocationId,
+  );
+  const unchanged =
+    previous.jobRole === input.jobRole &&
+    previous.expectedDailyWorkloadMinutes ===
+      input.expectedDailyWorkloadMinutes &&
+    previous.compensationMode === input.compensationMode &&
+    previous.compensationValue.toFixed(2) === input.compensationValue &&
+    previous.overtimeRate.toFixed(2) === input.overtimeRate;
+  if (unchanged)
+    throw new AppError({
+      code: "EMPLOYEE_ALLOCATION_TERMS_UNCHANGED",
+      message: "Allocation terms are unchanged",
+      statusCode: 422,
+    });
+  await closeOpenAllocation(
+    context,
+    previous.id,
+    input.effectiveAt,
+    input.actorUserId,
+    input.reason,
+  );
+  const current = await context.prisma.projectEmployeeAllocation.create({
+    data: {
+      corporationId: previous.corporationId,
+      companyId: previous.companyId,
+      projectId: previous.projectId,
+      employmentId: previous.employmentId,
+      personId: previous.personId,
+      jobRole: input.jobRole,
+      expectedDailyWorkloadMinutes: input.expectedDailyWorkloadMinutes,
+      compensationMode: input.compensationMode,
+      compensationValue: input.compensationValue,
+      overtimeRate: input.overtimeRate,
+      effectiveFrom: input.effectiveAt,
+      createdByUserId: input.actorUserId,
+    },
+    select: allocationSelect,
+  });
+  return {
+    previous: {
+      ...previous,
+      effectiveTo: input.effectiveAt,
+      endedByUserId: input.actorUserId,
+      endedReason: input.reason,
+    },
+    current,
+    project,
+  };
+}
+
+export async function findAllocatedPersonIdsHandler(
+  context: HandlerContext,
+  corporationId: string,
+  personIds: string[],
+) {
+  if (!personIds.length) return [];
+  return context.prisma.projectEmployeeAllocation.findMany({
+    where: { corporationId, personId: { in: personIds }, effectiveTo: null },
+    select: { personId: true },
+  });
+}
+
+export async function findCurrentEmployeeAllocationHandler(
+  context: HandlerContext,
+  input: { corporationId: string; personId: string },
+) {
+  const allocation = await context.prisma.projectEmployeeAllocation.findFirst({
+    where: {
+      corporationId: input.corporationId,
+      personId: input.personId,
+      effectiveTo: null,
+    },
+    select: allocationSelect,
+  });
+  if (!allocation) return null;
+  const project = await context.prisma.project.findFirst({
+    where: { id: allocation.projectId, corporationId: input.corporationId },
+    select: { id: true, name: true, status: true },
+  });
+  return project ? { allocation, project } : null;
 }
 
 async function findPersonByDigest(
@@ -256,8 +739,21 @@ export async function createEmploymentWithFirstPeriodHandler(
   input: WorkforceCreateData & { personId: string; jobRoleId: string },
 ): Promise<EmploymentRecord> {
   try {
-    const role = await context.prisma.jobRole.findFirst({ where: { id: input.jobRoleId, corporationId: input.corporationId, companyId: input.companyId, isActive: true }, select: { id: true } });
-    if (!role) throw new AppError({ code: "JOB_ROLE_UNAVAILABLE", message: "Job role is unavailable", statusCode: 409 });
+    const role = await context.prisma.jobRole.findFirst({
+      where: {
+        id: input.jobRoleId,
+        corporationId: input.corporationId,
+        companyId: input.companyId,
+        isActive: true,
+      },
+      select: { id: true },
+    });
+    if (!role)
+      throw new AppError({
+        code: "JOB_ROLE_UNAVAILABLE",
+        message: "Job role is unavailable",
+        statusCode: 409,
+      });
     const employment = await context.prisma.employment.create({
       data: {
         corporationId: input.corporationId,
@@ -277,7 +773,15 @@ export async function createEmploymentWithFirstPeriodHandler(
       },
       select: { id: true },
     });
-    await context.prisma.employmentJobRolePeriod.create({ data: { corporationId: input.corporationId, companyId: input.companyId, employmentId: employment.id, jobRoleId: role.id, effectiveFrom: input.admissionDate } });
+    await context.prisma.employmentJobRolePeriod.create({
+      data: {
+        corporationId: input.corporationId,
+        companyId: input.companyId,
+        employmentId: employment.id,
+        jobRoleId: role.id,
+        effectiveFrom: input.admissionDate,
+      },
+    });
     return findEmployeeDetailHandler(context, {
       corporationId: input.corporationId,
       companyId: input.companyId,
@@ -292,36 +796,181 @@ export async function createEmploymentWithFirstPeriodHandler(
   }
 }
 
-const normalizeRoleName = (value: string) => value.trim().normalize("NFC").toLocaleLowerCase("pt-BR");
+const normalizeRoleName = (value: string) =>
+  value.trim().normalize("NFC").toLocaleLowerCase("pt-BR");
 
-export async function listJobRolesHandler(context: HandlerContext, scope: { corporationId: string; companyId: string }) {
-  return context.prisma.jobRole.findMany({ where: { ...scope }, orderBy: [{ name: "asc" }, { id: "asc" }], select: { id: true, name: true, isActive: true, createdAt: true, updatedAt: true } });
+export async function listJobRolesHandler(
+  context: HandlerContext,
+  scope: { corporationId: string; companyId: string },
+) {
+  return context.prisma.jobRole.findMany({
+    where: { ...scope },
+    orderBy: [{ name: "asc" }, { id: "asc" }],
+    select: {
+      id: true,
+      name: true,
+      isActive: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
 }
 
-export async function createJobRoleHandler(context: HandlerContext, input: { corporationId: string; companyId: string; name: string }) {
-  try { return await context.prisma.jobRole.create({ data: { ...input, normalizedName: normalizeRoleName(input.name) }, select: { id: true, name: true, isActive: true, createdAt: true, updatedAt: true } }); }
-  catch (error) { if (isUniqueError(error)) throw new AppError({ code: "JOB_ROLE_ALREADY_EXISTS", message: "A job role with this name already exists", statusCode: 409 }); throw error; }
-}
-
-export async function updateJobRoleHandler(context: HandlerContext, input: { corporationId: string; companyId: string; jobRoleId: string; name?: string; isActive?: boolean }) {
-  const existing = await context.prisma.jobRole.findFirst({ where: { id: input.jobRoleId, corporationId: input.corporationId, companyId: input.companyId }, select: { id: true } });
-  if (!existing) throw new AppError({ code: "NOT_FOUND", message: "Job role not found", statusCode: 404 });
-  try { return await context.prisma.jobRole.update({ where: { id: existing.id }, data: { ...(input.name === undefined ? {} : { name: input.name, normalizedName: normalizeRoleName(input.name) }), ...(input.isActive === undefined ? {} : { isActive: input.isActive }) }, select: { id: true, name: true, isActive: true, createdAt: true, updatedAt: true } }); }
-  catch (error) { if (isUniqueError(error)) throw new AppError({ code: "JOB_ROLE_ALREADY_EXISTS", message: "A job role with this name already exists", statusCode: 409 }); throw error; }
-}
-
-export async function changeEmploymentJobRoleHandler(context: HandlerContext, input: { corporationId: string; companyId: string; employmentId: string; jobRoleId: string; reason: string; effectiveDate: Date }) {
-  const employment = await context.prisma.employment.findFirst({ where: { id: input.employmentId, corporationId: input.corporationId, companyId: input.companyId, isActive: true, state: "ACTIVE" }, select: { id: true } });
-  const role = await context.prisma.jobRole.findFirst({ where: { id: input.jobRoleId, corporationId: input.corporationId, companyId: input.companyId, isActive: true }, select: { id: true } });
-  const current = await context.prisma.employmentJobRolePeriod.findFirst({ where: { corporationId: input.corporationId, companyId: input.companyId, employmentId: input.employmentId, effectiveTo: null }, select: { id: true, jobRoleId: true } });
-  if (!employment) throw notFoundError();
-  if (!role) throw new AppError({ code: "JOB_ROLE_UNAVAILABLE", message: "Job role is unavailable", statusCode: 409 });
-  if (!current || current.jobRoleId === role.id) throw new AppError({ code: "JOB_ROLE_CHANGE_CONFLICT", message: "Employment does not have a different current job role", statusCode: 409 });
+export async function createJobRoleHandler(
+  context: HandlerContext,
+  input: { corporationId: string; companyId: string; name: string },
+) {
   try {
-    await context.prisma.employmentJobRolePeriod.update({ where: { id: current.id }, data: { effectiveTo: input.effectiveDate } });
-    await context.prisma.employmentJobRolePeriod.create({ data: { corporationId: input.corporationId, companyId: input.companyId, employmentId: input.employmentId, jobRoleId: role.id, reason: input.reason, effectiveFrom: input.effectiveDate } });
+    return await context.prisma.jobRole.create({
+      data: { ...input, normalizedName: normalizeRoleName(input.name) },
+      select: {
+        id: true,
+        name: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
   } catch (error) {
-    if (isUniqueError(error)) throw new AppError({ code: "JOB_ROLE_CHANGE_CONFLICT", message: "Employee job role changed concurrently", statusCode: 409 });
+    if (isUniqueError(error))
+      throw new AppError({
+        code: "JOB_ROLE_ALREADY_EXISTS",
+        message: "A job role with this name already exists",
+        statusCode: 409,
+      });
+    throw error;
+  }
+}
+
+export async function updateJobRoleHandler(
+  context: HandlerContext,
+  input: {
+    corporationId: string;
+    companyId: string;
+    jobRoleId: string;
+    name?: string;
+    isActive?: boolean;
+  },
+) {
+  const existing = await context.prisma.jobRole.findFirst({
+    where: {
+      id: input.jobRoleId,
+      corporationId: input.corporationId,
+      companyId: input.companyId,
+    },
+    select: { id: true },
+  });
+  if (!existing)
+    throw new AppError({
+      code: "NOT_FOUND",
+      message: "Job role not found",
+      statusCode: 404,
+    });
+  try {
+    return await context.prisma.jobRole.update({
+      where: { id: existing.id },
+      data: {
+        ...(input.name === undefined
+          ? {}
+          : {
+              name: input.name,
+              normalizedName: normalizeRoleName(input.name),
+            }),
+        ...(input.isActive === undefined ? {} : { isActive: input.isActive }),
+      },
+      select: {
+        id: true,
+        name: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+  } catch (error) {
+    if (isUniqueError(error))
+      throw new AppError({
+        code: "JOB_ROLE_ALREADY_EXISTS",
+        message: "A job role with this name already exists",
+        statusCode: 409,
+      });
+    throw error;
+  }
+}
+
+export async function changeEmploymentJobRoleHandler(
+  context: HandlerContext,
+  input: {
+    corporationId: string;
+    companyId: string;
+    employmentId: string;
+    jobRoleId: string;
+    reason: string;
+    effectiveDate: Date;
+  },
+) {
+  const employment = await context.prisma.employment.findFirst({
+    where: {
+      id: input.employmentId,
+      corporationId: input.corporationId,
+      companyId: input.companyId,
+      isActive: true,
+      state: "ACTIVE",
+    },
+    select: { id: true },
+  });
+  const role = await context.prisma.jobRole.findFirst({
+    where: {
+      id: input.jobRoleId,
+      corporationId: input.corporationId,
+      companyId: input.companyId,
+      isActive: true,
+    },
+    select: { id: true },
+  });
+  const current = await context.prisma.employmentJobRolePeriod.findFirst({
+    where: {
+      corporationId: input.corporationId,
+      companyId: input.companyId,
+      employmentId: input.employmentId,
+      effectiveTo: null,
+    },
+    select: { id: true, jobRoleId: true },
+  });
+  if (!employment) throw notFoundError();
+  if (!role)
+    throw new AppError({
+      code: "JOB_ROLE_UNAVAILABLE",
+      message: "Job role is unavailable",
+      statusCode: 409,
+    });
+  if (!current || current.jobRoleId === role.id)
+    throw new AppError({
+      code: "JOB_ROLE_CHANGE_CONFLICT",
+      message: "Employment does not have a different current job role",
+      statusCode: 409,
+    });
+  try {
+    await context.prisma.employmentJobRolePeriod.update({
+      where: { id: current.id },
+      data: { effectiveTo: input.effectiveDate },
+    });
+    await context.prisma.employmentJobRolePeriod.create({
+      data: {
+        corporationId: input.corporationId,
+        companyId: input.companyId,
+        employmentId: input.employmentId,
+        jobRoleId: role.id,
+        reason: input.reason,
+        effectiveFrom: input.effectiveDate,
+      },
+    });
+  } catch (error) {
+    if (isUniqueError(error))
+      throw new AppError({
+        code: "JOB_ROLE_CHANGE_CONFLICT",
+        message: "Employee job role changed concurrently",
+        statusCode: 409,
+      });
     throw error;
   }
   return findEmployeeDetailHandler(context, input);

@@ -1,6 +1,7 @@
 import type { PrismaClient } from "../../src/db/generated/prisma/client";
 
 export async function resetIntegrationData(prisma: PrismaClient) {
+  await prisma.$executeRawUnsafe('TRUNCATE TABLE "projects" CASCADE');
   await prisma.$executeRawUnsafe(
     'TRUNCATE TABLE "machine_meter_reading_references" CASCADE',
   );

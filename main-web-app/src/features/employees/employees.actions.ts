@@ -5,6 +5,10 @@ import { revalidatePath } from "next/cache";
 import { postApiV1Employees } from "@/generated/clients/postApiV1Employees";
 import { postApiV1EmployeesEmploymentidRehire } from "@/generated/clients/postApiV1EmployeesEmploymentidRehire";
 import { putApiV1EmployeesEmploymentidJobRole } from "@/generated/clients/putApiV1EmployeesEmploymentidJobRole";
+import { postApiV1EmployeeAllocations } from "@/generated/clients/postApiV1EmployeeAllocations";
+import { postApiV1EmployeeAllocationsAllocationidRelease } from "@/generated/clients/postApiV1EmployeeAllocationsAllocationidRelease";
+import { postApiV1EmployeeAllocationsAllocationidReallocate } from "@/generated/clients/postApiV1EmployeeAllocationsAllocationidReallocate";
+import { postApiV1EmployeeAllocationsAllocationidTerms } from "@/generated/clients/postApiV1EmployeeAllocationsAllocationidTerms";
 import type { PostApiV1EmployeesMutationRequest } from "@/generated/models/PostApiV1Employees";
 import { ApiClientError } from "@/lib/api/server-client";
 import type { EmployeeActionState } from "./employees-action-state";
@@ -84,12 +88,125 @@ export async function rehireEmployeeAction(
   }
 }
 
-export async function changeEmployeeJobRoleAction(_state: EmployeeActionState, formData: FormData): Promise<EmployeeActionState> {
+export async function changeEmployeeJobRoleAction(
+  _state: EmployeeActionState,
+  formData: FormData,
+): Promise<EmployeeActionState> {
   const employmentId = optionalString(formData, "employmentId");
   try {
-    await putApiV1EmployeesEmploymentidJobRole({ employmentId, data: { jobRoleId: optionalString(formData, "jobRoleId"), reason: optionalString(formData, "reason") } });
+    await putApiV1EmployeesEmploymentidJobRole({
+      employmentId,
+      data: {
+        jobRoleId: optionalString(formData, "jobRoleId"),
+        reason: optionalString(formData, "reason"),
+      },
+    });
     revalidatePath("/home/funcionarios");
     revalidatePath(`/home/funcionarios/${employmentId}`);
     return { ok: true, message: "Função atualizada." };
-  } catch (error) { return { ok: false, message: failureMessage(error) }; }
+  } catch (error) {
+    return { ok: false, message: failureMessage(error) };
+  }
+}
+
+function allocationPayload(formData: FormData) {
+  return {
+    jobRole: optionalString(formData, "jobRole"),
+    expectedDailyWorkloadMinutes: Number(
+      optionalString(formData, "expectedDailyWorkloadMinutes"),
+    ),
+    compensationMode: optionalString(formData, "compensationMode") as
+      | "daily"
+      | "hourly"
+      | "weekly"
+      | "fortnightly"
+      | "monthly",
+    compensationValue: optionalString(formData, "compensationValue"),
+    overtimeRate: optionalString(formData, "overtimeRate"),
+  };
+}
+
+async function refreshAllocationViews(employmentId: string) {
+  revalidatePath("/home/funcionarios");
+  revalidatePath(`/home/funcionarios/${employmentId}`);
+  revalidatePath("/home/obras");
+}
+
+export async function allocateEmployeeAction(
+  _state: EmployeeActionState,
+  formData: FormData,
+): Promise<EmployeeActionState> {
+  const employmentId = optionalString(formData, "employmentId");
+  try {
+    await postApiV1EmployeeAllocations({
+      data: {
+        employmentId,
+        projectId: optionalString(formData, "projectId"),
+        ...allocationPayload(formData),
+      },
+    });
+    await refreshAllocationViews(employmentId);
+    return { ok: true, message: "Funcionário alocado." };
+  } catch (error) {
+    return { ok: false, message: failureMessage(error) };
+  }
+}
+
+export async function releaseEmployeeAllocationAction(
+  _state: EmployeeActionState,
+  formData: FormData,
+): Promise<EmployeeActionState> {
+  const employmentId = optionalString(formData, "employmentId");
+  try {
+    await postApiV1EmployeeAllocationsAllocationidRelease({
+      allocationId: optionalString(formData, "allocationId"),
+      data: { reason: optionalString(formData, "reason") },
+    });
+    await refreshAllocationViews(employmentId);
+    return { ok: true, message: "Funcionário liberado." };
+  } catch (error) {
+    return { ok: false, message: failureMessage(error) };
+  }
+}
+
+export async function replaceEmployeeAllocationTermsAction(
+  _state: EmployeeActionState,
+  formData: FormData,
+): Promise<EmployeeActionState> {
+  const employmentId = optionalString(formData, "employmentId");
+  try {
+    await postApiV1EmployeeAllocationsAllocationidTerms({
+      allocationId: optionalString(formData, "allocationId"),
+      data: {
+        ...allocationPayload(formData),
+        reason: optionalString(formData, "reason"),
+      },
+    });
+    await refreshAllocationViews(employmentId);
+    return { ok: true, message: "Termos efetivos atualizados." };
+  } catch (error) {
+    return { ok: false, message: failureMessage(error) };
+  }
+}
+
+export async function reallocateEmployeeAction(
+  _state: EmployeeActionState,
+  formData: FormData,
+): Promise<EmployeeActionState> {
+  const employmentId = optionalString(formData, "employmentId");
+  try {
+    await postApiV1EmployeeAllocationsAllocationidReallocate({
+      allocationId: optionalString(formData, "allocationId"),
+      data: {
+        ...allocationPayload(formData),
+        reason: optionalString(formData, "reason"),
+        destinationCompanyId: optionalString(formData, "destinationCompanyId"),
+        destinationProjectId: optionalString(formData, "destinationProjectId"),
+      },
+    });
+    await refreshAllocationViews(employmentId);
+    return { ok: true, message: "Funcionário realocado." };
+  } catch (error) {
+    return { ok: false, message: failureMessage(error) };
+  }
 }

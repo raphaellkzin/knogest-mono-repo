@@ -159,6 +159,8 @@ model User {
   removedFuelSuppliers           FuelSupplier[]                  @relation("FuelSupplierRemovedBy")
   machineMeterReadings           MachineMeterReading[]           @relation("MachineMeterReadingActor")
   machineMeterReadingCorrections MachineMeterReadingCorrection[] @relation("MachineMeterReadingCorrectionActor")
+  createdProjectEmployeeAllocations ProjectEmployeeAllocation[] @relation("ProjectEmployeeAllocationCreatedBy")
+  endedProjectEmployeeAllocations   ProjectEmployeeAllocation[] @relation("ProjectEmployeeAllocationEndedBy")
 
   @@unique([corporationId, id])
   @@unique([corporationId, email])
@@ -672,7 +674,12 @@ model ProjectEmployeeAllocation {
   overtimeRate                 Decimal   @map("overtime_rate") @db.Decimal(18, 2)
   effectiveFrom                DateTime  @map("effective_from") @db.Timestamptz(3)
   effectiveTo                  DateTime? @map("effective_to") @db.Timestamptz(3)
+  createdByUserId              String?   @map("created_by_user_id") @db.Uuid
+  endedByUserId                String?   @map("ended_by_user_id") @db.Uuid
+  endedReason                  String?   @map("ended_reason") @db.VarChar(500)
   employmentJobRolePeriod      EmploymentJobRolePeriod? @relation(fields: [employmentJobRolePeriodId], references: [id], onDelete: Restrict)
+  createdBy                    User?     @relation("ProjectEmployeeAllocationCreatedBy", fields: [corporationId, createdByUserId], references: [corporationId, id], onDelete: Restrict)
+  endedBy                      User?     @relation("ProjectEmployeeAllocationEndedBy", fields: [corporationId, endedByUserId], references: [corporationId, id], onDelete: Restrict)
 
   @@index([corporationId, companyId, projectId])
   @@index([employmentJobRolePeriodId])

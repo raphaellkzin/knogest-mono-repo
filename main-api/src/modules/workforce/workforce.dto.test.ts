@@ -2,11 +2,77 @@ import { describe, expect, it } from "vitest";
 
 import {
   createEmployeeSchema,
+  allocateEmployeeSchema,
+  releaseEmployeeAllocationSchema,
+  reallocateEmployeeSchema,
+  replaceEmployeeAllocationTermsSchema,
   listEmployeesQuerySchema,
   rehireEmployeeSchema,
 } from "./workforce.dto";
 
 describe("workforce DTOs", () => {
+  it("accepts normalized effective allocation terms and rejects untrusted or imprecise input", () => {
+    expect(
+      allocateEmployeeSchema.parse({
+        employmentId: "00000000-0000-4000-8000-000000000001",
+        projectId: "00000000-0000-4000-8000-000000000002",
+        jobRole: "Operador",
+        expectedDailyWorkloadMinutes: 1440,
+        compensationMode: "monthly",
+        compensationValue: "0.00",
+        overtimeRate: "12.50",
+      }),
+    ).toMatchObject({ compensationValue: "0.00" });
+    expect(() =>
+      allocateEmployeeSchema.parse({
+        employmentId: "00000000-0000-4000-8000-000000000001",
+        projectId: "00000000-0000-4000-8000-000000000002",
+        jobRole: "Operador",
+        expectedDailyWorkloadMinutes: 1,
+        compensationMode: "monthly",
+        compensationValue: "1.001",
+        overtimeRate: "0.00",
+        corporationId: "00000000-0000-4000-8000-000000000003",
+      }),
+    ).toThrow();
+  });
+
+  it("normalizes lifecycle reasons and requires complete replacement terms", () => {
+    expect(
+      releaseEmployeeAllocationSchema.parse({
+        reason: "  Mobilização encerrada  ",
+      }),
+    ).toEqual({ reason: "Mobilização encerrada" });
+    expect(() =>
+      releaseEmployeeAllocationSchema.parse({ reason: "\u0000" }),
+    ).toThrow();
+    const terms = {
+      jobRole: "Operador",
+      expectedDailyWorkloadMinutes: 480,
+      compensationMode: "daily" as const,
+      compensationValue: "0.00",
+      overtimeRate: "12.50",
+      reason: "Novo acordo",
+    };
+    expect(replaceEmployeeAllocationTermsSchema.parse(terms)).toMatchObject(
+      terms,
+    );
+    expect(() =>
+      replaceEmployeeAllocationTermsSchema.parse({
+        ...terms,
+        compensationValue: "1.5",
+      }),
+    ).toThrow();
+    expect(
+      reallocateEmployeeSchema.parse({
+        ...terms,
+        destinationCompanyId: "00000000-0000-4000-8000-000000000003",
+        destinationProjectId: "00000000-0000-4000-8000-000000000004",
+      }),
+    ).toMatchObject({
+      destinationCompanyId: "00000000-0000-4000-8000-000000000003",
+    });
+  });
   it("accepts the minimal Employee registration command", () => {
     expect(
       createEmployeeSchema.parse({
@@ -57,8 +123,8 @@ describe("workforce DTOs", () => {
       sortDirection: "desc",
     });
     expect(() => listEmployeesQuerySchema.parse({ sortBy: "role" })).toThrow();
-    expect(listEmployeesQuerySchema.parse({ state: "terminated" })).toMatchObject(
-      { state: "terminated" },
-    );
+    expect(
+      listEmployeesQuerySchema.parse({ state: "terminated" }),
+    ).toMatchObject({ state: "terminated" });
   });
 });

@@ -9,7 +9,17 @@ import {
   toMaskedDocumentDto,
   toProtectedDocumentDto,
 } from "../../lib/security/sensitive-document";
-import type { ChangeEmployeeJobRoleInput, CreateEmployeeInput, CreateJobRoleInput, ListEmployeesQuery, UpdateJobRoleInput } from "./workforce.dto";
+import type {
+  AllocateEmployeeInput,
+  ChangeEmployeeJobRoleInput,
+  CreateEmployeeInput,
+  CreateJobRoleInput,
+  ListEmployeesQuery,
+  ReallocateEmployeeInput,
+  ReleaseEmployeeAllocationInput,
+  ReplaceEmployeeAllocationTermsInput,
+  UpdateJobRoleInput,
+} from "./workforce.dto";
 import {
   assertEmploymentCanBeCreatedHandler,
   createEmploymentWithFirstPeriodHandler,
@@ -21,6 +31,12 @@ import {
   createJobRoleHandler,
   listJobRolesHandler,
   updateJobRoleHandler,
+  createEmployeeAllocationHandler,
+  releaseEmployeeAllocationHandler,
+  reallocateEmployeeHandler,
+  replaceEmployeeAllocationTermsHandler,
+  findAllocatedPersonIdsHandler,
+  findCurrentEmployeeAllocationHandler,
   type EmploymentRecord,
   type PersonRecord,
 } from "./handlers/workforce.handler";
@@ -28,6 +44,11 @@ import {
 interface AuthenticatedCompanyScope {
   corporationId: string;
   companyId: string;
+}
+
+interface AllocationScope extends AuthenticatedCompanyScope {
+  actorUserId: string;
+  sessionId: string;
 }
 
 function parseAdmissionDate(value: string): Date {
@@ -110,7 +131,9 @@ function isCurrentEmployment(record: EmploymentRecord) {
 }
 
 function availabilityDto(record: EmploymentRecord, hasOpenAllocation = false) {
-  const hasCurrentJobRole = record.jobRolePeriods.some((period) => period.effectiveTo === null);
+  const hasCurrentJobRole = record.jobRolePeriods.some(
+    (period) => period.effectiveTo === null,
+  );
   return {
     state:
       isCurrentEmployment(record) && hasCurrentJobRole && !hasOpenAllocation
@@ -126,7 +149,8 @@ function toListDto(
   allocatedPersonIds = new Set<string>(),
 ) {
   const openPeriod = currentPeriod(record);
-  const currentJobRole = record.jobRolePeriods.find((period) => period.effectiveTo === null) ?? null;
+  const currentJobRole =
+    record.jobRolePeriods.find((period) => period.effectiveTo === null) ?? null;
   return {
     id: record.id,
     person: {
@@ -144,7 +168,13 @@ function toListDto(
         openPeriod?.admissionDate.toISOString().slice(0, 10) ?? null,
       createdAt: record.createdAt.toISOString(),
       updatedAt: record.updatedAt.toISOString(),
-      jobRole: currentJobRole ? { id: currentJobRole.jobRole.id, name: currentJobRole.jobRole.name, periodId: currentJobRole.id } : null,
+      jobRole: currentJobRole
+        ? {
+            id: currentJobRole.jobRole.id,
+            name: currentJobRole.jobRole.name,
+            periodId: currentJobRole.id,
+          }
+        : null,
     },
     availability: availabilityDto(
       record,
@@ -165,7 +195,55 @@ function toDetailDto(record: EmploymentRecord) {
       updatedAt: record.person.updatedAt.toISOString(),
     },
     periods: periodsForDetail(record).map(periodDto),
-    jobRolePeriods: record.jobRolePeriods.map((period) => ({ id: period.id, jobRole: { id: period.jobRole.id, name: period.jobRole.name }, effectiveFrom: period.effectiveFrom.toISOString().slice(0, 10), effectiveTo: period.effectiveTo?.toISOString().slice(0, 10) ?? null, reason: period.reason, state: period.effectiveTo === null ? "current" as const : "closed" as const })),
+    jobRolePeriods: record.jobRolePeriods.map((period) => ({
+      id: period.id,
+      jobRole: { id: period.jobRole.id, name: period.jobRole.name },
+      effectiveFrom: period.effectiveFrom.toISOString().slice(0, 10),
+      effectiveTo: period.effectiveTo?.toISOString().slice(0, 10) ?? null,
+      reason: period.reason,
+      state:
+        period.effectiveTo === null
+          ? ("current" as const)
+          : ("closed" as const),
+    })),
+    currentAllocation: null,
+  };
+}
+
+function allocationDto(
+  allocation: {
+    id: string;
+    employmentId: string;
+    personId: string;
+    projectId: string;
+    jobRole: string;
+    expectedDailyWorkloadMinutes: number;
+    compensationMode: string;
+    compensationValue: { toFixed: (digits: number) => string };
+    overtimeRate: { toFixed: (digits: number) => string };
+    effectiveFrom: Date;
+    effectiveTo: Date | null;
+    endedReason: string | null;
+  },
+  project: { id: string; name: string; status: string },
+) {
+  return {
+    id: allocation.id,
+    employmentId: allocation.employmentId,
+    personId: allocation.personId,
+    project: {
+      id: project.id,
+      name: project.name,
+      status: project.status.toLowerCase(),
+    },
+    jobRole: allocation.jobRole,
+    expectedDailyWorkloadMinutes: allocation.expectedDailyWorkloadMinutes,
+    compensationMode: allocation.compensationMode,
+    compensationValue: allocation.compensationValue.toFixed(2),
+    overtimeRate: allocation.overtimeRate.toFixed(2),
+    effectiveFrom: allocation.effectiveFrom.toISOString(),
+    effectiveTo: allocation.effectiveTo?.toISOString() ?? null,
+    endedReason: allocation.endedReason,
   };
 }
 
@@ -244,15 +322,11 @@ export class WorkforceService {
             : item.person.displayName,
       }),
     });
-    const allocationRows =
-      await this.context.prisma.projectEmployeeAllocation.findMany({
-        where: {
-          corporationId: scope.corporationId,
-          personId: { in: page.data.map((item) => item.person.id) },
-          effectiveTo: null,
-        },
-        select: { personId: true },
-      });
+    const allocationRows = await findAllocatedPersonIdsHandler(
+      this.context,
+      scope.corporationId,
+      page.data.map((item) => item.person.id),
+    );
     const allocatedPersonIds = new Set(
       allocationRows.map((row) => row.personId),
     );
@@ -267,7 +341,108 @@ export class WorkforceService {
       ...scope,
       employmentId,
     });
-    return toDetailDto(record);
+    const current = await findCurrentEmployeeAllocationHandler(this.context, {
+      corporationId: scope.corporationId,
+      personId: record.person.id,
+    });
+    return {
+      ...toDetailDto(record),
+      currentAllocation: current
+        ? allocationDto(current.allocation, current.project)
+        : null,
+    };
+  }
+
+  async allocate(scope: AllocationScope, input: AllocateEmployeeInput) {
+    return runSerializableWithRetry(() =>
+      this.context.transaction(
+        async (tx) => {
+          const result = await createEmployeeAllocationHandler(tx, {
+            ...scope,
+            ...input,
+            effectiveFrom: new Date(),
+          });
+          const allocation = result.allocation;
+          return allocationDto(
+            { ...allocation, effectiveTo: null, endedReason: null },
+            result.project,
+          );
+        },
+        { isolationLevel: "Serializable" },
+      ),
+    );
+  }
+
+  async releaseAllocation(
+    scope: AllocationScope,
+    allocationId: string,
+    input: ReleaseEmployeeAllocationInput,
+  ) {
+    return runSerializableWithRetry(() =>
+      this.context.transaction(
+        async (tx) => {
+          const result = await releaseEmployeeAllocationHandler(tx, {
+            ...scope,
+            allocationId,
+            reason: input.reason,
+            effectiveTo: new Date(),
+          });
+          return allocationDto(result.allocation, result.project);
+        },
+        { isolationLevel: "Serializable" },
+      ),
+    );
+  }
+
+  async reallocateAllocation(
+    scope: AllocationScope,
+    allocationId: string,
+    input: ReallocateEmployeeInput,
+  ) {
+    return runSerializableWithRetry(() =>
+      this.context.transaction(
+        async (tx) => {
+          const result = await reallocateEmployeeHandler(tx, {
+            ...scope,
+            allocationId,
+            ...input,
+            effectiveAt: new Date(),
+          });
+          return {
+            source: allocationDto(result.source, result.sourceProject),
+            destination: allocationDto(
+              result.destination,
+              result.destinationProject,
+            ),
+          };
+        },
+        { isolationLevel: "Serializable" },
+      ),
+    );
+  }
+
+  async replaceAllocationTerms(
+    scope: AllocationScope,
+    allocationId: string,
+    input: ReplaceEmployeeAllocationTermsInput,
+  ) {
+    return runSerializableWithRetry(() =>
+      this.context.transaction(
+        async (tx) => {
+          const result = await replaceEmployeeAllocationTermsHandler(tx, {
+            ...scope,
+            allocationId,
+            ...input,
+            effectiveAt: new Date(),
+          });
+          return {
+            previous: allocationDto(result.previous, result.project),
+            current: allocationDto(result.current, result.project),
+          };
+        },
+        { isolationLevel: "Serializable" },
+      ),
+    );
   }
 
   async rehire(scope: AuthenticatedCompanyScope, employmentId: string) {
@@ -287,11 +462,45 @@ export class WorkforceService {
     );
   }
 
-  async listJobRoles(scope: AuthenticatedCompanyScope) { return listJobRolesHandler(this.context, scope); }
-  async createJobRole(scope: AuthenticatedCompanyScope, input: CreateJobRoleInput) { return createJobRoleHandler(this.context, { ...scope, ...input }); }
-  async updateJobRole(scope: AuthenticatedCompanyScope, jobRoleId: string, input: UpdateJobRoleInput) { return updateJobRoleHandler(this.context, { ...scope, jobRoleId, ...input }); }
-  async changeJobRole(scope: AuthenticatedCompanyScope, employmentId: string, input: ChangeEmployeeJobRoleInput) {
-    return runSerializableWithRetry(() => this.context.transaction(async (tx) => { const result = await changeEmploymentJobRoleHandler(tx, { ...scope, employmentId, ...input, effectiveDate: todayUtc() }); return toDetailDto(result); }, { isolationLevel: "Serializable" }));
+  async listJobRoles(scope: AuthenticatedCompanyScope) {
+    return listJobRolesHandler(this.context, scope);
+  }
+  async createJobRole(
+    scope: AuthenticatedCompanyScope,
+    input: CreateJobRoleInput,
+  ) {
+    return createJobRoleHandler(this.context, { ...scope, ...input });
+  }
+  async updateJobRole(
+    scope: AuthenticatedCompanyScope,
+    jobRoleId: string,
+    input: UpdateJobRoleInput,
+  ) {
+    return updateJobRoleHandler(this.context, {
+      ...scope,
+      jobRoleId,
+      ...input,
+    });
+  }
+  async changeJobRole(
+    scope: AuthenticatedCompanyScope,
+    employmentId: string,
+    input: ChangeEmployeeJobRoleInput,
+  ) {
+    return runSerializableWithRetry(() =>
+      this.context.transaction(
+        async (tx) => {
+          const result = await changeEmploymentJobRoleHandler(tx, {
+            ...scope,
+            employmentId,
+            ...input,
+            effectiveDate: todayUtc(),
+          });
+          return toDetailDto(result);
+        },
+        { isolationLevel: "Serializable" },
+      ),
+    );
   }
 }
 

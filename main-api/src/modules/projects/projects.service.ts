@@ -350,6 +350,7 @@ export class ProjectsService {
               compensationMode: allocation.compensationMode,
               compensationValue: allocation.compensationValue,
               overtimeRate: allocation.overtimeRate,
+              createdByUserId: scope.userId,
             },
           });
         }

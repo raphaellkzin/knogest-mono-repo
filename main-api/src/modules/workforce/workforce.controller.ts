@@ -18,6 +18,10 @@ import {
   changeEmployeeJobRoleSchema,
   listEmployeesQuerySchema,
   rehireEmployeeSchema,
+  allocateEmployeeSchema,
+  releaseEmployeeAllocationSchema,
+  reallocateEmployeeSchema,
+  replaceEmployeeAllocationTermsSchema,
 } from "./workforce.dto";
 import { WorkforceService } from "./workforce.service";
 
@@ -65,7 +69,11 @@ const listEmployeesOpenApiQuerySchema = {
     search: { type: "string", maxLength: 120 },
     state: { type: "string", enum: ["active", "terminated"] },
     availability: { type: "string", enum: ["available"] },
-    sortBy: { type: "string", enum: ["name", "createdAt"], default: "createdAt" },
+    sortBy: {
+      type: "string",
+      enum: ["name", "createdAt"],
+      default: "createdAt",
+    },
     sortDirection: { type: "string", enum: ["asc", "desc"], default: "desc" },
   },
 } as const;
@@ -117,7 +125,11 @@ const employeeListItemSchema = {
           nullable: true,
           type: "object",
           required: ["id", "name", "periodId"],
-          properties: { id: { type: "string", format: "uuid" }, name: { type: "string" }, periodId: { type: "string", format: "uuid" } },
+          properties: {
+            id: { type: "string", format: "uuid" },
+            name: { type: "string" },
+            periodId: { type: "string", format: "uuid" },
+          },
           additionalProperties: false,
         },
       },
@@ -137,9 +149,60 @@ const employeeListItemSchema = {
   additionalProperties: false,
 } as const;
 
+const currentAllocationSchema = {
+  nullable: true,
+  type: "object",
+  required: [
+    "id",
+    "employmentId",
+    "personId",
+    "project",
+    "jobRole",
+    "expectedDailyWorkloadMinutes",
+    "compensationMode",
+    "compensationValue",
+    "overtimeRate",
+    "effectiveFrom",
+    "effectiveTo",
+    "endedReason",
+  ],
+  properties: {
+    id: { type: "string", format: "uuid" },
+    employmentId: { type: "string", format: "uuid" },
+    personId: { type: "string", format: "uuid" },
+    project: {
+      type: "object",
+      additionalProperties: false,
+      required: ["id", "name", "status"],
+      properties: {
+        id: { type: "string", format: "uuid" },
+        name: { type: "string" },
+        status: { type: "string", enum: ["planned", "active", "paused"] },
+      },
+    },
+    jobRole: { type: "string" },
+    expectedDailyWorkloadMinutes: { type: "integer" },
+    compensationMode: { type: "string" },
+    compensationValue: { type: "string" },
+    overtimeRate: { type: "string" },
+    effectiveFrom: { type: "string", format: "date-time" },
+    effectiveTo: { type: "string", format: "date-time", nullable: true },
+    endedReason: { type: "string", nullable: true },
+  },
+  additionalProperties: false,
+} as const;
+
 const employeeDetailSchema = {
   ...employeeListItemSchema,
-  required: ["id", "person", "employment", "availability", "periods", "jobRolePeriods"],
+  required: [
+    "id",
+    "person",
+    "employment",
+    "availability",
+    "periods",
+    "jobRolePeriods",
+    "currentAllocation",
+  ],
   properties: {
     ...employeeListItemSchema.properties,
     person: {
@@ -189,7 +252,36 @@ const employeeDetailSchema = {
         additionalProperties: false,
       },
     },
-    jobRolePeriods: { type: "array", items: { type: "object", required: ["id", "jobRole", "effectiveFrom", "effectiveTo", "reason", "state"], properties: { id: { type: "string", format: "uuid" }, jobRole: { type: "object", required: ["id", "name"], properties: { id: { type: "string", format: "uuid" }, name: { type: "string" } } }, effectiveFrom: { type: "string", format: "date" }, effectiveTo: { type: "string", format: "date", nullable: true }, reason: { type: "string", nullable: true }, state: { type: "string", enum: ["current", "closed"] } } } },
+    jobRolePeriods: {
+      type: "array",
+      items: {
+        type: "object",
+        required: [
+          "id",
+          "jobRole",
+          "effectiveFrom",
+          "effectiveTo",
+          "reason",
+          "state",
+        ],
+        properties: {
+          id: { type: "string", format: "uuid" },
+          jobRole: {
+            type: "object",
+            required: ["id", "name"],
+            properties: {
+              id: { type: "string", format: "uuid" },
+              name: { type: "string" },
+            },
+          },
+          effectiveFrom: { type: "string", format: "date" },
+          effectiveTo: { type: "string", format: "date", nullable: true },
+          reason: { type: "string", nullable: true },
+          state: { type: "string", enum: ["current", "closed"] },
+        },
+      },
+    },
+    currentAllocation: currentAllocationSchema,
   },
 } as const;
 
@@ -239,18 +331,44 @@ const employeeParamsSchema = z
   .object({ employmentId: z.string().uuid() })
   .strict();
 const jobRoleParamsSchema = z.object({ jobRoleId: z.string().uuid() }).strict();
-const jobRoleSchema = { type: "object", required: ["id", "name", "isActive", "createdAt", "updatedAt"], properties: { id: { type: "string", format: "uuid" }, name: { type: "string" }, isActive: { type: "boolean" }, createdAt: { type: "string", format: "date-time" }, updatedAt: { type: "string", format: "date-time" } }, additionalProperties: false } as const;
-const jobRoleBodySchema = { type: "object", additionalProperties: false, required: ["name"], properties: { name: { type: "string", minLength: 1, maxLength: 120 } } } as const;
+const allocationParamsSchema = z
+  .object({ allocationId: z.string().uuid() })
+  .strict();
+const jobRoleSchema = {
+  type: "object",
+  required: ["id", "name", "isActive", "createdAt", "updatedAt"],
+  properties: {
+    id: { type: "string", format: "uuid" },
+    name: { type: "string" },
+    isActive: { type: "boolean" },
+    createdAt: { type: "string", format: "date-time" },
+    updatedAt: { type: "string", format: "date-time" },
+  },
+  additionalProperties: false,
+} as const;
+const jobRoleBodySchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["name"],
+  properties: { name: { type: "string", minLength: 1, maxLength: 120 } },
+} as const;
 
 function scopeFromRequest(request: {
-  authContext?: { corporationId: string; companyId?: string };
+  authContext?: {
+    corporationId: string;
+    companyId?: string;
+    userId?: string;
+    sessionId?: string;
+  };
 }) {
   const corporationId = request.authContext?.corporationId;
   const companyId = request.authContext?.companyId;
-  if (!corporationId || !companyId) {
+  const actorUserId = request.authContext?.userId;
+  const sessionId = request.authContext?.sessionId;
+  if (!corporationId || !companyId || !actorUserId || !sessionId) {
     throw new Error("Company-scoped route executed without auth context");
   }
-  return { corporationId, companyId };
+  return { corporationId, companyId, actorUserId, sessionId };
 }
 
 export const v1WorkforceController = async (app: FastifyInstance) => {
@@ -283,10 +401,430 @@ export const v1WorkforceController = async (app: FastifyInstance) => {
     },
   );
 
-  app.get("/job-roles", { preHandler: [app.requireCompanyScope], schema: { tags: ["Workforce"], summary: "List company job roles", security: [{ bearerAuth: [] }], response: { 200: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "array", items: jobRoleSchema } } }, 401: errorSchema, 403: errorSchema } } }, async (request, reply) => jsonResponse.success({ reply, data: await workforceService.listJobRoles(scopeFromRequest(request)) }));
-  app.post("/job-roles", { preHandler: [app.requireCompanyScope, validateBody(createJobRoleSchema)], schema: { tags: ["Workforce"], summary: "Create a company job role", security: [{ bearerAuth: [] }], body: jobRoleBodySchema, response: { 201: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: jobRoleSchema } }, 400: errorSchema, 401: errorSchema, 403: errorSchema, 409: errorSchema } } }, async (request, reply) => jsonResponse.success({ reply, statusCode: 201, data: await workforceService.createJobRole(scopeFromRequest(request), request.body as z.infer<typeof createJobRoleSchema>) }));
-  app.put("/job-roles/:jobRoleId", { preHandler: [app.requireCompanyScope, validateParams(jobRoleParamsSchema), validateBody(updateJobRoleSchema)], schema: { tags: ["Workforce"], summary: "Update or deactivate a company job role", security: [{ bearerAuth: [] }], body: { type: "object", additionalProperties: false, properties: { name: { type: "string", minLength: 1, maxLength: 120 }, isActive: { type: "boolean" } } }, response: { 200: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: jobRoleSchema } }, 400: errorSchema, 401: errorSchema, 403: errorSchema, 404: errorSchema, 409: errorSchema } } }, async (request, reply) => jsonResponse.success({ reply, data: await workforceService.updateJobRole(scopeFromRequest(request), (request.params as z.infer<typeof jobRoleParamsSchema>).jobRoleId, request.body as z.infer<typeof updateJobRoleSchema>) }));
-  app.put("/employees/:employmentId/job-role", { preHandler: [app.requireCompanyScope, validateParams(employeeParamsSchema), validateBody(changeEmployeeJobRoleSchema)], schema: { tags: ["Workforce"], summary: "Change an employee current job role", security: [{ bearerAuth: [] }], body: { type: "object", additionalProperties: false, required: ["jobRoleId", "reason"], properties: { jobRoleId: { type: "string", format: "uuid" }, reason: { type: "string", minLength: 1, maxLength: 240 } } }, response: { 200: detailResponseSchema, 400: errorSchema, 401: errorSchema, 403: errorSchema, 404: errorSchema, 409: errorSchema } } }, async (request, reply) => jsonResponse.success({ reply, data: await workforceService.changeJobRole(scopeFromRequest(request), (request.params as z.infer<typeof employeeParamsSchema>).employmentId, request.body as z.infer<typeof changeEmployeeJobRoleSchema>) }));
+  app.post(
+    "/employee-allocations",
+    {
+      preHandler: [
+        app.requireCompanyScope,
+        validateBody(allocateEmployeeSchema),
+      ],
+      schema: {
+        tags: ["Workforce"],
+        summary: "Allocate an Employee to an eligible Project",
+        security: [{ bearerAuth: [] }],
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: [
+            "employmentId",
+            "projectId",
+            "jobRole",
+            "expectedDailyWorkloadMinutes",
+            "compensationMode",
+            "compensationValue",
+            "overtimeRate",
+          ],
+          properties: {
+            employmentId: { type: "string", format: "uuid" },
+            projectId: { type: "string", format: "uuid" },
+            jobRole: { type: "string", minLength: 1, maxLength: 120 },
+            expectedDailyWorkloadMinutes: {
+              type: "integer",
+              minimum: 1,
+              maximum: 1440,
+            },
+            compensationMode: {
+              enum: ["daily", "hourly", "weekly", "fortnightly", "monthly"],
+            },
+            compensationValue: {
+              type: "string",
+              pattern: "^(?:0|[1-9]\\d*)\\.\\d{2}$",
+            },
+            overtimeRate: {
+              type: "string",
+              pattern: "^(?:0|[1-9]\\d*)\\.\\d{2}$",
+            },
+          },
+        },
+        response: {
+          201: {
+            type: "object",
+            required: ["success", "message", "data"],
+            properties: {
+              success: { const: true },
+              message: { type: "string" },
+              data: { type: "object", additionalProperties: true },
+            },
+          },
+          400: errorSchema,
+          401: errorSchema,
+          403: errorSchema,
+          404: errorSchema,
+          409: errorSchema,
+        },
+      },
+    },
+    async (request, reply) =>
+      jsonResponse.success({
+        reply,
+        statusCode: 201,
+        data: await workforceService.allocate(
+          scopeFromRequest(request),
+          request.body as z.infer<typeof allocateEmployeeSchema>,
+        ),
+      }),
+  );
+
+  const allocationParamsOpenApiSchema = {
+    type: "object",
+    additionalProperties: false,
+    required: ["allocationId"],
+    properties: { allocationId: { type: "string", format: "uuid" } },
+  } as const;
+  const reasonBodySchema = {
+    type: "object",
+    additionalProperties: false,
+    required: ["reason"],
+    properties: { reason: { type: "string", minLength: 1, maxLength: 500 } },
+  } as const;
+  const lifecycleResponseSchema = {
+    type: "object",
+    required: ["success", "message", "data"],
+    properties: {
+      success: { type: "boolean", const: true },
+      message: { type: "string" },
+      data: { type: "object", additionalProperties: true },
+    },
+  } as const;
+
+  app.post(
+    "/employee-allocations/:allocationId/release",
+    {
+      preHandler: [
+        app.requireCompanyScope,
+        validateParams(allocationParamsSchema),
+        validateBody(releaseEmployeeAllocationSchema),
+      ],
+      schema: {
+        tags: ["Workforce"],
+        summary: "Release an Employee allocation immediately",
+        security: [{ bearerAuth: [] }],
+        params: allocationParamsOpenApiSchema,
+        body: reasonBodySchema,
+        response: {
+          200: lifecycleResponseSchema,
+          400: errorSchema,
+          401: errorSchema,
+          403: errorSchema,
+          404: errorSchema,
+          409: errorSchema,
+        },
+      },
+    },
+    async (request, reply) =>
+      jsonResponse.success({
+        reply,
+        data: await workforceService.releaseAllocation(
+          scopeFromRequest(request),
+          (request.params as z.infer<typeof allocationParamsSchema>)
+            .allocationId,
+          request.body as z.infer<typeof releaseEmployeeAllocationSchema>,
+        ),
+      }),
+  );
+
+  app.post(
+    "/employee-allocations/:allocationId/reallocate",
+    {
+      preHandler: [
+        app.requireCompanyScope,
+        validateParams(allocationParamsSchema),
+        validateBody(reallocateEmployeeSchema),
+      ],
+      schema: {
+        tags: ["Workforce"],
+        summary: "Reallocate an Employee atomically",
+        security: [{ bearerAuth: [] }],
+        params: allocationParamsOpenApiSchema,
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: [
+            "destinationCompanyId",
+            "destinationProjectId",
+            "jobRole",
+            "expectedDailyWorkloadMinutes",
+            "compensationMode",
+            "compensationValue",
+            "overtimeRate",
+            "reason",
+          ],
+          properties: {
+            destinationCompanyId: { type: "string", format: "uuid" },
+            destinationProjectId: { type: "string", format: "uuid" },
+            jobRole: { type: "string", minLength: 1, maxLength: 120 },
+            expectedDailyWorkloadMinutes: {
+              type: "integer",
+              minimum: 1,
+              maximum: 1440,
+            },
+            compensationMode: {
+              type: "string",
+              enum: ["daily", "hourly", "weekly", "fortnightly", "monthly"],
+            },
+            compensationValue: {
+              type: "string",
+              pattern: "^(?:0|[1-9]\\d*)\\.\\d{2}$",
+            },
+            overtimeRate: {
+              type: "string",
+              pattern: "^(?:0|[1-9]\\d*)\\.\\d{2}$",
+            },
+            reason: { type: "string", minLength: 1, maxLength: 500 },
+          },
+        },
+        response: {
+          200: lifecycleResponseSchema,
+          400: errorSchema,
+          401: errorSchema,
+          403: errorSchema,
+          404: errorSchema,
+          409: errorSchema,
+        },
+      },
+    },
+    async (request, reply) =>
+      jsonResponse.success({
+        reply,
+        data: await workforceService.reallocateAllocation(
+          scopeFromRequest(request),
+          (request.params as z.infer<typeof allocationParamsSchema>)
+            .allocationId,
+          request.body as z.infer<typeof reallocateEmployeeSchema>,
+        ),
+      }),
+  );
+
+  app.post(
+    "/employee-allocations/:allocationId/terms",
+    {
+      preHandler: [
+        app.requireCompanyScope,
+        validateParams(allocationParamsSchema),
+        validateBody(replaceEmployeeAllocationTermsSchema),
+      ],
+      schema: {
+        tags: ["Workforce"],
+        summary: "Replace effective Employee allocation terms",
+        security: [{ bearerAuth: [] }],
+        params: allocationParamsOpenApiSchema,
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: [
+            "jobRole",
+            "expectedDailyWorkloadMinutes",
+            "compensationMode",
+            "compensationValue",
+            "overtimeRate",
+            "reason",
+          ],
+          properties: {
+            jobRole: { type: "string", minLength: 1, maxLength: 120 },
+            expectedDailyWorkloadMinutes: {
+              type: "integer",
+              minimum: 1,
+              maximum: 1440,
+            },
+            compensationMode: {
+              type: "string",
+              enum: ["daily", "hourly", "weekly", "fortnightly", "monthly"],
+            },
+            compensationValue: {
+              type: "string",
+              pattern: "^(?:0|[1-9]\\d*)\\.\\d{2}$",
+            },
+            overtimeRate: {
+              type: "string",
+              pattern: "^(?:0|[1-9]\\d*)\\.\\d{2}$",
+            },
+            reason: { type: "string", minLength: 1, maxLength: 500 },
+          },
+        },
+        response: {
+          200: lifecycleResponseSchema,
+          400: errorSchema,
+          401: errorSchema,
+          403: errorSchema,
+          404: errorSchema,
+          409: errorSchema,
+          422: errorSchema,
+        },
+      },
+    },
+    async (request, reply) =>
+      jsonResponse.success({
+        reply,
+        data: await workforceService.replaceAllocationTerms(
+          scopeFromRequest(request),
+          (request.params as z.infer<typeof allocationParamsSchema>)
+            .allocationId,
+          request.body as z.infer<typeof replaceEmployeeAllocationTermsSchema>,
+        ),
+      }),
+  );
+
+  app.get(
+    "/job-roles",
+    {
+      preHandler: [app.requireCompanyScope],
+      schema: {
+        tags: ["Workforce"],
+        summary: "List company job roles",
+        security: [{ bearerAuth: [] }],
+        response: {
+          200: {
+            type: "object",
+            properties: {
+              success: { type: "boolean" },
+              message: { type: "string" },
+              data: { type: "array", items: jobRoleSchema },
+            },
+          },
+          401: errorSchema,
+          403: errorSchema,
+        },
+      },
+    },
+    async (request, reply) =>
+      jsonResponse.success({
+        reply,
+        data: await workforceService.listJobRoles(scopeFromRequest(request)),
+      }),
+  );
+  app.post(
+    "/job-roles",
+    {
+      preHandler: [app.requireCompanyScope, validateBody(createJobRoleSchema)],
+      schema: {
+        tags: ["Workforce"],
+        summary: "Create a company job role",
+        security: [{ bearerAuth: [] }],
+        body: jobRoleBodySchema,
+        response: {
+          201: {
+            type: "object",
+            properties: {
+              success: { type: "boolean" },
+              message: { type: "string" },
+              data: jobRoleSchema,
+            },
+          },
+          400: errorSchema,
+          401: errorSchema,
+          403: errorSchema,
+          409: errorSchema,
+        },
+      },
+    },
+    async (request, reply) =>
+      jsonResponse.success({
+        reply,
+        statusCode: 201,
+        data: await workforceService.createJobRole(
+          scopeFromRequest(request),
+          request.body as z.infer<typeof createJobRoleSchema>,
+        ),
+      }),
+  );
+  app.put(
+    "/job-roles/:jobRoleId",
+    {
+      preHandler: [
+        app.requireCompanyScope,
+        validateParams(jobRoleParamsSchema),
+        validateBody(updateJobRoleSchema),
+      ],
+      schema: {
+        tags: ["Workforce"],
+        summary: "Update or deactivate a company job role",
+        security: [{ bearerAuth: [] }],
+        body: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            name: { type: "string", minLength: 1, maxLength: 120 },
+            isActive: { type: "boolean" },
+          },
+        },
+        response: {
+          200: {
+            type: "object",
+            properties: {
+              success: { type: "boolean" },
+              message: { type: "string" },
+              data: jobRoleSchema,
+            },
+          },
+          400: errorSchema,
+          401: errorSchema,
+          403: errorSchema,
+          404: errorSchema,
+          409: errorSchema,
+        },
+      },
+    },
+    async (request, reply) =>
+      jsonResponse.success({
+        reply,
+        data: await workforceService.updateJobRole(
+          scopeFromRequest(request),
+          (request.params as z.infer<typeof jobRoleParamsSchema>).jobRoleId,
+          request.body as z.infer<typeof updateJobRoleSchema>,
+        ),
+      }),
+  );
+  app.put(
+    "/employees/:employmentId/job-role",
+    {
+      preHandler: [
+        app.requireCompanyScope,
+        validateParams(employeeParamsSchema),
+        validateBody(changeEmployeeJobRoleSchema),
+      ],
+      schema: {
+        tags: ["Workforce"],
+        summary: "Change an employee current job role",
+        security: [{ bearerAuth: [] }],
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["jobRoleId", "reason"],
+          properties: {
+            jobRoleId: { type: "string", format: "uuid" },
+            reason: { type: "string", minLength: 1, maxLength: 240 },
+          },
+        },
+        response: {
+          200: detailResponseSchema,
+          400: errorSchema,
+          401: errorSchema,
+          403: errorSchema,
+          404: errorSchema,
+          409: errorSchema,
+        },
+      },
+    },
+    async (request, reply) =>
+      jsonResponse.success({
+        reply,
+        data: await workforceService.changeJobRole(
+          scopeFromRequest(request),
+          (request.params as z.infer<typeof employeeParamsSchema>).employmentId,
+          request.body as z.infer<typeof changeEmployeeJobRoleSchema>,
+        ),
+      }),
+  );
 
   app.get(
     "/employees",
