@@ -153,6 +153,30 @@ describe("workforce Person and Employment registry", () => {
     });
   }
 
+  it("lists only the authenticated Company's job roles", async () => {
+    const pilot = await provision("job-roles");
+    const authorization = await authFor({
+      corporationId: pilot.corporation.id,
+      userId: pilot.administrator.id,
+      companyId: pilot.companies[0].id,
+    });
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/v1/job-roles",
+      headers: { authorization },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data).toEqual([
+      expect.objectContaining({
+        id: pilot.jobRoleIds[0],
+        name: "Operador",
+        isActive: true,
+      }),
+    ]);
+  });
+
   it("creates a Person, Employment, and first open Employment Period atomically", async () => {
     const pilot = await provision("create");
     const authorization = await authFor({

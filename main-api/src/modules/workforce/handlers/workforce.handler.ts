@@ -966,7 +966,10 @@ export async function listJobRolesHandler(
   scope: { corporationId: string; companyId: string },
 ) {
   return context.prisma.jobRole.findMany({
-    where: { ...scope },
+    where: {
+      corporationId: scope.corporationId,
+      companyId: scope.companyId,
+    },
     orderBy: [{ name: "asc" }, { id: "asc" }],
     select: {
       id: true,
