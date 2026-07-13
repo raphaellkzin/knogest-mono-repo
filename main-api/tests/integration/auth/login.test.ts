@@ -67,7 +67,7 @@ describe("Corporation-domain login", () => {
     };
   }
 
-  it("creates a hash-only Corporation-scoped Session and a 15-minute JWT", async () => {
+  it("creates a hash-only Corporation-scoped Session and a four-hour JWT", async () => {
     const records = await provision();
     const response = await login(
       "LOGIN.localhost:3000",
@@ -91,6 +91,7 @@ describe("Corporation-domain login", () => {
     });
     expect(claims.companyId).toBeUndefined();
     expect(claims.exp - claims.iat).toBe(ACCESS_TOKEN_TTL_SECONDS);
+    expect(body.data.expiresIn).toBe(ACCESS_TOKEN_TTL_SECONDS);
 
     const session = await app.prisma.session.findUniqueOrThrow({
       where: { id: claims.sessionId },

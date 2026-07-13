@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ACCESS_TOKEN_TTL_SECONDS,
   assertCompanyScope,
   createAccessClaims,
   createLoginRateLimitKey,
@@ -8,7 +9,8 @@ import {
 } from "./auth-policy";
 
 describe("authentication policy", () => {
-  it("creates initial claims without a Company and with a 15 minute contract", () => {
+  it("creates initial claims without a Company and exposes a four-hour contract", () => {
+    expect(ACCESS_TOKEN_TTL_SECONDS).toBe(4 * 60 * 60);
     expect(
       createAccessClaims({
         userId: "00000000-0000-4000-8000-000000000001",
