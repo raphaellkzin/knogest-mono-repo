@@ -32,42 +32,29 @@ export type AppArea =
 
 const areaMeta: Record<
   AppArea,
-  { label: string; title: string; subtitle: string }
+  { label?: string; title: string; subtitle?: string }
 > = {
   dashboard: {
     label: "Visão geral",
     title: "Workspace ativo",
-    subtitle: "Painel da empresa selecionada nesta sessão",
   },
   employees: {
-    label: "Funcionários",
     title: "Funcionários",
-    subtitle: "Cadastro, vínculo empregatício e disponibilidade atual",
   },
   clients: {
-    label: "Clientes",
-    title: "Clientes da empresa",
-    subtitle: "Contratantes reutilizáveis para criação de obras",
+    title: "Clientes",
   },
   machines: {
-    label: "Máquinas",
-    title: "Frota da empresa",
-    subtitle: "Cadastro, horímetro, alocação e condição operacional",
+    title: "Máquinas",
   },
   works: {
-    label: "Obras",
-    title: "Obras da empresa",
-    subtitle: "",
+    title: "Obras",
   },
   suppliers: {
-    label: "Combustível",
     title: "Fornecedores de combustível",
-    subtitle: "Cadastro de fornecedores elegíveis para termos de combustível",
   },
   settings: {
-    label: "Configurações",
     title: "Configurações",
-    subtitle: "Preferências da empresa e regras corporativas",
   },
 };
 
@@ -199,17 +186,21 @@ export function AppShell({
         <header className="sticky top-0 z-20 border-b border-border bg-background/95 backdrop-blur">
           <div className="flex min-h-16 items-center justify-between gap-4 px-4 py-3 md:px-6 lg:px-8">
             <div className="min-w-0">
-              <p className="text-xs font-semibold text-muted-foreground">
-                {meta.label}
-              </p>
+              {meta.label && (
+                <p className="text-xs font-semibold text-muted-foreground">
+                  {meta.label}
+                </p>
+              )}
               <h1 className="truncate text-lg font-bold leading-tight">
                 {currentArea === "dashboard"
                   ? selectedCompany.name
                   : meta.title}
               </h1>
-              <p className="mt-0.5 hidden text-sm text-muted-foreground sm:block">
-                {meta.subtitle}
-              </p>
+              {meta.subtitle && (
+                <p className="mt-0.5 hidden text-sm text-muted-foreground sm:block">
+                  {meta.subtitle}
+                </p>
+              )}
             </div>
 
             <div className="flex items-center gap-2">

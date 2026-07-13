@@ -18,9 +18,6 @@ export function ProjectDetail({
         ← Voltar para obras
       </Link>
       <header>
-        <p className="text-sm font-semibold uppercase tracking-wide text-primary">
-          Obra planejada
-        </p>
         <h1 className="text-3xl font-bold">{project.name}</h1>
       </header>
       <dl className="grid gap-4 rounded-lg border bg-card p-5 sm:grid-cols-2">

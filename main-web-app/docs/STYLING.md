@@ -58,6 +58,13 @@ Critérios para considerar a identidade visual pronta:
 
 Com `Status da estilização: Oficial`, a fonte de verdade registrada acima passa a orientar alterações visuais futuras.
 
+## Cabeçalhos de Área
+
+- Mostre um rótulo superior, título e subtítulo somente quando cada nível acrescentar contexto distinto; não repita o nome da área entre eles.
+- Não explicite "da empresa" quando a empresa ativa já define o escopo da tela.
+- Use subtítulos apenas para comunicar uma ação, estado ou consequência útil à tarefa atual.
+- Não use copy para explicar detalhes de implementação, navegação ou permissões que a interface já torna implícitos.
+
 ## Formulários Operacionais
 
 - Use `OperationsModal` para criação e edição administrativa: ícone, título,
