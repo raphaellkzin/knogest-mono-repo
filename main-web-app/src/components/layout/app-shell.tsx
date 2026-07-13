@@ -57,7 +57,7 @@ const areaMeta: Record<
   works: {
     label: "Obras",
     title: "Obras da empresa",
-    subtitle: "Listagem administrativa sem abrir a página da obra",
+    subtitle: "",
   },
   suppliers: {
     label: "Combustível",
