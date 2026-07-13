@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
 import {
   ArrowLeft,
@@ -33,8 +33,10 @@ export function EmployeeDetailPage({
   releaseAction,
   termsAction,
   reallocateAction,
+  terminateAction,
   jobRoles,
   projects,
+  destinations,
   companyId,
   record,
 }: {
@@ -44,8 +46,14 @@ export function EmployeeDetailPage({
   releaseAction: EmployeeAction;
   termsAction: EmployeeAction;
   reallocateAction: EmployeeAction;
+  terminateAction: EmployeeAction;
   jobRoles: Array<{ id: string; name: string; isActive: boolean }>;
   projects: Array<{ id: string; name: string }>;
+  destinations: Array<{
+    id: string;
+    name: string;
+    projects: Array<{ id: string; name: string; status: string }>;
+  }>;
   companyId: string;
   record: EmployeeDetail;
 }) {
@@ -55,6 +63,10 @@ export function EmployeeDetailPage({
     initialState,
   );
   const canRehire = record.employment.state === "terminated";
+  const [terminationState, terminateFormAction] = useActionState(
+    terminateAction,
+    initialState,
+  );
 
   return (
     <div className="space-y-4">
@@ -256,9 +268,31 @@ export function EmployeeDetailPage({
           </form>
         )}
       </section>
+      {record.employment.state === "active" && (
+        <section className="rounded-lg border border-destructive/40 bg-destructive/5 p-4">
+          <h2 className="text-sm font-bold">Encerrar vínculo</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Esta ação encerra imediatamente o vínculo e a alocação operacional aberta, se houver.
+          </p>
+          <form action={terminateFormAction} className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
+            <input type="hidden" name="employmentId" value={record.id} />
+            <label className="grid flex-1 gap-1.5 text-sm font-semibold">
+              <span>Motivo</span>
+              <Input name="reason" required maxLength={240} placeholder="Ex.: desligamento solicitado" />
+            </label>
+            <TerminateSubmit />
+          </form>
+          {terminationState.message && (
+            <p role="status" className={terminationState.ok ? "mt-2 text-sm font-medium text-emerald-700" : "mt-2 text-sm font-medium text-destructive"}>
+              {terminationState.message}
+            </p>
+          )}
+        </section>
+      )}
       <AllocationPanel
         record={record}
         projects={projects}
+        destinations={destinations}
         companyId={companyId}
         allocateAction={allocateAction}
         releaseAction={releaseAction}
@@ -272,6 +306,7 @@ export function EmployeeDetailPage({
 function AllocationPanel({
   record,
   projects,
+  destinations,
   companyId,
   allocateAction,
   releaseAction,
@@ -280,6 +315,11 @@ function AllocationPanel({
 }: {
   record: EmployeeDetail;
   projects: Array<{ id: string; name: string }>;
+  destinations: Array<{
+    id: string;
+    name: string;
+    projects: Array<{ id: string; name: string; status: string }>;
+  }>;
   companyId: string;
   allocateAction: EmployeeAction;
   releaseAction: EmployeeAction;
@@ -303,6 +343,7 @@ function AllocationPanel({
     initialState,
   );
   const allocation = record.currentAllocation;
+  const [destinationCompanyId, setDestinationCompanyId] = useState(companyId);
   if (!allocation)
     return record.employment.state === "active" ? (
       <section className="rounded-lg border border-border bg-card p-4">
@@ -397,7 +438,22 @@ function AllocationPanel({
         >
           <input type="hidden" name="employmentId" value={record.id} />
           <input type="hidden" name="allocationId" value={allocation.id} />
-          <input type="hidden" name="destinationCompanyId" value={companyId} />
+          <label className="grid gap-1 text-sm font-semibold">
+            Empresa destino
+            <select
+              name="destinationCompanyId"
+              required
+              value={destinationCompanyId}
+              onChange={(event) => setDestinationCompanyId(event.target.value)}
+              className="min-h-11 rounded-md border bg-background px-3"
+            >
+              {destinations.map((company) => (
+                <option key={company.id} value={company.id}>
+                  {company.name}
+                </option>
+              ))}
+            </select>
+          </label>
           <label className="grid gap-1 text-sm font-semibold">
             Obra destino
             <select
@@ -406,7 +462,11 @@ function AllocationPanel({
               className="min-h-11 rounded-md border bg-background px-3"
             >
               <option value="">Selecione</option>
-              {projects
+              {(
+                destinations.find(
+                  (company) => company.id === destinationCompanyId,
+                )?.projects ?? []
+              )
                 .filter((project) => project.id !== allocation.project.id)
                 .map((project) => (
                   <option key={project.id} value={project.id}>
@@ -526,6 +586,15 @@ function JobRoleSubmit() {
   return (
     <Button type="submit" disabled={pending} className="min-h-11">
       {pending ? "Salvando…" : "Salvar função"}
+    </Button>
+  );
+}
+
+function TerminateSubmit() {
+  const { pending } = useFormStatus();
+  return (
+    <Button type="submit" variant="destructive" disabled={pending}>
+      {pending ? "Encerrando…" : "Confirmar encerramento"}
     </Button>
   );
 }

@@ -9,6 +9,7 @@ import { postApiV1EmployeeAllocations } from "@/generated/clients/postApiV1Emplo
 import { postApiV1EmployeeAllocationsAllocationidRelease } from "@/generated/clients/postApiV1EmployeeAllocationsAllocationidRelease";
 import { postApiV1EmployeeAllocationsAllocationidReallocate } from "@/generated/clients/postApiV1EmployeeAllocationsAllocationidReallocate";
 import { postApiV1EmployeeAllocationsAllocationidTerms } from "@/generated/clients/postApiV1EmployeeAllocationsAllocationidTerms";
+import { postApiV1EmployeesEmploymentidTerminate } from "@/generated/clients/postApiV1EmployeesEmploymentidTerminate";
 import type { PostApiV1EmployeesMutationRequest } from "@/generated/models/PostApiV1Employees";
 import { ApiClientError } from "@/lib/api/server-client";
 import type { EmployeeActionState } from "./employees-action-state";
@@ -48,6 +49,28 @@ function failureMessage(error: unknown) {
     }
     if (error.code === "VALIDATION_ERROR") {
       return "Revise CPF, nome, matrícula e admissão.";
+    }
+    if (
+      error.code === "EMPLOYEE_ALLOCATION_UNAVAILABLE" ||
+      error.code === "EMPLOYEE_ALLOCATION_CURRENT_STATE_CONFLICT" ||
+      error.code === "EMPLOYEE_REALLOCATION_CURRENT_STATE_CONFLICT"
+    ) {
+      return "A alocação mudou enquanto você confirmava. Revise os dados e tente novamente.";
+    }
+    if (error.code === "EMPLOYEE_REALLOCATION_DESTINATION_UNAVAILABLE") {
+      return "A empresa ou obra de destino não está mais disponível.";
+    }
+    if (error.code === "EMPLOYEE_REALLOCATION_DESTINATION_EMPLOYMENT_REQUIRED") {
+      return "A pessoa não possui vínculo ativo na empresa de destino.";
+    }
+    if (error.code === "EMPLOYEE_ALLOCATION_TERMS_UNCHANGED") {
+      return "Informe ao menos uma alteração nos termos efetivos.";
+    }
+    if (error.code === "EMPLOYMENT_TERMINATION_MANAGER_BLOCKED") {
+      return "Transfira a gerência atual da obra antes de encerrar o vínculo.";
+    }
+    if (error.code === "EMPLOYMENT_TERMINATION_TECHNICAL_RESPONSIBILITY_BLOCKED") {
+      return "Defina outra responsabilidade técnica antes de encerrar o vínculo.";
     }
     if (error.status === 401 || error.status === 403) {
       return "Sua sessão não tem permissão para concluir esta operação.";
@@ -206,6 +229,23 @@ export async function reallocateEmployeeAction(
     });
     await refreshAllocationViews(employmentId);
     return { ok: true, message: "Funcionário realocado." };
+  } catch (error) {
+    return { ok: false, message: failureMessage(error) };
+  }
+}
+
+export async function terminateEmployeeAction(
+  _state: EmployeeActionState,
+  formData: FormData,
+): Promise<EmployeeActionState> {
+  const employmentId = optionalString(formData, "employmentId");
+  try {
+    await postApiV1EmployeesEmploymentidTerminate({
+      employmentId,
+      data: { reason: optionalString(formData, "reason") },
+    });
+    await refreshAllocationViews(employmentId);
+    return { ok: true, message: "Vínculo encerrado com segurança." };
   } catch (error) {
     return { ok: false, message: failureMessage(error) };
   }

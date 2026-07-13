@@ -5,12 +5,14 @@ import {
   allocateEmployeeAction,
   changeEmployeeJobRoleAction,
   reallocateEmployeeAction,
+  terminateEmployeeAction,
   rehireEmployeeAction,
   releaseEmployeeAllocationAction,
   replaceEmployeeAllocationTermsAction,
 } from "@/features/employees/employees.actions";
 import {
   getEmployeeDetail,
+  getEmployeeReallocationDestinations,
   getJobRoles,
 } from "@/features/employees/employees.server";
 import { getProjectRegistry } from "@/features/projects/projects.server";
@@ -22,10 +24,11 @@ export default async function Page({
 }) {
   const [{ companies, selectedCompany, session }, { employmentId }] =
     await Promise.all([requireCompanyWorkspace(), params]);
-  const [record, jobRoles, projectRegistry] = await Promise.all([
+  const [record, jobRoles, projectRegistry, destinations] = await Promise.all([
     getEmployeeDetail(employmentId),
     getJobRoles(),
     getProjectRegistry(),
+    getEmployeeReallocationDestinations(employmentId),
   ]);
 
   return (
@@ -41,11 +44,13 @@ export default async function Page({
         releaseAction={releaseEmployeeAllocationAction}
         termsAction={replaceEmployeeAllocationTermsAction}
         reallocateAction={reallocateEmployeeAction}
+        terminateAction={terminateEmployeeAction}
         companyId={selectedCompany.id}
         projects={projectRegistry.data.map((project) => ({
           id: project.id,
           name: project.name,
         }))}
+        destinations={destinations}
         jobRoleAction={changeEmployeeJobRoleAction}
         jobRoles={jobRoles ?? []}
         record={record}

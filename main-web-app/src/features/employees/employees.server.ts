@@ -4,6 +4,7 @@ import { getApiV1Employees } from "@/generated/clients/getApiV1Employees";
 import { getApiV1EmployeesEmploymentid } from "@/generated/clients/getApiV1EmployeesEmploymentid";
 import type { GetApiV1EmployeesQueryParams } from "@/generated/models/GetApiV1Employees";
 import { getApiV1JobRoles } from "@/generated/clients/getApiV1JobRoles";
+import { getApiV1EmployeeAllocationsSelectorsDestinationsEmploymentid } from "@/generated/clients/getApiV1EmployeeAllocationsSelectorsDestinationsEmploymentid";
 
 export type EmployeesListQuery = {
   availability?: "available";
@@ -41,8 +42,7 @@ export function parseEmployeesSearchParams(
     search: valueFromParam(params.search),
     sortBy: sortBy === "name" ? "name" : "createdAt",
     sortDirection: sortDirection === "asc" ? "asc" : "desc",
-    state:
-      state === "active" || state === "terminated" ? state : undefined,
+    state: state === "active" || state === "terminated" ? state : undefined,
   };
 }
 
@@ -67,4 +67,14 @@ export async function getEmployeeDetail(employmentId: string) {
 
 export async function getJobRoles() {
   return (await getApiV1JobRoles()).data;
+}
+
+export async function getEmployeeReallocationDestinations(
+  employmentId: string,
+) {
+  return (
+    await getApiV1EmployeeAllocationsSelectorsDestinationsEmploymentid({
+      employmentId,
+    })
+  ).data;
 }
