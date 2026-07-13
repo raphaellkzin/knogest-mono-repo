@@ -650,6 +650,168 @@ export async function findCurrentEmployeeAllocationHandler(
   return project ? { allocation, project } : null;
 }
 
+export async function listReallocationDestinationsHandler(
+  context: HandlerContext,
+  input: { corporationId: string; companyId: string; employmentId: string },
+) {
+  const source = await context.prisma.employment.findFirst({
+    where: {
+      id: input.employmentId,
+      corporationId: input.corporationId,
+      companyId: input.companyId,
+    },
+    select: { personId: true },
+  });
+  if (!source) throw notFoundError();
+  const employments = await context.prisma.employment.findMany({
+    where: {
+      corporationId: input.corporationId,
+      personId: source.personId,
+      isActive: true,
+      state: "ACTIVE",
+      company: { isActive: true },
+      periods: { some: { effectiveTo: null } },
+    },
+    select: { companyId: true, company: { select: { id: true, name: true } } },
+  });
+  const projects = await context.prisma.project.findMany({
+    where: {
+      corporationId: input.corporationId,
+      companyId: { in: employments.map((employment) => employment.companyId) },
+      status: { in: ["PLANNED", "ACTIVE"] },
+    },
+    orderBy: [{ name: "asc" }, { id: "asc" }],
+    select: { id: true, companyId: true, name: true, status: true },
+  });
+  return employments.map(({ company }) => ({
+    id: company.id,
+    name: company.name,
+    projects: projects
+      .filter((project) => project.companyId === company.id)
+      .map((project) => ({
+        id: project.id,
+        name: project.name,
+        status: project.status.toLowerCase(),
+      })),
+  }));
+}
+
+export async function terminateEmploymentHandler(
+  context: HandlerContext,
+  input: AllocationLifecycleScope & {
+    employmentId: string;
+    reason: string;
+    effectiveAt: Date;
+  },
+) {
+  await assertTrustedLifecycleScope(context, input);
+  const employment = await context.prisma.employment.findFirst({
+    where: {
+      id: input.employmentId,
+      corporationId: input.corporationId,
+      companyId: input.companyId,
+      state: "ACTIVE",
+      isActive: true,
+      periods: { some: { effectiveTo: null } },
+    },
+    select: { id: true },
+  });
+  if (!employment) {
+    throw new AppError({
+      code: "EMPLOYMENT_TERMINATION_CURRENT_STATE_CONFLICT",
+      message: "Employment is no longer active",
+      statusCode: 409,
+    });
+  }
+
+  const activeProject = { status: { notIn: ["COMPLETED", "CANCELLED"] as const } };
+  const [manager, responsibilities] = await Promise.all([
+    context.prisma.projectManagerTenure.findFirst({
+      where: {
+        corporationId: input.corporationId,
+        companyId: input.companyId,
+        employmentId: employment.id,
+        effectiveTo: null,
+        project: activeProject,
+      },
+      select: { id: true },
+    }),
+    context.prisma.projectTechnicalResponsibility.findMany({
+      where: {
+        corporationId: input.corporationId,
+        companyId: input.companyId,
+        employmentId: employment.id,
+        effectiveTo: null,
+        project: activeProject,
+      },
+      select: { id: true, projectId: true },
+    }),
+  ]);
+  if (manager) {
+    throw new AppError({
+      code: "EMPLOYMENT_TERMINATION_MANAGER_BLOCKED",
+      message: "Employment is the current manager of a non-terminal Project",
+      statusCode: 409,
+    });
+  }
+  if (responsibilities.length) {
+    const projectIds = [...new Set(responsibilities.map((item) => item.projectId))];
+    const replacements = await context.prisma.projectTechnicalResponsibility.findMany({
+      where: {
+        corporationId: input.corporationId,
+        companyId: input.companyId,
+        projectId: { in: projectIds },
+        employmentId: { not: employment.id },
+        effectiveTo: null,
+      },
+      select: { projectId: true },
+    });
+    const covered = new Set(replacements.map((item) => item.projectId));
+    if (projectIds.some((projectId) => !covered.has(projectId))) {
+      throw new AppError({
+        code: "EMPLOYMENT_TERMINATION_TECHNICAL_RESPONSIBILITY_BLOCKED",
+        message: "Employment is the last technical responsibility of a non-terminal Project",
+        statusCode: 409,
+      });
+    }
+  }
+
+  const dateOnly = new Date(Date.UTC(
+    input.effectiveAt.getUTCFullYear(),
+    input.effectiveAt.getUTCMonth(),
+    input.effectiveAt.getUTCDate(),
+  ));
+  const [period, roles, allocation] = await Promise.all([
+    context.prisma.employmentPeriod.updateMany({
+      where: { employmentId: employment.id, effectiveTo: null },
+      data: { effectiveTo: dateOnly, terminationReason: input.reason, endedByUserId: input.actorUserId },
+    }),
+    context.prisma.employmentJobRolePeriod.updateMany({
+      where: { employmentId: employment.id, effectiveTo: null },
+      data: { effectiveTo: dateOnly, endedByUserId: input.actorUserId, endedReason: input.reason },
+    }),
+    context.prisma.projectEmployeeAllocation.updateMany({
+      where: { corporationId: input.corporationId, employmentId: employment.id, effectiveTo: null },
+      data: { effectiveTo: input.effectiveAt, endedByUserId: input.actorUserId, endedReason: input.reason },
+    }),
+  ]);
+  if (period.count !== 1 || roles.count !== 1 || allocation.count > 1) {
+    throw new AppError({ code: "EMPLOYMENT_TERMINATION_CURRENT_STATE_CONFLICT", message: "Employment is no longer active", statusCode: 409 });
+  }
+  await context.prisma.projectTechnicalResponsibility.updateMany({
+    where: { id: { in: responsibilities.map((item) => item.id) }, effectiveTo: null },
+    data: { effectiveTo: input.effectiveAt, endedByUserId: input.actorUserId, endedReason: input.reason },
+  });
+  const updated = await context.prisma.employment.updateMany({
+    where: { id: employment.id, state: "ACTIVE", isActive: true },
+    data: { state: "TERMINATED", isActive: false, terminatedAt: input.effectiveAt },
+  });
+  if (updated.count !== 1) {
+    throw new AppError({ code: "EMPLOYMENT_TERMINATION_CURRENT_STATE_CONFLICT", message: "Employment is no longer active", statusCode: 409 });
+  }
+  return { employmentId: employment.id, terminatedAt: input.effectiveAt, closedAllocation: allocation.count === 1 };
+}
+
 async function findPersonByDigest(
   context: HandlerContext,
   input: { corporationId: string; documentDigest: string },

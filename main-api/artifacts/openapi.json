@@ -2965,6 +2965,198 @@
         }
       }
     },
+    "/api/v1/machines/{machineId}/allocations": {
+      "post": {
+        "summary": "Allocate a Machine to an eligible Project",
+        "tags": ["Fleet"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["projectId"],
+                "properties": {
+                  "projectId": { "type": "string", "format": "uuid" }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "in": "path",
+            "name": "machineId",
+            "required": true
+          }
+        ],
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["success", "message", "data"],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [true] },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "id",
+                        "projectId",
+                        "machineId",
+                        "startMeterReadingId",
+                        "effectiveFrom"
+                      ],
+                      "properties": {
+                        "id": { "type": "string", "format": "uuid" },
+                        "projectId": { "type": "string", "format": "uuid" },
+                        "machineId": { "type": "string", "format": "uuid" },
+                        "startMeterReadingId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "effectiveFrom": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/machines/{machineId}": {
       "get": {
         "summary": "Get a Machine detail in the selected Company",
@@ -4544,6 +4736,163 @@
         }
       }
     },
+    "/api/v1/employee-allocations/selectors/destinations/{employmentId}": {
+      "get": {
+        "summary": "List authorized Employee reallocation destinations",
+        "tags": ["Workforce"],
+        "parameters": [
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "in": "path",
+            "name": "employmentId",
+            "required": true
+          }
+        ],
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["success", "message", "data"],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [true] },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["id", "name", "projects"],
+                        "properties": {
+                          "id": { "type": "string", "format": "uuid" },
+                          "name": { "type": "string" },
+                          "projects": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": ["id", "name", "status"],
+                              "properties": {
+                                "id": { "type": "string", "format": "uuid" },
+                                "name": { "type": "string" },
+                                "status": {
+                                  "type": "string",
+                                  "enum": ["planned", "active"]
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/employee-allocations": {
       "post": {
         "summary": "Allocate an Employee to an eligible Project",
@@ -4607,11 +4956,63 @@
               "application/json": {
                 "schema": {
                   "type": "object",
+                  "additionalProperties": false,
                   "required": ["success", "message", "data"],
                   "properties": {
-                    "success": { "enum": [true] },
+                    "success": { "type": "boolean", "enum": [true] },
                     "message": { "type": "string" },
-                    "data": { "type": "object", "additionalProperties": true }
+                    "data": {
+                      "nullable": true,
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "employmentId",
+                        "personId",
+                        "project",
+                        "jobRole",
+                        "expectedDailyWorkloadMinutes",
+                        "compensationMode",
+                        "compensationValue",
+                        "overtimeRate",
+                        "effectiveFrom",
+                        "effectiveTo",
+                        "endedReason"
+                      ],
+                      "properties": {
+                        "id": { "type": "string", "format": "uuid" },
+                        "employmentId": { "type": "string", "format": "uuid" },
+                        "personId": { "type": "string", "format": "uuid" },
+                        "project": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": ["id", "name", "status"],
+                          "properties": {
+                            "id": { "type": "string", "format": "uuid" },
+                            "name": { "type": "string" },
+                            "status": {
+                              "type": "string",
+                              "enum": ["planned", "active", "paused"]
+                            }
+                          }
+                        },
+                        "jobRole": { "type": "string" },
+                        "expectedDailyWorkloadMinutes": { "type": "integer" },
+                        "compensationMode": { "type": "string" },
+                        "compensationValue": { "type": "string" },
+                        "overtimeRate": { "type": "string" },
+                        "effectiveFrom": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "effectiveTo": {
+                          "type": "string",
+                          "format": "date-time",
+                          "nullable": true
+                        },
+                        "endedReason": { "type": "string", "nullable": true }
+                      },
+                      "additionalProperties": false
+                    }
                   }
                 }
               }
@@ -4779,11 +5180,63 @@
               "application/json": {
                 "schema": {
                   "type": "object",
+                  "additionalProperties": false,
                   "required": ["success", "message", "data"],
                   "properties": {
                     "success": { "type": "boolean", "enum": [true] },
                     "message": { "type": "string" },
-                    "data": { "type": "object", "additionalProperties": true }
+                    "data": {
+                      "nullable": true,
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "employmentId",
+                        "personId",
+                        "project",
+                        "jobRole",
+                        "expectedDailyWorkloadMinutes",
+                        "compensationMode",
+                        "compensationValue",
+                        "overtimeRate",
+                        "effectiveFrom",
+                        "effectiveTo",
+                        "endedReason"
+                      ],
+                      "properties": {
+                        "id": { "type": "string", "format": "uuid" },
+                        "employmentId": { "type": "string", "format": "uuid" },
+                        "personId": { "type": "string", "format": "uuid" },
+                        "project": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": ["id", "name", "status"],
+                          "properties": {
+                            "id": { "type": "string", "format": "uuid" },
+                            "name": { "type": "string" },
+                            "status": {
+                              "type": "string",
+                              "enum": ["planned", "active", "paused"]
+                            }
+                          }
+                        },
+                        "jobRole": { "type": "string" },
+                        "expectedDailyWorkloadMinutes": { "type": "integer" },
+                        "compensationMode": { "type": "string" },
+                        "compensationValue": { "type": "string" },
+                        "overtimeRate": { "type": "string" },
+                        "effectiveFrom": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "effectiveTo": {
+                          "type": "string",
+                          "format": "date-time",
+                          "nullable": true
+                        },
+                        "endedReason": { "type": "string", "nullable": true }
+                      },
+                      "additionalProperties": false
+                    }
                   }
                 }
               }
@@ -4996,11 +5449,138 @@
               "application/json": {
                 "schema": {
                   "type": "object",
+                  "additionalProperties": false,
                   "required": ["success", "message", "data"],
                   "properties": {
                     "success": { "type": "boolean", "enum": [true] },
                     "message": { "type": "string" },
-                    "data": { "type": "object", "additionalProperties": true }
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["previous", "current"],
+                      "properties": {
+                        "previous": {
+                          "nullable": true,
+                          "type": "object",
+                          "required": [
+                            "id",
+                            "employmentId",
+                            "personId",
+                            "project",
+                            "jobRole",
+                            "expectedDailyWorkloadMinutes",
+                            "compensationMode",
+                            "compensationValue",
+                            "overtimeRate",
+                            "effectiveFrom",
+                            "effectiveTo",
+                            "endedReason"
+                          ],
+                          "properties": {
+                            "id": { "type": "string", "format": "uuid" },
+                            "employmentId": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "personId": { "type": "string", "format": "uuid" },
+                            "project": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": ["id", "name", "status"],
+                              "properties": {
+                                "id": { "type": "string", "format": "uuid" },
+                                "name": { "type": "string" },
+                                "status": {
+                                  "type": "string",
+                                  "enum": ["planned", "active", "paused"]
+                                }
+                              }
+                            },
+                            "jobRole": { "type": "string" },
+                            "expectedDailyWorkloadMinutes": {
+                              "type": "integer"
+                            },
+                            "compensationMode": { "type": "string" },
+                            "compensationValue": { "type": "string" },
+                            "overtimeRate": { "type": "string" },
+                            "effectiveFrom": {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            "effectiveTo": {
+                              "type": "string",
+                              "format": "date-time",
+                              "nullable": true
+                            },
+                            "endedReason": {
+                              "type": "string",
+                              "nullable": true
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "current": {
+                          "nullable": true,
+                          "type": "object",
+                          "required": [
+                            "id",
+                            "employmentId",
+                            "personId",
+                            "project",
+                            "jobRole",
+                            "expectedDailyWorkloadMinutes",
+                            "compensationMode",
+                            "compensationValue",
+                            "overtimeRate",
+                            "effectiveFrom",
+                            "effectiveTo",
+                            "endedReason"
+                          ],
+                          "properties": {
+                            "id": { "type": "string", "format": "uuid" },
+                            "employmentId": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "personId": { "type": "string", "format": "uuid" },
+                            "project": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": ["id", "name", "status"],
+                              "properties": {
+                                "id": { "type": "string", "format": "uuid" },
+                                "name": { "type": "string" },
+                                "status": {
+                                  "type": "string",
+                                  "enum": ["planned", "active", "paused"]
+                                }
+                              }
+                            },
+                            "jobRole": { "type": "string" },
+                            "expectedDailyWorkloadMinutes": {
+                              "type": "integer"
+                            },
+                            "compensationMode": { "type": "string" },
+                            "compensationValue": { "type": "string" },
+                            "overtimeRate": { "type": "string" },
+                            "effectiveFrom": {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            "effectiveTo": {
+                              "type": "string",
+                              "format": "date-time",
+                              "nullable": true
+                            },
+                            "endedReason": {
+                              "type": "string",
+                              "nullable": true
+                            }
+                          },
+                          "additionalProperties": false
+                        }
+                      }
+                    }
                   }
                 }
               }
@@ -5203,11 +5783,138 @@
               "application/json": {
                 "schema": {
                   "type": "object",
+                  "additionalProperties": false,
                   "required": ["success", "message", "data"],
                   "properties": {
                     "success": { "type": "boolean", "enum": [true] },
                     "message": { "type": "string" },
-                    "data": { "type": "object", "additionalProperties": true }
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["previous", "current"],
+                      "properties": {
+                        "previous": {
+                          "nullable": true,
+                          "type": "object",
+                          "required": [
+                            "id",
+                            "employmentId",
+                            "personId",
+                            "project",
+                            "jobRole",
+                            "expectedDailyWorkloadMinutes",
+                            "compensationMode",
+                            "compensationValue",
+                            "overtimeRate",
+                            "effectiveFrom",
+                            "effectiveTo",
+                            "endedReason"
+                          ],
+                          "properties": {
+                            "id": { "type": "string", "format": "uuid" },
+                            "employmentId": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "personId": { "type": "string", "format": "uuid" },
+                            "project": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": ["id", "name", "status"],
+                              "properties": {
+                                "id": { "type": "string", "format": "uuid" },
+                                "name": { "type": "string" },
+                                "status": {
+                                  "type": "string",
+                                  "enum": ["planned", "active", "paused"]
+                                }
+                              }
+                            },
+                            "jobRole": { "type": "string" },
+                            "expectedDailyWorkloadMinutes": {
+                              "type": "integer"
+                            },
+                            "compensationMode": { "type": "string" },
+                            "compensationValue": { "type": "string" },
+                            "overtimeRate": { "type": "string" },
+                            "effectiveFrom": {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            "effectiveTo": {
+                              "type": "string",
+                              "format": "date-time",
+                              "nullable": true
+                            },
+                            "endedReason": {
+                              "type": "string",
+                              "nullable": true
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "current": {
+                          "nullable": true,
+                          "type": "object",
+                          "required": [
+                            "id",
+                            "employmentId",
+                            "personId",
+                            "project",
+                            "jobRole",
+                            "expectedDailyWorkloadMinutes",
+                            "compensationMode",
+                            "compensationValue",
+                            "overtimeRate",
+                            "effectiveFrom",
+                            "effectiveTo",
+                            "endedReason"
+                          ],
+                          "properties": {
+                            "id": { "type": "string", "format": "uuid" },
+                            "employmentId": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "personId": { "type": "string", "format": "uuid" },
+                            "project": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": ["id", "name", "status"],
+                              "properties": {
+                                "id": { "type": "string", "format": "uuid" },
+                                "name": { "type": "string" },
+                                "status": {
+                                  "type": "string",
+                                  "enum": ["planned", "active", "paused"]
+                                }
+                              }
+                            },
+                            "jobRole": { "type": "string" },
+                            "expectedDailyWorkloadMinutes": {
+                              "type": "integer"
+                            },
+                            "compensationMode": { "type": "string" },
+                            "compensationValue": { "type": "string" },
+                            "overtimeRate": { "type": "string" },
+                            "effectiveFrom": {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            "effectiveTo": {
+                              "type": "string",
+                              "format": "date-time",
+                              "nullable": true
+                            },
+                            "endedReason": {
+                              "type": "string",
+                              "nullable": true
+                            }
+                          },
+                          "additionalProperties": false
+                        }
+                      }
+                    }
                   }
                 }
               }
@@ -6634,6 +7341,195 @@
             }
           },
           "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/employees/{employmentId}/terminate": {
+      "post": {
+        "summary": "Terminate an Employee employment safely",
+        "tags": ["Workforce"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["reason"],
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 240
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "in": "path",
+            "name": "employmentId",
+            "required": true
+          }
+        ],
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["success", "message", "data"],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [true] },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "employmentId",
+                        "terminatedAt",
+                        "closedAllocation"
+                      ],
+                      "properties": {
+                        "employmentId": { "type": "string", "format": "uuid" },
+                        "terminatedAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "closedAllocation": { "type": "boolean" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
             "description": "Default Response",
             "content": {
               "application/json": {

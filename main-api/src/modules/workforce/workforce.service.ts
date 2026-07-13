@@ -18,6 +18,7 @@ import type {
   ReallocateEmployeeInput,
   ReleaseEmployeeAllocationInput,
   ReplaceEmployeeAllocationTermsInput,
+  TerminateEmploymentInput,
   UpdateJobRoleInput,
 } from "./workforce.dto";
 import {
@@ -37,6 +38,8 @@ import {
   replaceEmployeeAllocationTermsHandler,
   findAllocatedPersonIdsHandler,
   findCurrentEmployeeAllocationHandler,
+  listReallocationDestinationsHandler,
+  terminateEmploymentHandler,
   type EmploymentRecord,
   type PersonRecord,
 } from "./handlers/workforce.handler";
@@ -440,6 +443,36 @@ export class WorkforceService {
             current: allocationDto(result.current, result.project),
           };
         },
+        { isolationLevel: "Serializable" },
+      ),
+    );
+  }
+
+  async listReallocationDestinations(
+    scope: AuthenticatedCompanyScope,
+    employmentId: string,
+  ) {
+    return listReallocationDestinationsHandler(this.context, {
+      corporationId: scope.corporationId,
+      companyId: scope.companyId,
+      employmentId,
+    });
+  }
+
+  async terminate(
+    scope: AllocationScope,
+    employmentId: string,
+    input: TerminateEmploymentInput,
+  ) {
+    return runSerializableWithRetry(() =>
+      this.context.transaction(
+        (tx) =>
+          terminateEmploymentHandler(tx, {
+            ...scope,
+            employmentId,
+            reason: input.reason,
+            effectiveAt: new Date(),
+          }),
         { isolationLevel: "Serializable" },
       ),
     );

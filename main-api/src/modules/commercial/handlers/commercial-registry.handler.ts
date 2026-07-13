@@ -399,3 +399,11 @@ export async function listActiveFuelSupplierSelectorHandler(
     select: registrySelect,
   })) as CommercialRegistryRecord[];
 }
+
+export async function listActiveFuelTypesHandler(context: HandlerContext) {
+  return context.prisma.fuelType.findMany({
+    where: { id: { in: ["diesel-s10", "diesel-s500"] }, isActive: true },
+    orderBy: { id: "asc" },
+    select: { id: true, name: true },
+  });
+}

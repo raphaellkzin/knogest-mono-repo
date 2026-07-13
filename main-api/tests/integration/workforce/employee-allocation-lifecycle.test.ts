@@ -48,12 +48,13 @@ describe("Employee allocation lifecycle", () => {
         normalizedName: "operator",
       },
     });
+    const syntheticCpf = "529.982.247-25";
     const created = await app.inject({
       method: "POST",
       url: "/api/v1/employees",
       headers: { authorization },
       payload: {
-        document: "529.982.247-25",
+        document: syntheticCpf,
         fullName: "Worker",
         companyRegistrationNumber: "EMP-01",
         admissionDate: "2026-07-01",
@@ -210,5 +211,39 @@ describe("Employee allocation lifecycle", () => {
         where: { effectiveTo: null },
       }),
     ).toBe(0);
+  });
+
+  it("allows only one concurrent open allocation for the same Person", async () => {
+    const { authorization, employment, planned, active } = await fixture();
+    const attempts = await Promise.all([
+      app.inject({
+        method: "POST",
+        url: "/api/v1/employee-allocations",
+        headers: { authorization },
+        payload: {
+          employmentId: employment.id,
+          projectId: planned.id,
+          ...terms,
+        },
+      }),
+      app.inject({
+        method: "POST",
+        url: "/api/v1/employee-allocations",
+        headers: { authorization },
+        payload: {
+          employmentId: employment.id,
+          projectId: active.id,
+          ...terms,
+        },
+      }),
+    ]);
+    expect(attempts.map((attempt) => attempt.statusCode).sort()).toEqual([
+      201, 409,
+    ]);
+    expect(
+      await app.prisma.projectEmployeeAllocation.count({
+        where: { effectiveTo: null },
+      }),
+    ).toBe(1);
   });
 });

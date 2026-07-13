@@ -72,6 +72,11 @@ export type ReleaseEmployeeAllocationInput = z.infer<
   typeof releaseEmployeeAllocationSchema
 >;
 
+export const terminateEmploymentSchema = z
+  .object({ reason: normalizedText(240) })
+  .strict();
+export type TerminateEmploymentInput = z.infer<typeof terminateEmploymentSchema>;
+
 export const reallocateEmployeeSchema = z
   .object({
     destinationCompanyId: z.string().uuid(),

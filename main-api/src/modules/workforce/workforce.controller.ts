@@ -22,6 +22,7 @@ import {
   releaseEmployeeAllocationSchema,
   reallocateEmployeeSchema,
   replaceEmployeeAllocationTermsSchema,
+  terminateEmploymentSchema,
 } from "./workforce.dto";
 import { WorkforceService } from "./workforce.service";
 
@@ -321,6 +322,68 @@ const detailResponseSchema = {
   },
 } as const;
 
+const allocationResponseSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["success", "message", "data"],
+  properties: {
+    success: { type: "boolean", const: true },
+    message: { type: "string" },
+    data: currentAllocationSchema,
+  },
+} as const;
+
+const allocationReplacementResponseSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["success", "message", "data"],
+  properties: {
+    success: { type: "boolean", const: true },
+    message: { type: "string" },
+    data: {
+      type: "object",
+      additionalProperties: false,
+      required: ["previous", "current"],
+      properties: { previous: currentAllocationSchema, current: currentAllocationSchema },
+    },
+  },
+} as const;
+
+const reallocationDestinationsResponseSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["success", "message", "data"],
+  properties: {
+    success: { type: "boolean", const: true },
+    message: { type: "string" },
+    data: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["id", "name", "projects"],
+        properties: {
+          id: { type: "string", format: "uuid" },
+          name: { type: "string" },
+          projects: {
+            type: "array",
+            items: {
+              type: "object",
+              additionalProperties: false,
+              required: ["id", "name", "status"],
+              properties: {
+                id: { type: "string", format: "uuid" },
+                name: { type: "string" },
+                status: { type: "string", enum: ["planned", "active"] },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+} as const;
+
 const emptyBodySchema = {
   type: "object",
   additionalProperties: false,
@@ -401,6 +464,37 @@ export const v1WorkforceController = async (app: FastifyInstance) => {
     },
   );
 
+  app.get(
+    "/employee-allocations/selectors/destinations/:employmentId",
+    {
+      preHandler: [
+        app.requireCompanyScope,
+        validateParams(employeeParamsSchema),
+      ],
+      schema: {
+        tags: ["Workforce"],
+        summary: "List authorized Employee reallocation destinations",
+        security: [{ bearerAuth: [] }],
+        params: employeeParamsOpenApiSchema,
+        response: {
+          200: reallocationDestinationsResponseSchema,
+          400: errorSchema,
+          401: errorSchema,
+          403: errorSchema,
+          404: errorSchema,
+        },
+      },
+    },
+    async (request, reply) =>
+      jsonResponse.success({
+        reply,
+        data: await workforceService.listReallocationDestinations(
+          scopeFromRequest(request),
+          (request.params as z.infer<typeof employeeParamsSchema>).employmentId,
+        ),
+      }),
+  );
+
   app.post(
     "/employee-allocations",
     {
@@ -447,15 +541,7 @@ export const v1WorkforceController = async (app: FastifyInstance) => {
           },
         },
         response: {
-          201: {
-            type: "object",
-            required: ["success", "message", "data"],
-            properties: {
-              success: { const: true },
-              message: { type: "string" },
-              data: { type: "object", additionalProperties: true },
-            },
-          },
+          201: allocationResponseSchema,
           400: errorSchema,
           401: errorSchema,
           403: errorSchema,
@@ -487,15 +573,6 @@ export const v1WorkforceController = async (app: FastifyInstance) => {
     required: ["reason"],
     properties: { reason: { type: "string", minLength: 1, maxLength: 500 } },
   } as const;
-  const lifecycleResponseSchema = {
-    type: "object",
-    required: ["success", "message", "data"],
-    properties: {
-      success: { type: "boolean", const: true },
-      message: { type: "string" },
-      data: { type: "object", additionalProperties: true },
-    },
-  } as const;
 
   app.post(
     "/employee-allocations/:allocationId/release",
@@ -512,7 +589,7 @@ export const v1WorkforceController = async (app: FastifyInstance) => {
         params: allocationParamsOpenApiSchema,
         body: reasonBodySchema,
         response: {
-          200: lifecycleResponseSchema,
+          200: allocationResponseSchema,
           400: errorSchema,
           401: errorSchema,
           403: errorSchema,
@@ -584,7 +661,7 @@ export const v1WorkforceController = async (app: FastifyInstance) => {
           },
         },
         response: {
-          200: lifecycleResponseSchema,
+          200: allocationReplacementResponseSchema,
           400: errorSchema,
           401: errorSchema,
           403: errorSchema,
@@ -652,7 +729,7 @@ export const v1WorkforceController = async (app: FastifyInstance) => {
           },
         },
         response: {
-          200: lifecycleResponseSchema,
+          200: allocationReplacementResponseSchema,
           400: errorSchema,
           401: errorSchema,
           403: errorSchema,
@@ -883,6 +960,64 @@ export const v1WorkforceController = async (app: FastifyInstance) => {
       const data = await workforceService.detail(
         scopeFromRequest(request),
         employmentId,
+      );
+      return jsonResponse.success({ reply, data });
+    },
+  );
+
+  app.post(
+    "/employees/:employmentId/terminate",
+    {
+      preHandler: [
+        app.requireCompanyScope,
+        validateParams(employeeParamsSchema),
+        validateBody(terminateEmploymentSchema),
+      ],
+      schema: {
+        tags: ["Workforce"],
+        summary: "Terminate an Employee employment safely",
+        security: [{ bearerAuth: [] }],
+        params: employeeParamsOpenApiSchema,
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["reason"],
+          properties: { reason: { type: "string", minLength: 1, maxLength: 240 } },
+        },
+        response: {
+          200: {
+            type: "object",
+            additionalProperties: false,
+            required: ["success", "message", "data"],
+            properties: {
+              success: { type: "boolean", const: true },
+              message: { type: "string" },
+              data: {
+                type: "object",
+                additionalProperties: false,
+                required: ["employmentId", "terminatedAt", "closedAllocation"],
+                properties: {
+                  employmentId: { type: "string", format: "uuid" },
+                  terminatedAt: { type: "string", format: "date-time" },
+                  closedAllocation: { type: "boolean" },
+                },
+              },
+            },
+          },
+          400: errorSchema,
+          401: errorSchema,
+          403: errorSchema,
+          404: errorSchema,
+          409: errorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { employmentId } = request.params as z.infer<typeof employeeParamsSchema>;
+      const data = await workforceService.terminate(
+        scopeFromRequest(request),
+        employmentId,
+        request.body as z.infer<typeof terminateEmploymentSchema>,
       );
       return jsonResponse.success({ reply, data });
     },

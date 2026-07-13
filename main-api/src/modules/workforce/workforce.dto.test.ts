@@ -6,6 +6,7 @@ import {
   releaseEmployeeAllocationSchema,
   reallocateEmployeeSchema,
   replaceEmployeeAllocationTermsSchema,
+  terminateEmploymentSchema,
   listEmployeesQuerySchema,
   rehireEmployeeSchema,
 } from "./workforce.dto";
@@ -72,6 +73,19 @@ describe("workforce DTOs", () => {
     ).toMatchObject({
       destinationCompanyId: "00000000-0000-4000-8000-000000000003",
     });
+  });
+
+  it("normalizes and requires the auditable termination reason", () => {
+    expect(
+      terminateEmploymentSchema.parse({ reason: "  Encerramento solicitado  " }),
+    ).toEqual({ reason: "Encerramento solicitado" });
+    expect(() => terminateEmploymentSchema.parse({ reason: "" })).toThrow();
+    expect(() =>
+      terminateEmploymentSchema.parse({
+        reason: "Encerramento",
+        actorUserId: "00000000-0000-4000-8000-000000000001",
+      }),
+    ).toThrow();
   });
   it("accepts the minimal Employee registration command", () => {
     expect(

@@ -8,6 +8,7 @@ import type {
   AppendMachineMeterReadingInput,
   CorrectMachineMeterReadingInput,
   CreateMachineInput,
+  AllocateMachineInput,
   ListMachinesQuery,
 } from "./fleet.dto";
 import {
@@ -15,9 +16,15 @@ import {
   correctMachineMeterReadingHandler,
   createMachineHandler,
   findMachineDetailHandler,
+  findAllocatedMachineIdsHandler,
+  allocateMachineHandler,
   listMachinesHandler,
   type MachineRecord,
 } from "./handlers/fleet.handler";
+import {
+  MvpMachineOperationalStatusPort,
+  type MachineOperationalStatusPort,
+} from "./machine-operational-status.port";
 
 interface AuthenticatedCompanyScope {
   corporationId: string;
@@ -177,7 +184,10 @@ function identifiersFromInput(input: CreateMachineInput) {
 }
 
 export class FleetService {
-  constructor(private readonly context: HandlerContext) {}
+  constructor(
+    private readonly context: HandlerContext,
+    private readonly operationalStatus: MachineOperationalStatusPort = new MvpMachineOperationalStatusPort(),
+  ) {}
 
   async create(scope: AuthenticatedCompanyScope, input: CreateMachineInput) {
     return this.context.transaction(async (transactionContext) => {
@@ -231,15 +241,11 @@ export class FleetService {
             : item.name,
       }),
     });
-    const allocationRows =
-      await this.context.prisma.projectMachineAllocation.findMany({
-        where: {
-          corporationId: scope.corporationId,
-          machineId: { in: page.data.map((item) => item.id) },
-          effectiveTo: null,
-        },
-        select: { machineId: true },
-      });
+    const allocationRows = await findAllocatedMachineIdsHandler(
+      this.context,
+      scope.corporationId,
+      page.data.map((item) => item.id),
+    );
     const allocatedMachineIds = new Set(
       allocationRows.map((row) => row.machineId),
     );
@@ -257,6 +263,19 @@ export class FleetService {
       machineId,
     });
     return toMachineDetailDto(record);
+  }
+
+  async allocate(scope: AuthenticatedCompanyScope, machineId: string, input: AllocateMachineInput) {
+    return runSerializableWithRetry(() =>
+      this.context.transaction(async (tx) => {
+        const status = await this.operationalStatus.getStatus({ ...scope, machineId });
+        if (status.hasOpenShift || status.hasPendingFinalReading) {
+          throw new AppError({ code: "MACHINE_ALLOCATION_OPERATIONALLY_BLOCKED", message: "Machine has an operational blocker", statusCode: 409 });
+        }
+        const allocation = await allocateMachineHandler(tx, { ...scope, machineId, projectId: input.projectId, effectiveFrom: new Date() });
+        return { ...allocation, effectiveFrom: allocation.effectiveFrom.toISOString() };
+      }, { isolationLevel: "Serializable" }),
+    );
   }
 
   async appendReading(

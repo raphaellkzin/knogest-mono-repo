@@ -48,6 +48,11 @@ export const createMachineSchema = z
 
 export type CreateMachineInput = z.infer<typeof createMachineSchema>;
 
+export const allocateMachineSchema = z
+  .object({ projectId: z.string().uuid() })
+  .strict();
+export type AllocateMachineInput = z.infer<typeof allocateMachineSchema>;
+
 export const listMachinesQuerySchema = z
   .object({
     limit: z.coerce.number().int().min(1).max(100).default(25),

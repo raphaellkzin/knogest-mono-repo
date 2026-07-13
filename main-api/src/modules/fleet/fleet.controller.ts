@@ -15,6 +15,7 @@ import {
   listMachinesQuerySchema,
   machineParamsSchema,
   machineReadingParamsSchema,
+  allocateMachineSchema,
 } from "./fleet.dto";
 import { FleetService } from "./fleet.service";
 
@@ -318,6 +319,27 @@ export const v1FleetController = async (app: FastifyInstance) => {
         scopeFromRequest(request),
         request.query as z.infer<typeof listMachinesQuerySchema>,
       );
+      return jsonResponse.success({ reply, data });
+    },
+  );
+
+  app.post(
+    "/machines/:machineId/allocations",
+    {
+      preHandler: [app.requireCompanyScope, validateParams(machineParamsSchema), validateBody(allocateMachineSchema)],
+      schema: {
+        tags: ["Fleet"], summary: "Allocate a Machine to an eligible Project", security: [{ bearerAuth: [] }],
+        params: machineParamsOpenApiSchema,
+        body: { type: "object", additionalProperties: false, required: ["projectId"], properties: { projectId: { type: "string", format: "uuid" } } },
+        response: {
+          200: { type: "object", additionalProperties: false, required: ["success", "message", "data"], properties: { success: { type: "boolean", const: true }, message: { type: "string" }, data: { type: "object", additionalProperties: false, required: ["id", "projectId", "machineId", "startMeterReadingId", "effectiveFrom"], properties: { id: { type: "string", format: "uuid" }, projectId: { type: "string", format: "uuid" }, machineId: { type: "string", format: "uuid" }, startMeterReadingId: { type: "string", format: "uuid" }, effectiveFrom: { type: "string", format: "date-time" } } } } },
+          400: errorSchema, 401: errorSchema, 403: errorSchema, 404: errorSchema, 409: errorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { machineId } = request.params as z.infer<typeof machineParamsSchema>;
+      const data = await fleetService.allocate(scopeFromRequest(request), machineId, request.body as z.infer<typeof allocateMachineSchema>);
       return jsonResponse.success({ reply, data });
     },
   );

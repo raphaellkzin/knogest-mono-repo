@@ -548,3 +548,41 @@ function decimalToCents(value: string): bigint {
   const [whole, fraction = ""] = value.split(".");
   return BigInt(whole) * 100n + BigInt(fraction.padEnd(2, "0").slice(0, 2));
 }
+
+export async function findAllocatedMachineIdsHandler(
+  context: HandlerContext,
+  corporationId: string,
+  machineIds: string[],
+) {
+  if (!machineIds.length) return [];
+  return context.prisma.projectMachineAllocation.findMany({
+    where: { corporationId, machineId: { in: machineIds }, effectiveTo: null },
+    select: { machineId: true },
+  });
+}
+
+export async function allocateMachineHandler(
+  context: HandlerContext,
+  input: { corporationId: string; companyId: string; machineId: string; projectId: string; effectiveFrom: Date },
+) {
+  await lockMachine(context, input);
+  const [machine, ownership, project, reading, allocation] = await Promise.all([
+    context.prisma.machine.findFirst({ where: { id: input.machineId, corporationId: input.corporationId, isActive: true }, select: { id: true } }),
+    context.prisma.machineOwnershipPeriod.findFirst({ where: { corporationId: input.corporationId, companyId: input.companyId, machineId: input.machineId, effectiveTo: null }, select: { id: true } }),
+    context.prisma.project.findFirst({ where: { id: input.projectId, corporationId: input.corporationId, companyId: input.companyId, status: { in: ["PLANNED", "ACTIVE"] } }, select: { id: true } }),
+    context.prisma.machineMeterReading.findFirst({ where: { corporationId: input.corporationId, companyId: input.companyId, machineId: input.machineId, status: "CONFIRMED" }, orderBy: { readingSequence: "desc" }, select: { id: true, value: true } }),
+    context.prisma.projectMachineAllocation.findFirst({ where: { corporationId: input.corporationId, machineId: input.machineId, effectiveTo: null }, select: { id: true } }),
+  ]);
+  if (!machine || !ownership || !reading) throw new AppError({ code: "MACHINE_ALLOCATION_UNAVAILABLE", message: "Machine is unavailable for allocation", statusCode: 409 });
+  if (!project) throw new AppError({ code: "MACHINE_ALLOCATION_PROJECT_UNAVAILABLE", message: "Project is unavailable for machine allocation", statusCode: 409 });
+  if (allocation) throw new AppError({ code: "MACHINE_ALLOCATION_UNAVAILABLE", message: "Machine is unavailable for allocation", statusCode: 409 });
+  try {
+    return await context.prisma.projectMachineAllocation.create({
+      data: { corporationId: input.corporationId, companyId: input.companyId, projectId: input.projectId, machineId: input.machineId, startMeterReadingId: reading.id, effectiveFrom: input.effectiveFrom },
+      select: { id: true, projectId: true, machineId: true, startMeterReadingId: true, effectiveFrom: true },
+    });
+  } catch (error) {
+    if (isUniqueError(error)) throw new AppError({ code: "MACHINE_ALLOCATION_UNAVAILABLE", message: "Machine is unavailable for allocation", statusCode: 409 });
+    throw error;
+  }
+}

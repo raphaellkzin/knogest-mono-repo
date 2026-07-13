@@ -17,6 +17,7 @@ import {
   selectorQuerySchema,
 } from "./commercial.dto";
 import { CommercialService } from "./commercial.service";
+import { listActiveFuelTypesHandler } from "./handlers/commercial-registry.handler";
 
 const errorSchema = {
   type: "object",
@@ -480,11 +481,7 @@ export const v1CommercialController = async (app: FastifyInstance) => {
       },
     },
     async (_request, reply) => {
-      const data = await app.prisma.fuelType.findMany({
-        where: { id: { in: ["diesel-s10", "diesel-s500"] }, isActive: true },
-        orderBy: { id: "asc" },
-        select: { id: true, name: true },
-      });
+      const data = await listActiveFuelTypesHandler(app.handlerContext);
       return jsonResponse.success({ reply, data });
     },
   );
