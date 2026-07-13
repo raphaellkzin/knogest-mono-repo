@@ -54,6 +54,7 @@ interface BaseFormModalProps<TData extends FieldValues> {
   onSubmit: (data: TData) => Promise<void | boolean>;
   confirmClose?: (dirty: boolean) => boolean | Promise<boolean>;
   onSessionStart?: () => void;
+  notice?: React.ReactNode;
   submitLabel?: string;
   children?: (
     form: UseFormReturn<TData>,
@@ -70,6 +71,7 @@ export function BaseFormModal<TData extends FieldValues>({
   confirmClose,
   onSessionStart,
   onSubmit,
+  notice,
   schema,
   size = "lg",
   steps,
@@ -203,8 +205,9 @@ export function BaseFormModal<TData extends FieldValues>({
                 Etapa {currentStep + 1} de {steps.length}: {activeStep.title}
               </h2>
               <WizardProgress steps={steps} currentStep={currentStep} />
-              <div className="mt-5 min-h-52">
+              <div className="mt-5 min-h-52 space-y-4">
                 {activeStep.component(form, helpers)}
+                {notice}
               </div>
             </>
           ) : (
