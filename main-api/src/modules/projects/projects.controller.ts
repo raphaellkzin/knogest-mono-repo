@@ -143,8 +143,12 @@ const projectCommandOpenApiSchema = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["machineId", "startMeterReadingId"],
-        properties: { machineId: uuid, startMeterReadingId: uuid },
+        required: ["machineId", "startMeterReadingId", "operatorEmploymentId"],
+        properties: {
+          machineId: uuid,
+          startMeterReadingId: uuid,
+          operatorEmploymentId: uuid,
+        },
       },
     },
     projectFuelAgreements: {

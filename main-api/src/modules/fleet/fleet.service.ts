@@ -272,7 +272,7 @@ export class FleetService {
         if (status.hasOpenShift || status.hasPendingFinalReading) {
           throw new AppError({ code: "MACHINE_ALLOCATION_OPERATIONALLY_BLOCKED", message: "Machine has an operational blocker", statusCode: 409 });
         }
-        const allocation = await allocateMachineHandler(tx, { ...scope, machineId, projectId: input.projectId, effectiveFrom: new Date() });
+        const allocation = await allocateMachineHandler(tx, { ...scope, machineId, projectId: input.projectId, operatorEmploymentId: input.operatorEmploymentId, effectiveFrom: new Date() });
         return { ...allocation, effectiveFrom: allocation.effectiveFrom.toISOString() };
       }, { isolationLevel: "Serializable" }),
     );

@@ -638,7 +638,7 @@ function EmployeeMobilization({
   );
 }
 
-function MachineMobilization({
+export function MachineMobilization({
   form,
   options,
 }: {
@@ -646,51 +646,123 @@ function MachineMobilization({
   options: ProjectWizardOptions;
 }) {
   const allocations = form.watch("initialMachineAllocations");
+  const employeeAllocations = form.watch("initialEmployeeAllocations");
   const error = form.formState.errors.initialMachineAllocations;
+  const teamEmploymentIds = React.useMemo(
+    () => new Set(employeeAllocations.map((item) => item.employmentId)),
+    [employeeAllocations],
+  );
+  const teamOptions = options.employees.filter((option) =>
+    teamEmploymentIds.has(option.id),
+  );
+
+  React.useEffect(() => {
+    const normalized = allocations.map((allocation) =>
+      teamEmploymentIds.has(allocation.operatorEmploymentId)
+        ? allocation
+        : { ...allocation, operatorEmploymentId: "" },
+    );
+    if (
+      normalized.some(
+        (allocation, index) =>
+          allocation.operatorEmploymentId !==
+          allocations[index]?.operatorEmploymentId,
+      )
+    )
+      form.setValue("initialMachineAllocations", normalized, {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+  }, [allocations, form, teamEmploymentIds]);
+
+  const replaceAllocation = (
+    machineId: string,
+    patch: Partial<ProjectCommand["initialMachineAllocations"][number]>,
+  ) =>
+    form.setValue(
+      "initialMachineAllocations",
+      allocations.map((item) =>
+        item.machineId === machineId ? { ...item, ...patch } : item,
+      ),
+      { shouldDirty: true, shouldValidate: true },
+    );
+
   return (
     <FormSection
       title="Mobilização inicial de máquinas"
-      description="Opcional. Selecione as máquinas que estarão disponíveis desde o início da obra."
+      description="Opcional. Cada máquina selecionada precisa de um operador da equipe inicial."
     >
       <p className="text-sm font-semibold text-muted-foreground">
         {allocations.length} máquina(s) selecionada(s)
       </p>
+      {teamOptions.length === 0 && (
+        <p className="text-sm font-medium text-muted-foreground">
+          Selecione funcionários na equipe inicial antes de vincular máquinas.
+        </p>
+      )}
       <div
         className="grid gap-2"
         aria-describedby={error ? "machine-mobilization-error" : undefined}
       >
         {options.machines.length > 0 ? (
           options.machines.map((option) => {
-            const checked = allocations.some(
+            const allocation = allocations.find(
               (item) => item.machineId === option.id,
             );
+            const checked = Boolean(allocation);
+            const disabled = !option.readingId || teamOptions.length === 0;
             return (
-              <SelectionRow
-                key={option.id}
-                checked={checked}
-                disabled={!option.readingId}
-                onChange={(nextChecked) =>
-                  form.setValue(
-                    "initialMachineAllocations",
-                    nextChecked && option.readingId
-                      ? [
-                          ...allocations,
-                          {
-                            machineId: option.id,
-                            startMeterReadingId: option.readingId,
-                          },
-                        ]
-                      : allocations.filter(
-                          (item) => item.machineId !== option.id,
-                        ),
-                    { shouldDirty: true, shouldValidate: true },
-                  )
-                }
-              >
-                {option.label}
-                {option.detail ? ` — leitura ${option.detail}` : ""}
-                {!option.readingId ? " — leitura indisponível" : ""}
-              </SelectionRow>
+              <div key={option.id} className="grid gap-3">
+                <SelectionRow
+                  checked={checked}
+                  disabled={disabled}
+                  onChange={(nextChecked) =>
+                    form.setValue(
+                      "initialMachineAllocations",
+                      nextChecked && option.readingId
+                        ? [
+                            ...allocations,
+                            {
+                              machineId: option.id,
+                              startMeterReadingId: option.readingId,
+                              operatorEmploymentId: "",
+                            },
+                          ]
+                        : allocations.filter(
+                            (item) => item.machineId !== option.id,
+                          ),
+                      { shouldDirty: true, shouldValidate: true },
+                    )
+                  }
+                >
+                  {option.label}
+                  {option.detail ? ` — leitura ${option.detail}` : ""}
+                  {!option.readingId ? " — leitura indisponível" : ""}
+                  {teamOptions.length === 0 ? " — equipe não selecionada" : ""}
+                </SelectionRow>
+                {allocation && (
+                  <label className="grid gap-1.5 border-t border-border pt-3 text-sm font-semibold">
+                    <span>Operador</span>
+                    <select
+                      className={controlClass}
+                      value={allocation.operatorEmploymentId}
+                      onChange={(event) =>
+                        replaceAllocation(option.id, {
+                          operatorEmploymentId: event.target.value,
+                        })
+                      }
+                    >
+                      <option value="">Selecione um operador da equipe</option>
+                      {teamOptions.map((employee) => (
+                        <option key={employee.id} value={employee.id}>
+                          {employee.label}
+                          {employee.detail ? ` — ${employee.detail}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+              </div>
             );
           })
         ) : (
@@ -911,7 +983,12 @@ export function ProjectWizardReview({
             label="Máquinas iniciais"
             value={
               value.initialMachineAllocations.length > 0
-                ? `${value.initialMachineAllocations.length} máquina(s)`
+                ? value.initialMachineAllocations
+                    .map(
+                      (allocation) =>
+                        `${labelFor(options.machines, allocation.machineId)} com ${labelFor(options.employees, allocation.operatorEmploymentId)}`,
+                    )
+                    .join(", ")
                 : "Não informado"
             }
           />

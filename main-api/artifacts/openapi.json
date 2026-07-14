@@ -2976,9 +2976,10 @@
               "schema": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": ["projectId"],
+                "required": ["projectId", "operatorEmploymentId"],
                 "properties": {
-                  "projectId": { "type": "string", "format": "uuid" }
+                  "projectId": { "type": "string", "format": "uuid" },
+                  "operatorEmploymentId": { "type": "string", "format": "uuid" }
                 }
               }
             }
@@ -3013,6 +3014,7 @@
                         "projectId",
                         "machineId",
                         "startMeterReadingId",
+                        "operatorEmploymentId",
                         "effectiveFrom"
                       ],
                       "properties": {
@@ -3020,6 +3022,10 @@
                         "projectId": { "type": "string", "format": "uuid" },
                         "machineId": { "type": "string", "format": "uuid" },
                         "startMeterReadingId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "operatorEmploymentId": {
                           "type": "string",
                           "format": "uuid"
                         },
@@ -5457,9 +5463,9 @@
                     "data": {
                       "type": "object",
                       "additionalProperties": false,
-                      "required": ["previous", "current"],
+                      "required": ["source", "destination"],
                       "properties": {
-                        "previous": {
+                        "source": {
                           "nullable": true,
                           "type": "object",
                           "required": [
@@ -5519,7 +5525,7 @@
                           },
                           "additionalProperties": false
                         },
-                        "current": {
+                        "destination": {
                           "nullable": true,
                           "type": "object",
                           "required": [
@@ -8145,10 +8151,18 @@
                     "items": {
                       "type": "object",
                       "additionalProperties": false,
-                      "required": ["machineId", "startMeterReadingId"],
+                      "required": [
+                        "machineId",
+                        "startMeterReadingId",
+                        "operatorEmploymentId"
+                      ],
                       "properties": {
                         "machineId": { "type": "string", "format": "uuid" },
                         "startMeterReadingId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "operatorEmploymentId": {
                           "type": "string",
                           "format": "uuid"
                         }

@@ -330,9 +330,17 @@ export const v1FleetController = async (app: FastifyInstance) => {
       schema: {
         tags: ["Fleet"], summary: "Allocate a Machine to an eligible Project", security: [{ bearerAuth: [] }],
         params: machineParamsOpenApiSchema,
-        body: { type: "object", additionalProperties: false, required: ["projectId"], properties: { projectId: { type: "string", format: "uuid" } } },
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["projectId", "operatorEmploymentId"],
+          properties: {
+            projectId: { type: "string", format: "uuid" },
+            operatorEmploymentId: { type: "string", format: "uuid" },
+          },
+        },
         response: {
-          200: { type: "object", additionalProperties: false, required: ["success", "message", "data"], properties: { success: { type: "boolean", const: true }, message: { type: "string" }, data: { type: "object", additionalProperties: false, required: ["id", "projectId", "machineId", "startMeterReadingId", "effectiveFrom"], properties: { id: { type: "string", format: "uuid" }, projectId: { type: "string", format: "uuid" }, machineId: { type: "string", format: "uuid" }, startMeterReadingId: { type: "string", format: "uuid" }, effectiveFrom: { type: "string", format: "date-time" } } } } },
+          200: { type: "object", additionalProperties: false, required: ["success", "message", "data"], properties: { success: { type: "boolean", const: true }, message: { type: "string" }, data: { type: "object", additionalProperties: false, required: ["id", "projectId", "machineId", "startMeterReadingId", "operatorEmploymentId", "effectiveFrom"], properties: { id: { type: "string", format: "uuid" }, projectId: { type: "string", format: "uuid" }, machineId: { type: "string", format: "uuid" }, startMeterReadingId: { type: "string", format: "uuid" }, operatorEmploymentId: { type: "string", format: "uuid" }, effectiveFrom: { type: "string", format: "date-time" } } } } },
           400: errorSchema, 401: errorSchema, 403: errorSchema, 404: errorSchema, 409: errorSchema,
         },
       },

@@ -704,10 +704,12 @@ model ProjectMachineAllocation {
   projectId           String    @map("project_id") @db.Uuid
   machineId           String    @map("machine_id") @db.Uuid
   startMeterReadingId String    @map("start_meter_reading_id") @db.Uuid
+  operatorEmploymentId String   @map("operator_employment_id") @db.Uuid
   effectiveFrom       DateTime  @map("effective_from") @db.Timestamptz(3)
   effectiveTo         DateTime? @map("effective_to") @db.Timestamptz(3)
 
   @@index([corporationId, companyId, projectId])
+  @@index([corporationId, companyId, operatorEmploymentId])
   @@map("project_machine_allocations")
 }
 

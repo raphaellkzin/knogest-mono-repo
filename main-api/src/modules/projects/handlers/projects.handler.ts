@@ -182,6 +182,14 @@ async function validateResources(
           ),
         ]);
     }
+  const teamEmploymentIds = new Set(
+    command.initialEmployeeAllocations.map((item) => item.employmentId),
+  );
+  for (const allocation of command.initialMachineAllocations)
+    if (!teamEmploymentIds.has(allocation.operatorEmploymentId))
+      throw conflict([
+        resource("employee", allocation.operatorEmploymentId, "machines"),
+      ]);
   if (suppliers.length !== command.projectFuelAgreements.length)
     throw conflict();
   if (fuelTypes.length !== 2)

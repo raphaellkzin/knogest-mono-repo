@@ -125,6 +125,7 @@ const employeeAllocationSchema = z.object({
 const machineAllocationSchema = z.object({
   machineId: z.string().uuid(),
   startMeterReadingId: z.string().uuid(),
+  operatorEmploymentId: z.string().uuid(),
 });
 
 const fuelAgreementSchema = z.object({
@@ -220,6 +221,17 @@ export const projectCommandSchema = z
           message: "Itens duplicados",
         });
     }
+    const teamEmploymentIds = new Set(
+      command.initialEmployeeAllocations.map((item) => item.employmentId),
+    );
+    command.initialMachineAllocations.forEach((allocation, index) => {
+      if (!teamEmploymentIds.has(allocation.operatorEmploymentId))
+        context.addIssue({
+          code: "custom",
+          path: ["initialMachineAllocations", index, "operatorEmploymentId"],
+          message: "Selecione um operador da equipe inicial",
+        });
+    });
   });
 
 export type ProjectCommand = z.infer<typeof projectCommandSchema>;

@@ -62,4 +62,41 @@ describe("Projects DTO", () => {
       ).success,
     ).toBe(false);
   });
+  it("requires each initial Machine operator to be part of the initial team", () => {
+    const operator = "00000000-0000-4000-8000-000000000302";
+    expect(
+      projectCommandSchema.safeParse({
+        ...command,
+        initialEmployeeAllocations: [
+          {
+            employmentId: operator,
+            confirmedJobRolePeriodId: "00000000-0000-4000-8000-000000000402",
+            expectedDailyWorkloadMinutes: 480,
+            compensationMode: "monthly",
+            compensationValue: "0.00",
+            overtimeRate: "0.00",
+          },
+        ],
+        initialMachineAllocations: [
+          {
+            machineId: "00000000-0000-4000-8000-000000000501",
+            startMeterReadingId: "00000000-0000-4000-8000-000000000601",
+            operatorEmploymentId: operator,
+          },
+        ],
+      }).success,
+    ).toBe(true);
+    expect(
+      projectCommandSchema.safeParse({
+        ...command,
+        initialMachineAllocations: [
+          {
+            machineId: "00000000-0000-4000-8000-000000000501",
+            startMeterReadingId: "00000000-0000-4000-8000-000000000601",
+            operatorEmploymentId: operator,
+          },
+        ],
+      }).success,
+    ).toBe(false);
+  });
 });

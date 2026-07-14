@@ -349,6 +349,25 @@ const allocationReplacementResponseSchema = {
   },
 } as const;
 
+const reallocationResponseSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["success", "message", "data"],
+  properties: {
+    success: { type: "boolean", const: true },
+    message: { type: "string" },
+    data: {
+      type: "object",
+      additionalProperties: false,
+      required: ["source", "destination"],
+      properties: {
+        source: currentAllocationSchema,
+        destination: currentAllocationSchema,
+      },
+    },
+  },
+} as const;
+
 const reallocationDestinationsResponseSchema = {
   type: "object",
   additionalProperties: false,
@@ -661,7 +680,7 @@ export const v1WorkforceController = async (app: FastifyInstance) => {
           },
         },
         response: {
-          200: allocationReplacementResponseSchema,
+          200: reallocationResponseSchema,
           400: errorSchema,
           401: errorSchema,
           403: errorSchema,

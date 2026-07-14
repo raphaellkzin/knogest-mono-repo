@@ -3,7 +3,7 @@
 import * as React from "react";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../projects.actions", () => ({
@@ -12,6 +12,7 @@ vi.mock("../projects.actions", () => ({
 
 import type { BaseFormModalRenderHelpers } from "@/components/modals/BaseFormModal";
 import {
+  MachineMobilization,
   ProjectWizardIdentity,
   ProjectWizardReview,
   ProjectWizardSubmissionNotice,
@@ -22,7 +23,14 @@ import { emptyProjectCommand, type ProjectCommand } from "../projects-schema";
 const options: ProjectWizardOptions = {
   clients: [{ id: "client-1", label: "Cliente Norte" }],
   employees: [{ id: "employee-1", label: "Ana Silva", detail: "Engenheira" }],
-  machines: [],
+  machines: [
+    {
+      id: "machine-1",
+      label: "Escavadeira",
+      detail: "10.00",
+      readingId: "reading-1",
+    },
+  ],
   suppliers: [],
   fuelTypes: [],
 };
@@ -73,6 +81,46 @@ function ReviewHarness() {
   );
 }
 
+function MachineHarness() {
+  const form = useForm<ProjectCommand>({
+    defaultValues: {
+      ...structuredClone(emptyProjectCommand),
+      initialEmployeeAllocations: [
+        {
+          employmentId: "employee-1",
+          confirmedJobRolePeriodId: "role-period-1",
+          expectedDailyWorkloadMinutes: 480,
+          compensationMode: "monthly",
+          compensationValue: "0.00",
+          overtimeRate: "0.00",
+        },
+      ],
+    },
+  });
+  const machineAllocations = useWatch({
+    control: form.control,
+    name: "initialMachineAllocations",
+  });
+
+  return (
+    <>
+      <MachineMobilization form={form} options={options} />
+      <button
+        type="button"
+        onClick={() =>
+          form.setValue("initialEmployeeAllocations", [], {
+            shouldDirty: true,
+            shouldValidate: true,
+          })
+        }
+      >
+        Remover equipe
+      </button>
+      <output>{JSON.stringify(machineAllocations)}</output>
+    </>
+  );
+}
+
 describe("Project wizard polish", () => {
   it("shows field-level validation feedback in the operational form", async () => {
     render(<IdentityHarness />);
@@ -100,6 +148,24 @@ describe("Project wizard polish", () => {
     expect(screen.getByRole("alert").textContent).toContain("Tentar novamente");
     expect(screen.getByRole("alert").textContent).toContain(
       "consulte o registro de obras",
+    );
+  });
+
+  it("requires a selected Machine to use an operator from the initial team", async () => {
+    const user = userEvent.setup();
+    render(<MachineHarness />);
+
+    await user.click(screen.getByLabelText(/Escavadeira/));
+    await user.selectOptions(screen.getByLabelText("Operador"), "employee-1");
+
+    expect(screen.getByRole("status").textContent).toContain(
+      '"operatorEmploymentId":"employee-1"',
+    );
+
+    await user.click(screen.getByRole("button", { name: "Remover equipe" }));
+
+    expect(screen.getByRole("status").textContent).toContain(
+      '"operatorEmploymentId":""',
     );
   });
 });

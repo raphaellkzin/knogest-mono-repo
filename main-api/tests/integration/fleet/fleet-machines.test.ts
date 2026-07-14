@@ -6,6 +6,7 @@ import {
   hashCanonicalValue,
 } from "../../../src/lib/utils/cursor-pagination";
 import { OrganizationService } from "../../../src/modules/organization/organization.service";
+import { ProjectsService } from "../../../src/modules/projects/projects.service";
 import { resetIntegrationData } from "../reset-integration-data";
 
 import type { FastifyInstance } from "fastify";
@@ -233,6 +234,163 @@ describe("fleet Machine registry and meter readings", () => {
     });
     expect(detail.statusCode).toBe(200);
     expect(detail.json().data.ownership.companyId).toBe(pilot.companies[0].id);
+  });
+
+  it("requires a Project team operator when allocating a Machine", async () => {
+    const pilot = await provision("allocate-operator");
+    const company = pilot.companies[0];
+    const authorization = await authFor({
+      corporationId: pilot.corporation.id,
+      userId: pilot.administrator.id,
+      companyId: company.id,
+    });
+    const session = await app.prisma.session.findFirstOrThrow({
+      where: {
+        corporationId: pilot.corporation.id,
+        companyId: company.id,
+        userId: pilot.administrator.id,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    const initialMachine = await createMachine(authorization, "MCH-INITIAL");
+    const machine = await createMachine(authorization, "MCH-ALLOC");
+    const role = await app.prisma.jobRole.create({
+      data: {
+        corporationId: pilot.corporation.id,
+        companyId: company.id,
+        name: "Operator",
+        normalizedName: "operator",
+      },
+    });
+    const syntheticCpfFixture = "529.982.247-25";
+    const employee = await app.inject({
+      method: "POST",
+      url: "/api/v1/employees",
+      headers: { authorization },
+      payload: {
+        document: syntheticCpfFixture,
+        fullName: "Machine Operator",
+        companyRegistrationNumber: "OP-01",
+        admissionDate: "2026-07-01",
+        jobRoleId: role.id,
+      },
+    });
+    expect(employee.statusCode).toBe(201);
+    const employmentId = employee.json().data.id as string;
+    const employment = await app.prisma.employment.findUniqueOrThrow({
+      where: {
+        corporationId_companyId_id: {
+          corporationId: pilot.corporation.id,
+          companyId: company.id,
+          id: employmentId,
+        },
+      },
+      select: { jobRolePeriods: { where: { effectiveTo: null }, select: { id: true } } },
+    });
+    const client = await app.prisma.client.create({
+      data: {
+        corporationId: pilot.corporation.id,
+        companyId: company.id,
+        entityType: "LEGAL_ENTITY",
+        documentType: "CNPJ",
+        ciphertext: "cipher",
+        iv: "iv",
+        authTag: "tag",
+        encryptionKeyVersion: "v1",
+        documentDigest: "allocate-operator-client",
+        displayName: "Client",
+        legalName: "Client Ltd",
+      },
+    });
+    await app.prisma.fuelType.createMany({
+      data: [
+        { id: "diesel-s10", name: "Diesel S10" },
+        { id: "diesel-s500", name: "Diesel S500" },
+      ],
+    });
+    const project = await new ProjectsService(app.handlerContext).finalize(
+      {
+        corporationId: pilot.corporation.id,
+        companyId: company.id,
+        sessionId: session.id,
+        userId: pilot.administrator.id,
+        role: "MASTER_ADMIN",
+      },
+      company.id,
+      "00000000-0000-4000-8000-000000000101",
+      {
+        name: "Project",
+        address: "Address",
+        latitude: null,
+        longitude: null,
+        contractNumber: null,
+        approvedBudget: "100.00",
+        plannedStartDate: "2026-07-01",
+        plannedEndDate: "2026-12-31",
+        clientId: client.id,
+        managerEmploymentId: employmentId,
+        technicalResponsibilityEmploymentIds: [employmentId],
+        weeklySchedule: [1, 2, 3, 4, 5, 6, 7].map((dayOfWeek) => ({
+          dayOfWeek,
+          isWorking: dayOfWeek < 6,
+          startTime: dayOfWeek < 6 ? "08:00" : null,
+          endTime: dayOfWeek < 6 ? "17:00" : null,
+        })),
+        breakTemplates: [],
+        initialEmployeeAllocations: [
+          {
+            employmentId,
+            confirmedJobRolePeriodId: employment.jobRolePeriods[0].id,
+            expectedDailyWorkloadMinutes: 480,
+            compensationMode: "monthly",
+            compensationValue: "0.00",
+            overtimeRate: "0.00",
+          },
+        ],
+        initialMachineAllocations: [
+          {
+            machineId: initialMachine.id,
+            startMeterReadingId: initialMachine.latestMeterReading.id,
+            operatorEmploymentId: employmentId,
+          },
+        ],
+        projectFuelAgreements: [],
+      },
+    );
+    expect(
+      await app.prisma.projectMachineAllocation.findFirst({
+        where: {
+          projectId: project.projectId,
+          machineId: initialMachine.id,
+          operatorEmploymentId: employmentId,
+        },
+      }),
+    ).toBeTruthy();
+
+    const missingOperator = await app.inject({
+      method: "POST",
+      url: `/api/v1/machines/${machine.id}/allocations`,
+      headers: { authorization },
+      payload: { projectId: project.projectId },
+    });
+    expect(missingOperator.statusCode).toBe(400);
+
+    const allocated = await app.inject({
+      method: "POST",
+      url: `/api/v1/machines/${machine.id}/allocations`,
+      headers: { authorization },
+      payload: { projectId: project.projectId, operatorEmploymentId: employmentId },
+    });
+    expect(allocated.statusCode).toBe(200);
+    expect(allocated.json().data).toMatchObject({
+      machineId: machine.id,
+      operatorEmploymentId: employmentId,
+    });
+    expect(
+      await app.prisma.projectMachineAllocation.findFirst({
+        where: { machineId: machine.id, operatorEmploymentId: employmentId },
+      }),
+    ).toBeTruthy();
   });
 
   it("keeps nested identifiers and readings scoped to the selected Company", async () => {

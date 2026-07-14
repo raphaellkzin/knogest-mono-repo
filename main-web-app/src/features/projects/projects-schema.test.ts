@@ -45,4 +45,31 @@ describe("projectCommandSchema", () => {
     });
     expect(projectCommandSchema.safeParse(command).success).toBe(false);
   });
+
+  it("requires Machine operators to come from the initial team", () => {
+    const command = valid();
+    const operator = "00000000-0000-4000-8000-000000000302";
+    command.initialEmployeeAllocations = [
+      {
+        employmentId: operator,
+        confirmedJobRolePeriodId: "00000000-0000-4000-8000-000000000402",
+        expectedDailyWorkloadMinutes: 480,
+        compensationMode: "monthly",
+        compensationValue: "0.00",
+        overtimeRate: "0.00",
+      },
+    ];
+    command.initialMachineAllocations = [
+      {
+        machineId: "00000000-0000-4000-8000-000000000501",
+        startMeterReadingId: "00000000-0000-4000-8000-000000000601",
+        operatorEmploymentId: operator,
+      },
+    ];
+    expect(projectCommandSchema.safeParse(command).success).toBe(true);
+
+    command.initialMachineAllocations[0].operatorEmploymentId =
+      "00000000-0000-4000-8000-000000000303";
+    expect(projectCommandSchema.safeParse(command).success).toBe(false);
+  });
 });

@@ -49,7 +49,10 @@ export const createMachineSchema = z
 export type CreateMachineInput = z.infer<typeof createMachineSchema>;
 
 export const allocateMachineSchema = z
-  .object({ projectId: z.string().uuid() })
+  .object({
+    projectId: z.string().uuid(),
+    operatorEmploymentId: z.string().uuid(),
+  })
   .strict();
 export type AllocateMachineInput = z.infer<typeof allocateMachineSchema>;
 

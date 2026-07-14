@@ -113,7 +113,15 @@ export const projectCommandSchema = z
       )
       .max(200),
     initialMachineAllocations: z
-      .array(z.object({ machineId: uuid, startMeterReadingId: uuid }).strict())
+      .array(
+        z
+          .object({
+            machineId: uuid,
+            startMeterReadingId: uuid,
+            operatorEmploymentId: uuid,
+          })
+          .strict(),
+      )
       .max(100),
     projectFuelAgreements: z
       .array(
@@ -186,6 +194,17 @@ export const projectCommandSchema = z
           path: [path],
           message: "Duplicate ids",
         });
+    const teamEmploymentIds = new Set(
+      command.initialEmployeeAllocations.map((item) => item.employmentId),
+    );
+    command.initialMachineAllocations.forEach((allocation, index) => {
+      if (!teamEmploymentIds.has(allocation.operatorEmploymentId))
+        context.addIssue({
+          code: "custom",
+          path: ["initialMachineAllocations", index, "operatorEmploymentId"],
+          message: "Machine operator must be part of the initial team",
+        });
+    });
   });
 
 export const projectIdempotencyKeySchema = z
