@@ -1,18 +1,27 @@
 import { describe, expect, it } from "vitest";
 import {
+  formatProjectAddress,
   projectCommandSchema,
   projectIdempotencyKeySchema,
 } from "./projects.dto";
 
 const command = {
   name: "Project",
-  address: "Address",
+  address: {
+    postalCode: "60170000",
+    street: "Rua A",
+    number: "10",
+    complement: null,
+    neighborhood: "Meireles",
+    city: "Fortaleza",
+    state: "CE",
+  },
   latitude: null,
   longitude: null,
   contractNumber: null,
   approvedBudget: "0.00",
   plannedStartDate: "2026-07-01",
-  plannedEndDate: "2026-07-01",
+  plannedEndDate: null,
   clientId: "00000000-0000-4000-8000-000000000201",
   managerEmploymentId: "00000000-0000-4000-8000-000000000301",
   technicalResponsibilityEmploymentIds: [
@@ -33,6 +42,58 @@ const command = {
 describe("Projects DTO", () => {
   it("accepts the minimal aggregate", () =>
     expect(projectCommandSchema.safeParse(command).success).toBe(true));
+
+  it("accepts addresses without numbers", () => {
+    expect(
+      projectCommandSchema.safeParse({
+        ...command,
+        address: { ...command.address, number: "" },
+      }).success,
+    ).toBe(true);
+    expect(
+      projectCommandSchema.safeParse({
+        ...command,
+        address: { ...command.address, number: null },
+      }).success,
+    ).toBe(true);
+    expect(
+      projectCommandSchema.safeParse({
+        ...command,
+        address: {
+          postalCode: command.address.postalCode,
+          street: command.address.street,
+          complement: command.address.complement,
+          neighborhood: command.address.neighborhood,
+          city: command.address.city,
+          state: command.address.state,
+        },
+      }).success,
+    ).toBe(true);
+  });
+
+  it("formats addresses without a dangling number separator", () => {
+    expect(
+      formatProjectAddress({ ...command.address, number: null }),
+    ).toContain("Rua A - Meireles");
+    expect(
+      formatProjectAddress({ ...command.address, number: null }),
+    ).not.toContain("Rua A,");
+  });
+
+  it("rejects incomplete addresses and reversed optional end dates", () => {
+    expect(
+      projectCommandSchema.safeParse({
+        ...command,
+        address: { ...command.address, postalCode: "60170-000" },
+      }).success,
+    ).toBe(false);
+    expect(
+      projectCommandSchema.safeParse({
+        ...command,
+        plannedEndDate: "2026-06-30",
+      }).success,
+    ).toBe(false);
+  });
   it("rejects unknown properties and over-limit collections", () => {
     expect(
       projectCommandSchema.safeParse({

@@ -5,13 +5,21 @@ describe("canonicalProjectCommand", () => {
   it("uses a version prefix and canonical object keys", () => {
     const value = canonicalProjectCommand({
       name: "A",
-      address: "B",
+      address: {
+        postalCode: "60170000",
+        street: "Rua A",
+        number: "10",
+        complement: null,
+        neighborhood: "Meireles",
+        city: "Fortaleza",
+        state: "CE",
+      },
       latitude: null,
       longitude: null,
       contractNumber: null,
       approvedBudget: "0.00",
       plannedStartDate: "2026-01-01",
-      plannedEndDate: "2026-01-01",
+      plannedEndDate: null,
       clientId: "00000000-0000-4000-8000-000000000001",
       managerEmploymentId: "00000000-0000-4000-8000-000000000002",
       technicalResponsibilityEmploymentIds: [

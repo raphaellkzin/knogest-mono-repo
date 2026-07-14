@@ -15,6 +15,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
+import { FormErrorDeclaration } from "@/components/forms/form-error-declaration";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FormSection } from "@/components/ui/form-section";
@@ -337,16 +338,16 @@ export function MachinesPageView({
                 </FormSection>
 
                 {!state.ok && state.message && (
-                  <p
-                    role="status"
-                    className={`rounded-md border px-3 py-2 text-sm font-semibold ${
-                      state.ok
-                        ? "border-emerald-200 bg-emerald-50 text-emerald-950"
-                        : "border-red-200 bg-red-50 text-red-950"
-                    }`}
-                  >
-                    {state.message}
-                  </p>
+                  <FormErrorDeclaration
+                    title="Não foi possível cadastrar a máquina."
+                    description="O servidor recusou o envio. Revise o formulário antes de tentar novamente."
+                    issues={[
+                      {
+                        location: "API",
+                        message: state.message,
+                      },
+                    ]}
+                  />
                 )}
               </form>
             </OperationsModal>

@@ -45,3 +45,45 @@ export function formatCep(value: string) {
   if (valueDigits.length <= 5) return valueDigits;
   return `${valueDigits.slice(0, 5)}-${valueDigits.slice(5)}`;
 }
+
+export function onlyDigits(value: string, limit?: number) {
+  const valueDigits = value.replace(/\D/g, "");
+  return typeof limit === "number" ? valueDigits.slice(0, limit) : valueDigits;
+}
+
+export function formatBrazilianDecimalInput(
+  value: string,
+  fractionDigits = 2,
+) {
+  const valueDigits = onlyDigits(value, 18 + fractionDigits);
+  if (!valueDigits) return "";
+  const padded = valueDigits.padStart(fractionDigits + 1, "0");
+  const whole = padded.slice(0, -fractionDigits).replace(/^0+(?=\d)/u, "");
+  const fraction = padded.slice(-fractionDigits);
+  return `${formatThousands(whole || "0")},${fraction}`;
+}
+
+export function decimalInputToCanonical(
+  value: string,
+  fractionDigits = 2,
+) {
+  const valueDigits = onlyDigits(value, 18 + fractionDigits);
+  if (!valueDigits) return "";
+  const padded = valueDigits.padStart(fractionDigits + 1, "0");
+  const whole = padded.slice(0, -fractionDigits).replace(/^0+(?=\d)/u, "");
+  const fraction = padded.slice(-fractionDigits);
+  return `${whole || "0"}.${fraction}`;
+}
+
+export function canonicalDecimalToBrazilian(
+  value: string,
+  fractionDigits = 2,
+) {
+  if (!/^\d+(?:\.\d+)?$/u.test(value)) return value;
+  const [whole, fraction = ""] = value.split(".");
+  return `${formatThousands(whole.replace(/^0+(?=\d)/u, "") || "0")},${fraction.padEnd(fractionDigits, "0").slice(0, fractionDigits)}`;
+}
+
+function formatThousands(value: string) {
+  return value.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+}

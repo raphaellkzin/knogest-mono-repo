@@ -320,7 +320,15 @@ describe("fleet Machine registry and meter readings", () => {
       "00000000-0000-4000-8000-000000000101",
       {
         name: "Project",
-        address: "Address",
+        address: {
+          postalCode: "60170000",
+          street: "Rua A",
+          number: "10",
+          complement: null,
+          neighborhood: "Meireles",
+          city: "Fortaleza",
+          state: "CE",
+        },
         latitude: null,
         longitude: null,
         contractNumber: null,

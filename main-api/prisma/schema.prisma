@@ -557,6 +557,13 @@ model Project {
   companyId                String                 @map("company_id") @db.Uuid
   name                     String                 @db.VarChar(160)
   address                  String                 @db.VarChar(500)
+  addressPostalCode        String?                @map("address_postal_code") @db.VarChar(8)
+  addressStreet            String?                @map("address_street") @db.VarChar(160)
+  addressNumber            String?                @map("address_number") @db.VarChar(30)
+  addressComplement        String?                @map("address_complement") @db.VarChar(100)
+  addressNeighborhood      String?                @map("address_neighborhood") @db.VarChar(100)
+  addressCity              String?                @map("address_city") @db.VarChar(100)
+  addressState             String?                @map("address_state") @db.Char(2)
   latitude                 Decimal?               @db.Decimal(9, 6)
   longitude                Decimal?               @db.Decimal(9, 6)
   contractNumber           String?                @map("contract_number") @db.VarChar(120)
@@ -580,7 +587,7 @@ model ProjectBaseline {
   projectId        String    @map("project_id") @db.Uuid
   approvedBudget   Decimal   @map("approved_budget") @db.Decimal(18, 2)
   plannedStartDate DateTime  @map("planned_start_date") @db.Date
-  plannedEndDate   DateTime  @map("planned_end_date") @db.Date
+  plannedEndDate   DateTime? @map("planned_end_date") @db.Date
   effectiveFrom    DateTime  @map("effective_from") @db.Timestamptz(3)
   effectiveTo      DateTime? @map("effective_to") @db.Timestamptz(3)
   createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)

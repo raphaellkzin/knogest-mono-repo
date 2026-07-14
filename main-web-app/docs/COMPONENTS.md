@@ -56,8 +56,12 @@ Use `OperationsModal` para a casca de criação/edição e
 é um `fieldset` com título obrigatório e descrição opcional; não deve conter
 regras de negócio nem controlar o envio.
 
+Validação, mensagens em português, opcionais e máscaras seguem
+`docs/FORM_VALIDATION.md`.
+
 Anatomia: cabeçalho com ícone, título e descrição; corpo rolável com seções;
-feedback com `role="status"`; e rodapé fixo, fora da rolagem, com cancelar e
-ação primária.
+erros bloqueantes via `FormErrorDeclaration`; e rodapé fixo, fora da rolagem,
+com cancelar e ação primária. Feedback positivo pós-envio pode usar
+`role="status"` fora do formulário.
 Funcionários, clientes e fornecedores de combustível são as referências do
 padrão reutilizável.

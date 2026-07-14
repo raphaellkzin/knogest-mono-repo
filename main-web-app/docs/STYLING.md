@@ -74,6 +74,9 @@ Com `Status da estilização: Oficial`, a fonte de verdade registrada acima pass
   delas.
 - Inputs de operação devem ter ao menos 44px de altura, label visível, foco
   perceptível e `inputMode="numeric"` quando a entrada for numérica.
+- Erros bloqueantes de modais e wizards devem aparecer em um bloco formal
+  `FormErrorDeclaration` acima do conteúdo do formulário ou da etapa atual.
+  Não coloque mensagens de erro logo abaixo de inputs nesses fluxos.
 - Máscaras são reservadas a formatos estruturais brasileiros (CPF, CNPJ,
   telefone e CEP). Nome, e-mail e endereço permanecem sem máscara.
 - Em formulários com PF/PJ, preserve os rascunhos específicos de cada tipo e
@@ -116,5 +119,7 @@ Contrato técnico:
 
 - Use `open`/`onOpenChange` quando o formulário precisar fechar após salvar.
 - O formulário deve ter labels visíveis, foco visível e campos obrigatórios nativos.
+- Erros de validação e de API devem usar `FormErrorDeclaration`; reserve
+  `role="status"` para sucesso ou mensagens não bloqueantes.
 - Criação de funcionários, máquinas, obras e fornecedores deve acontecer em modal.
 - Não use páginas separadas de criação para este MVP inicial.

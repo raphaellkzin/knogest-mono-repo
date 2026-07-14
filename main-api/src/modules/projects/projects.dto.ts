@@ -19,6 +19,26 @@ const text = (max: number, multiline = false) =>
         ),
     );
 const nullableText = (max: number) => z.union([text(max), z.null()]);
+const optionalNullableText = (max: number) =>
+  z
+    .union([z.string(), z.null()])
+    .optional()
+    .transform((value) =>
+      typeof value === "string" ? value.trim().normalize("NFC") : value,
+    )
+    .pipe(
+      z.union([
+        z
+          .string()
+          .max(max)
+          .refine((value) => !controlPattern.test(value), "Invalid text"),
+        z.null(),
+        z.undefined(),
+      ]),
+    )
+    .transform((value) => value || null);
+const optionalContractText = (max: number) =>
+  z.union([nullableText(max), z.undefined()]).transform((value) => value ?? null);
 
 function decimal(scale: number, integral: number, positive = false) {
   const pattern = new RegExp(`^\\d{1,${integral}}\\.\\d{${scale}}$`, "u");
@@ -36,6 +56,45 @@ const coordinate = (min: number, max: number) =>
 const uuid = z.string().uuid();
 const unique = <T>(items: T[], key: (item: T) => string) =>
   new Set(items.map(key)).size === items.length;
+
+export const projectAddressSchema = z
+  .object({
+    postalCode: z.string().regex(/^\d{8}$/u),
+    street: text(160),
+    number: optionalNullableText(30),
+    complement: optionalNullableText(100),
+    neighborhood: text(100),
+    city: text(100),
+    state: z
+      .string()
+      .trim()
+      .transform((value) => value.toUpperCase())
+      .pipe(z.string().regex(/^[A-Z]{2}$/u)),
+  })
+  .strict()
+  .superRefine((address, context) => {
+    const formatted = formatProjectAddress(address);
+    if (formatted.length > 500)
+      context.addIssue({
+        code: "custom",
+        path: ["street"],
+        message: "Address is too long",
+      });
+  });
+
+export type ProjectAddress = z.infer<typeof projectAddressSchema>;
+
+export function formatProjectAddress(address: ProjectAddress) {
+  const cep = `${address.postalCode.slice(0, 5)}-${address.postalCode.slice(5)}`;
+  return [
+    address.number ? `${address.street}, ${address.number}` : address.street,
+    address.complement,
+    `${address.neighborhood} - ${address.city}/${address.state}`,
+    `CEP ${cep}`,
+  ]
+    .filter(Boolean)
+    .join(" - ");
+}
 
 export const projectScheduleDaySchema = z
   .object({
@@ -71,13 +130,15 @@ export const projectScheduleDaySchema = z
 export const projectCommandSchema = z
   .object({
     name: text(160),
-    address: text(500, true),
+    address: projectAddressSchema,
     latitude: z.union([coordinate(-90, 90), z.null()]),
     longitude: z.union([coordinate(-180, 180), z.null()]),
-    contractNumber: nullableText(120),
+    contractNumber: optionalContractText(120),
     approvedBudget: decimal(2, 16),
     plannedStartDate: z.iso.date(),
-    plannedEndDate: z.iso.date(),
+    plannedEndDate: z
+      .union([z.iso.date(), z.null(), z.undefined()])
+      .transform((value) => value ?? null),
     clientId: uuid,
     managerEmploymentId: uuid,
     technicalResponsibilityEmploymentIds: z.array(uuid).min(1).max(20),
@@ -153,7 +214,10 @@ export const projectCommandSchema = z
         path: [command.latitude === null ? "latitude" : "longitude"],
         message: "Coordinates must be paired",
       });
-    if (command.plannedEndDate < command.plannedStartDate)
+    if (
+      command.plannedEndDate !== null &&
+      command.plannedEndDate < command.plannedStartDate
+    )
       context.addIssue({
         code: "custom",
         path: ["plannedEndDate"],

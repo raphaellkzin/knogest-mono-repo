@@ -103,6 +103,14 @@ const workDefaultValues: WorkFormValues = {
   progress: "",
   status: "",
 };
+const workFieldLabels = {
+  name: "Nome da obra",
+  location: "Local",
+  manager: "Responsável",
+  phase: "Fase",
+  progress: "Avanço inicial",
+  status: "Status",
+};
 
 const workPhaseOptions = [
   "Mobilização",
@@ -752,6 +760,7 @@ export function CompanyResourcePage({
               icon={HardHat}
               schema={workFormSchema}
               defaultValues={workDefaultValues}
+              fieldLabels={workFieldLabels}
               onSubmit={handleCreateWork}
               steps={workWizardSteps}
               submitLabel="Criar obra"
@@ -872,9 +881,8 @@ function WorkTextField({
   name: "name" | "location" | "manager" | "progress";
   required?: boolean;
 } & Omit<React.ComponentProps<typeof Input>, "form" | "name">) {
-  const error = form.formState.errors[name]?.message;
   const inputId = `work-${name}`;
-  const errorId = `${inputId}-error`;
+  const error = form.formState.errors[name]?.message;
   const isRequired = required || name === "name" || name === "location";
 
   return (
@@ -896,19 +904,9 @@ function WorkTextField({
         className="h-11"
         aria-invalid={Boolean(error)}
         aria-required={isRequired}
-        aria-describedby={error ? errorId : undefined}
         {...form.register(name)}
         {...inputProps}
       />
-      {error && (
-        <p
-          id={errorId}
-          role="alert"
-          className="mt-1.5 text-sm text-destructive"
-        >
-          {String(error)}
-        </p>
-      )}
     </div>
   );
 }
@@ -927,8 +925,6 @@ function WorkSelectField({
   required?: boolean;
 }) {
   const selectId = `work-${name}`;
-  const errorId = `${selectId}-error`;
-
   return (
     <Controller
       control={form.control}
@@ -957,7 +953,6 @@ function WorkSelectField({
               aria-labelledby={`${selectId}-label`}
               aria-invalid={Boolean(fieldState.error)}
               aria-required={required}
-              aria-describedby={fieldState.error ? errorId : undefined}
               onBlur={field.onBlur}
               ref={field.ref}
             >
@@ -971,15 +966,6 @@ function WorkSelectField({
               ))}
             </SelectContent>
           </Select>
-          {fieldState.error && (
-            <p
-              id={errorId}
-              role="alert"
-              className="mt-1.5 text-sm text-destructive"
-            >
-              {fieldState.error.message}
-            </p>
-          )}
         </div>
       )}
     />

@@ -1,21 +1,30 @@
 "use client";
 
 import * as React from "react";
-import { HardHat, Plus, Trash2 } from "lucide-react";
+import { HardHat, MapPinned, Plus, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import type { UseFormReturn } from "react-hook-form";
+import type { Path, UseFormReturn } from "react-hook-form";
+import { toast } from "sonner";
 
 import {
   BaseFormModal,
   type BaseFormModalRenderHelpers,
   type WizardStep,
 } from "@/components/modals/BaseFormModal";
+import { FormErrorDeclaration } from "@/components/forms/form-error-declaration";
 import { Button } from "@/components/ui/button";
 import { FormSection } from "@/components/ui/form-section";
 import { Input } from "@/components/ui/input";
+import {
+  canonicalDecimalToBrazilian,
+  decimalInputToCanonical,
+  formatBrazilianDecimalInput,
+  formatCep,
+} from "@/lib/brazilian-input-mask";
 import { cn } from "@/lib/utils";
 import {
   finalizeProjectAction,
+  lookupProjectAddressByCepAction,
   type ProjectSubmissionResult,
 } from "../projects.actions";
 import {
@@ -32,6 +41,11 @@ type Option = {
   jobRolePeriodId?: string;
 };
 
+type AddressAutofillState =
+  | { status: "locked"; filled: Set<string> }
+  | { status: "manual"; filled: Set<string> }
+  | { status: "partial"; filled: Set<string> };
+
 export type ProjectWizardOptions = {
   clients: Option[];
   employees: Option[];
@@ -43,26 +57,41 @@ export type ProjectWizardOptions = {
 const controlClass =
   "min-h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-medium text-foreground shadow-xs outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50";
 const fieldGridClass = "grid gap-3 md:grid-cols-2";
+const projectFieldLabels: Partial<Record<Path<ProjectCommand>, string>> = {
+  name: "Nome da obra",
+  contractNumber: "Número do contrato",
+  "address.postalCode": "CEP",
+  "address.street": "Logradouro",
+  "address.number": "Número",
+  "address.complement": "Complemento",
+  "address.neighborhood": "Bairro",
+  "address.city": "Cidade",
+  "address.state": "UF",
+  latitude: "Latitude",
+  longitude: "Longitude",
+  approvedBudget: "Orçamento aprovado",
+  plannedStartDate: "Início planejado",
+  plannedEndDate: "Fim planejado",
+  clientId: "Cliente",
+  managerEmploymentId: "Gestor da obra",
+  technicalResponsibilityEmploymentIds: "Responsáveis técnicos",
+  weeklySchedule: "Jornada semanal",
+  breakTemplates: "Intervalos sugeridos",
+  initialEmployeeAllocations: "Mobilização inicial da equipe",
+  initialMachineAllocations: "Mobilização inicial de máquinas",
+  projectFuelAgreements: "Acordos de combustível",
+};
 
-function errorMessage(error: unknown) {
-  if (
-    error &&
-    typeof error === "object" &&
-    "message" in error &&
-    typeof error.message === "string"
-  )
-    return error.message;
-  return undefined;
-}
-
-function FieldError({ id, error }: { id: string; error: unknown }) {
-  const message = errorMessage(error);
-  if (!message) return null;
-  return (
-    <p id={id} role="alert" className="text-sm font-medium text-destructive">
-      {message}
-    </p>
-  );
+function getFieldError(error: unknown, name: string): unknown {
+  return name
+    .split(".")
+    .reduce<unknown>(
+      (current, segment) =>
+        current && typeof current === "object"
+          ? (current as Record<string, unknown>)[segment]
+          : undefined,
+      error,
+    );
 }
 
 function FormField({
@@ -70,27 +99,94 @@ function FormField({
   label,
   name,
   type = "text",
+  inputMode,
+  maxLength,
+  onBlur,
+  onChange,
+  disabled,
+  showError = true,
 }: {
   form: UseFormReturn<ProjectCommand>;
   label: string;
-  name: keyof ProjectCommand;
+  name: Path<ProjectCommand>;
   type?: React.HTMLInputTypeAttribute;
+  inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
+  maxLength?: number;
+  onBlur?: React.FocusEventHandler<HTMLInputElement>;
+  onChange?: React.ChangeEventHandler<HTMLInputElement>;
+  disabled?: boolean;
+  showError?: boolean;
 }) {
-  const id = `project-${String(name)}`;
-  const error = form.formState.errors[name];
-  const descriptionId = `${id}-error`;
+  const id = `project-${String(name).replaceAll(".", "-")}`;
+  const error = getFieldError(form.formState.errors, name);
+  const registered = form.register(name);
   return (
     <label className="grid gap-1.5 text-sm font-semibold" htmlFor={id}>
       <span>{label}</span>
       <Input
         id={id}
         type={type}
+        inputMode={inputMode}
+        maxLength={maxLength}
+        disabled={disabled}
         className="h-11"
-        aria-describedby={error ? descriptionId : undefined}
-        aria-invalid={Boolean(error)}
-        {...form.register(name as never)}
+        aria-invalid={showError ? Boolean(error) : undefined}
+        {...registered}
+        onBlur={(event) => {
+          registered.onBlur(event);
+          onBlur?.(event);
+        }}
+        onChange={(event) => {
+          registered.onChange(event);
+          onChange?.(event);
+        }}
       />
-      <FieldError id={descriptionId} error={error} />
+    </label>
+  );
+}
+
+function MoneyField({
+  fractionDigits = 2,
+  form,
+  label,
+  name,
+}: {
+  fractionDigits?: number;
+  form: UseFormReturn<ProjectCommand>;
+  label: string;
+  name: Path<ProjectCommand>;
+}) {
+  const id = `project-${String(name).replaceAll(".", "-")}`;
+  const error = getFieldError(form.formState.errors, name);
+  const value = String(form.watch(name) ?? "");
+  return (
+    <label className="grid gap-1.5 text-sm font-semibold" htmlFor={id}>
+      <span>{label}</span>
+      <Input
+        id={id}
+        className="h-11"
+        inputMode="decimal"
+        value={
+          value.includes(".")
+            ? canonicalDecimalToBrazilian(value, fractionDigits)
+            : value
+        }
+        aria-invalid={Boolean(error)}
+        onChange={(event) =>
+          form.setValue(
+            name,
+            formatBrazilianDecimalInput(event.target.value, fractionDigits) as never,
+            { shouldDirty: true, shouldValidate: true },
+          )
+        }
+        onBlur={(event) =>
+          form.setValue(
+            name,
+            formatBrazilianDecimalInput(event.target.value, fractionDigits) as never,
+            { shouldDirty: true, shouldValidate: true },
+          )
+        }
+      />
     </label>
   );
 }
@@ -108,14 +204,12 @@ function FormSelect({
 }) {
   const id = `project-${name}`;
   const error = form.formState.errors[name];
-  const descriptionId = `${id}-error`;
   return (
     <label className="grid gap-1.5 text-sm font-semibold" htmlFor={id}>
       <span>{label}</span>
       <select
         id={id}
         className={controlClass}
-        aria-describedby={error ? descriptionId : undefined}
         aria-invalid={Boolean(error)}
         {...form.register(name)}
       >
@@ -127,7 +221,6 @@ function FormSelect({
           </option>
         ))}
       </select>
-      <FieldError id={descriptionId} error={error} />
     </label>
   );
 }
@@ -163,22 +256,118 @@ function SelectionRow({
   );
 }
 
-function GroupError({ error, id }: { error: unknown; id: string }) {
-  const message = errorMessage(error);
-  if (!message) return null;
-  return (
-    <p id={id} role="alert" className="text-sm font-medium text-destructive">
-      {message}
-    </p>
-  );
-}
-
 export function ProjectWizardIdentity({
   form,
 }: {
   form: UseFormReturn<ProjectCommand>;
 }) {
-  const addressError = form.formState.errors.address;
+  const [isCepLoading, setIsCepLoading] = React.useState(false);
+  const [addressAutofill, setAddressAutofill] =
+    React.useState<AddressAutofillState>({
+      status: "locked",
+      filled: new Set(),
+    });
+  const [isMapOpen, setIsMapOpen] = React.useState(false);
+  const lastLookupRef = React.useRef("");
+  const postalCode = form.watch("address.postalCode");
+  const latitude = form.watch("latitude");
+  const longitude = form.watch("longitude");
+  const hasCoordinates = Boolean(latitude && longitude);
+  const addressIsLocked = addressAutofill.status === "locked" || isCepLoading;
+  const fieldIsDisabled = (name: string) =>
+    addressIsLocked || addressAutofill.filled.has(name);
+
+  const lookupCep = async (digits: string) => {
+    if (lastLookupRef.current === digits || isCepLoading) return;
+    lastLookupRef.current = digits;
+    setIsCepLoading(true);
+    setAddressAutofill({ status: "locked", filled: new Set() });
+    try {
+      const result = await lookupProjectAddressByCepAction(digits);
+      if (result.kind === "failure") {
+        setAddressAutofill({ status: "manual", filled: new Set() });
+        toast.error(`${result.message} Preencha o endereço manualmente.`, {
+          position: "top-center",
+          duration: 3500,
+        });
+        return;
+      }
+
+      const filled = new Set<string>();
+      const fill = (
+        name:
+          | "address.street"
+          | "address.neighborhood"
+          | "address.city"
+          | "address.state",
+        value: string | undefined,
+      ) => {
+        if (!value) return;
+        form.setValue(name, value, {
+          shouldDirty: true,
+          shouldValidate: true,
+        });
+        filled.add(name);
+      };
+
+      form.setValue("address.postalCode", formatCep(digits), {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+      fill("address.street", result.address.street);
+      fill("address.neighborhood", result.address.neighborhood);
+      fill("address.city", result.address.city);
+      fill("address.state", result.address.state);
+      setAddressAutofill({ status: "partial", filled });
+    } catch {
+      setAddressAutofill({ status: "manual", filled: new Set() });
+      toast.error(
+        "Não foi possível consultar o CEP. Preencha o endereço manualmente.",
+        { position: "top-center", duration: 3500 },
+      );
+    } finally {
+      setIsCepLoading(false);
+    }
+  };
+
+  const updateCep = (value: string) => {
+    const formatted = formatCep(value);
+    const digits = formatted.replace(/\D/g, "");
+    if (digits !== postalCode.replace(/\D/g, "")) {
+      form.setValue("address.street", "", {
+        shouldDirty: true,
+        shouldValidate: false,
+      });
+      form.setValue("address.number", "", {
+        shouldDirty: true,
+        shouldValidate: false,
+      });
+      form.setValue("address.complement", null, {
+        shouldDirty: true,
+        shouldValidate: false,
+      });
+      form.setValue("address.neighborhood", "", {
+        shouldDirty: true,
+        shouldValidate: false,
+      });
+      form.setValue("address.city", "", {
+        shouldDirty: true,
+        shouldValidate: false,
+      });
+      form.setValue("address.state", "", {
+        shouldDirty: true,
+        shouldValidate: false,
+      });
+      setAddressAutofill({ status: "locked", filled: new Set() });
+    }
+    form.setValue("address.postalCode", formatted, {
+      shouldDirty: true,
+      shouldValidate: digits.length === 8,
+    });
+    if (digits.length !== 8) lastLookupRef.current = "";
+    if (digits.length === 8) void lookupCep(digits);
+  };
+
   return (
     <div className="grid gap-4">
       <FormSection title="Identificação">
@@ -187,42 +376,105 @@ export function ProjectWizardIdentity({
           <FormField
             form={form}
             name="contractNumber"
-            label="Número do contrato"
+            label="Número do contrato (opcional)"
           />
         </div>
       </FormSection>
 
       <FormSection title="Localização">
-        <label
-          className="grid gap-1.5 text-sm font-semibold"
-          htmlFor="project-address"
-        >
-          <span>Endereço</span>
-          <textarea
-            id="project-address"
-            rows={3}
-            className={cn(controlClass, "min-h-24 resize-y")}
-            aria-describedby={
-              addressError ? "project-address-error" : undefined
-            }
-            aria-invalid={Boolean(addressError)}
-            {...form.register("address")}
+        <div className="grid gap-1.5">
+          <FormField
+            form={form}
+            name="address.postalCode"
+            label="CEP"
+            inputMode="numeric"
+            maxLength={9}
+            showError={false}
+            onBlur={(event) => updateCep(event.target.value)}
+            onChange={(event) => updateCep(event.target.value)}
           />
-          <FieldError id="project-address-error" error={addressError} />
-        </label>
+          <p className="min-h-5 text-sm font-medium text-muted-foreground">
+            {isCepLoading ? "Buscando endereço pelo CEP..." : " "}
+          </p>
+        </div>
+        <div className="grid gap-3 md:grid-cols-[minmax(0,1.2fr)_8rem]">
+          <FormField
+            form={form}
+            name="address.street"
+            label="Logradouro"
+            disabled={fieldIsDisabled("address.street")}
+          />
+          <FormField
+            form={form}
+            name="address.number"
+            label="Número"
+            disabled={fieldIsDisabled("address.number")}
+          />
+        </div>
         <div className={fieldGridClass}>
-          <FormField form={form} name="latitude" label="Latitude" />
-          <FormField form={form} name="longitude" label="Longitude" />
+          <FormField
+            form={form}
+            name="address.complement"
+            label="Complemento (opcional)"
+            disabled={fieldIsDisabled("address.complement")}
+          />
+          <FormField
+            form={form}
+            name="address.neighborhood"
+            label="Bairro"
+            disabled={fieldIsDisabled("address.neighborhood")}
+          />
+          <FormField
+            form={form}
+            name="address.city"
+            label="Cidade"
+            disabled={fieldIsDisabled("address.city")}
+          />
+          <FormField
+            form={form}
+            name="address.state"
+            label="UF"
+            maxLength={2}
+            disabled={fieldIsDisabled("address.state")}
+            onBlur={() =>
+              form.setValue(
+                "address.state",
+                form.getValues("address.state").toUpperCase(),
+                { shouldDirty: true, shouldValidate: true },
+              )
+            }
+          />
+        </div>
+        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
+          <FormField
+            form={form}
+            name="latitude"
+            label="Latitude"
+          />
+          <FormField
+            form={form}
+            name="longitude"
+            label="Longitude"
+          />
+          <Button
+            type="button"
+            variant="outline"
+            className="min-h-11"
+            disabled={!hasCoordinates}
+            onClick={() => setIsMapOpen(true)}
+          >
+            <MapPinned className="size-4" />
+            Prévia do mapa
+          </Button>
         </div>
       </FormSection>
 
       <FormSection title="Planejamento comercial">
         <div className={fieldGridClass}>
-          <FormField
+          <MoneyField
             form={form}
             name="approvedBudget"
             label="Orçamento aprovado"
-            type="number"
           />
           <span className="hidden md:block" aria-hidden="true" />
           <FormField
@@ -234,11 +486,44 @@ export function ProjectWizardIdentity({
           <FormField
             form={form}
             name="plannedEndDate"
-            label="Fim planejado"
+            label="Fim planejado (opcional)"
             type="date"
           />
         </div>
       </FormSection>
+      {isMapOpen && hasCoordinates && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Prévia do Google Maps"
+          className="fixed inset-0 z-50 grid place-items-center bg-black/45 px-4 py-6"
+        >
+          <div className="grid max-h-[90vh] w-full max-w-3xl gap-4 overflow-hidden rounded-lg border border-border bg-popover p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-base font-bold">Prévia do Google Maps</p>
+                <p className="text-sm font-medium text-muted-foreground">
+                  {latitude}, {longitude}
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsMapOpen(false)}
+              >
+                Fechar
+              </Button>
+            </div>
+            <iframe
+              title="Prévia do Google Maps"
+              className="h-[24rem] w-full rounded-md border border-border"
+              src={`https://www.google.com/maps?q=${encodeURIComponent(
+                `${latitude},${longitude}`,
+              )}&output=embed`}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -251,7 +536,6 @@ function Accountability({
   options: ProjectWizardOptions;
 }) {
   const selected = form.watch("technicalResponsibilityEmploymentIds");
-  const error = form.formState.errors.technicalResponsibilityEmploymentIds;
   return (
     <div className="grid gap-4">
       <FormSection title="Cliente e gestão">
@@ -275,12 +559,7 @@ function Accountability({
         title="Responsabilidades técnicas"
         description="Selecione de 1 a 20 responsáveis técnicos para esta obra."
       >
-        <div
-          className="grid gap-2"
-          aria-describedby={
-            error ? "technical-responsibilities-error" : undefined
-          }
-        >
+        <div className="grid gap-2">
           {options.employees.length > 0 ? (
             options.employees.map((option) => {
               const checked = selected.includes(option.id);
@@ -309,7 +588,6 @@ function Accountability({
             </p>
           )}
         </div>
-        <GroupError id="technical-responsibilities-error" error={error} />
       </FormSection>
     </div>
   );
@@ -327,19 +605,13 @@ function Schedule({ form }: { form: UseFormReturn<ProjectCommand> }) {
     "Sábado",
     "Domingo",
   ];
-  const scheduleError = form.formState.errors.weeklySchedule;
-  const breaksError = form.formState.errors.breakTemplates;
-
   return (
     <div className="grid gap-4">
       <FormSection
         title="Jornada semanal"
         description="Defina os dias de trabalho e os horários previstos da obra."
       >
-        <div
-          className="divide-y divide-border rounded-md border border-border bg-background"
-          aria-describedby={scheduleError ? "weekly-schedule-error" : undefined}
-        >
+        <div className="divide-y divide-border rounded-md border border-border bg-background">
           {days.map((day, index) => (
             <div
               key={day.dayOfWeek}
@@ -387,7 +659,6 @@ function Schedule({ form }: { form: UseFormReturn<ProjectCommand> }) {
             </div>
           ))}
         </div>
-        <GroupError id="weekly-schedule-error" error={scheduleError} />
       </FormSection>
 
       <FormSection
@@ -461,7 +732,6 @@ function Schedule({ form }: { form: UseFormReturn<ProjectCommand> }) {
             ))}
           </div>
         )}
-        <GroupError id="break-templates-error" error={breaksError} />
       </FormSection>
     </div>
   );
@@ -475,7 +745,6 @@ function EmployeeMobilization({
   options: ProjectWizardOptions;
 }) {
   const allocations = form.watch("initialEmployeeAllocations");
-  const error = form.formState.errors.initialEmployeeAllocations;
   const replaceAllocation = (
     employmentId: string,
     patch: Partial<ProjectCommand["initialEmployeeAllocations"][number]>,
@@ -496,10 +765,7 @@ function EmployeeMobilization({
       <p className="text-sm font-semibold text-muted-foreground">
         {allocations.length} funcionário(s) selecionado(s)
       </p>
-      <div
-        className="grid gap-3"
-        aria-describedby={error ? "employee-mobilization-error" : undefined}
-      >
+      <div className="grid gap-3">
         {options.employees.length > 0 ? (
           options.employees.map((option) => {
             const allocation = allocations.find(
@@ -601,10 +867,18 @@ function EmployeeMobilization({
                       <Input
                         className="h-11"
                         inputMode="decimal"
-                        value={allocation.compensationValue}
+                        value={
+                          allocation.compensationValue.includes(".")
+                            ? canonicalDecimalToBrazilian(
+                                allocation.compensationValue,
+                              )
+                            : allocation.compensationValue
+                        }
                         onChange={(event) =>
                           replaceAllocation(option.id, {
-                            compensationValue: event.target.value,
+                            compensationValue: formatBrazilianDecimalInput(
+                              event.target.value,
+                            ),
                           })
                         }
                       />
@@ -614,10 +888,18 @@ function EmployeeMobilization({
                       <Input
                         className="h-11"
                         inputMode="decimal"
-                        value={allocation.overtimeRate}
+                        value={
+                          allocation.overtimeRate.includes(".")
+                            ? canonicalDecimalToBrazilian(
+                                allocation.overtimeRate,
+                              )
+                            : allocation.overtimeRate
+                        }
                         onChange={(event) =>
                           replaceAllocation(option.id, {
-                            overtimeRate: event.target.value,
+                            overtimeRate: formatBrazilianDecimalInput(
+                              event.target.value,
+                            ),
                           })
                         }
                       />
@@ -633,7 +915,6 @@ function EmployeeMobilization({
           </p>
         )}
       </div>
-      <GroupError id="employee-mobilization-error" error={error} />
     </FormSection>
   );
 }
@@ -647,7 +928,6 @@ export function MachineMobilization({
 }) {
   const allocations = form.watch("initialMachineAllocations");
   const employeeAllocations = form.watch("initialEmployeeAllocations");
-  const error = form.formState.errors.initialMachineAllocations;
   const teamEmploymentIds = React.useMemo(
     () => new Set(employeeAllocations.map((item) => item.employmentId)),
     [employeeAllocations],
@@ -700,10 +980,7 @@ export function MachineMobilization({
           Selecione funcionários na equipe inicial antes de vincular máquinas.
         </p>
       )}
-      <div
-        className="grid gap-2"
-        aria-describedby={error ? "machine-mobilization-error" : undefined}
-      >
+      <div className="grid gap-2">
         {options.machines.length > 0 ? (
           options.machines.map((option) => {
             const allocation = allocations.find(
@@ -771,7 +1048,6 @@ export function MachineMobilization({
           </p>
         )}
       </div>
-      <GroupError id="machine-mobilization-error" error={error} />
     </FormSection>
   );
 }
@@ -784,7 +1060,6 @@ function FuelAgreements({
   options: ProjectWizardOptions;
 }) {
   const agreements = form.watch("projectFuelAgreements");
-  const error = form.formState.errors.projectFuelAgreements;
   return (
     <FormSection
       title="Acordos de combustível"
@@ -793,10 +1068,7 @@ function FuelAgreements({
       <p className="text-sm font-semibold text-muted-foreground">
         {agreements.length}/10 acordo(s) configurado(s)
       </p>
-      <div
-        className="grid gap-2"
-        aria-describedby={error ? "fuel-agreements-error" : undefined}
-      >
+      <div className="grid gap-2">
         {options.suppliers.length > 0 ? (
           options.suppliers.map((option) => {
             const checked = agreements.some(
@@ -839,7 +1111,6 @@ function FuelAgreements({
           </p>
         )}
       </div>
-      <GroupError id="fuel-agreements-error" error={error} />
     </FormSection>
   );
 }
@@ -894,7 +1165,20 @@ export function ProjectWizardReview({
     new Intl.NumberFormat("pt-BR", {
       style: "currency",
       currency: "BRL",
-    }).format(Number(amount));
+    }).format(Number(decimalInputToCanonical(amount) || amount));
+  const formatAddress = (address: ProjectCommand["address"]) =>
+    [
+      address.number ? `${address.street}, ${address.number}` : address.street,
+      address.complement,
+      address.neighborhood && address.city && address.state
+        ? `${address.neighborhood} - ${address.city}/${address.state}`
+        : "",
+      address.postalCode
+        ? `CEP ${formatCep(address.postalCode)}`
+        : "",
+    ]
+      .filter(Boolean)
+      .join(" - ");
 
   return (
     <div className="grid gap-4">
@@ -907,7 +1191,7 @@ export function ProjectWizardReview({
           />
           <SummaryRow
             label="Endereço"
-            value={value.address || "Não informado"}
+            value={formatAddress(value.address) || "Não informado"}
           />
           <SummaryRow
             label="Coordenadas"
@@ -924,8 +1208,10 @@ export function ProjectWizardReview({
           <SummaryRow
             label="Período planejado"
             value={
-              value.plannedStartDate && value.plannedEndDate
-                ? `${value.plannedStartDate} a ${value.plannedEndDate}`
+              value.plannedStartDate
+                ? value.plannedEndDate
+                  ? `${value.plannedStartDate} a ${value.plannedEndDate}`
+                  : `A partir de ${value.plannedStartDate}`
                 : "Não informado"
             }
           />
@@ -1021,19 +1307,16 @@ export function ProjectWizardSubmissionNotice({
 
   const content = {
     "recoverable-conflict": {
-      className: "border-amber-300 bg-amber-50 text-amber-950",
       title: "Revise os dados antes de tentar novamente.",
       description:
         "Algumas informações mudaram enquanto esta obra era preparada. Seus dados continuam disponíveis para ajuste.",
     },
     "unknown-outcome": {
-      className: "border-amber-300 bg-amber-50 text-amber-950",
       title: "Não foi possível confirmar a criação da obra.",
       description:
         "Use “Tentar novamente” sem alterar os dados ou consulte o registro de obras antes de iniciar uma nova criação.",
     },
     "terminal-failure": {
-      className: "border-destructive/40 bg-destructive/10 text-foreground",
       title: "Não foi possível concluir esta criação.",
       description:
         "Corrija os dados informados ou tente novamente mais tarde. A obra ainda não foi criada.",
@@ -1041,16 +1324,25 @@ export function ProjectWizardSubmissionNotice({
   }[result.kind];
 
   return (
-    <div
-      role="alert"
-      className={cn("rounded-md border px-3 py-3 text-sm", content.className)}
-    >
-      <p className="font-bold">{content.title}</p>
-      <p className="mt-1 leading-5">{content.description}</p>
-      {result.kind !== "unknown-outcome" && (
-        <p className="mt-2 text-xs font-semibold">Código: {result.code}</p>
+    <FormErrorDeclaration
+      title={content.title}
+      description={content.description}
+      issues={[
+        {
+          location: "API",
+          field: result.kind !== "unknown-outcome" ? result.code : undefined,
+          message:
+            result.kind === "unknown-outcome"
+              ? "Resultado desconhecido. Tente novamente sem alterar os dados."
+              : "A criação da obra não foi confirmada pelo servidor.",
+        },
+      ]}
+      className={cn(
+        result.kind === "terminal-failure"
+          ? undefined
+          : "border-amber-300 bg-amber-50 text-amber-950",
       )}
-    </div>
+    />
   );
 }
 
@@ -1081,6 +1373,7 @@ export function ProjectWizard({
           "plannedStartDate",
           "plannedEndDate",
         ],
+        fieldLabels: projectFieldLabels,
         component: (form) => <ProjectWizardIdentity form={form} />,
       },
       {
@@ -1090,16 +1383,19 @@ export function ProjectWizard({
           "managerEmploymentId",
           "technicalResponsibilityEmploymentIds",
         ],
+        fieldLabels: projectFieldLabels,
         component: (form) => <Accountability form={form} options={options} />,
       },
       {
         title: "Agenda",
         fields: ["weeklySchedule", "breakTemplates"],
+        fieldLabels: projectFieldLabels,
         component: (form) => <Schedule form={form} />,
       },
       {
         title: "Equipe",
         fields: ["initialEmployeeAllocations"],
+        fieldLabels: projectFieldLabels,
         component: (form) => (
           <EmployeeMobilization form={form} options={options} />
         ),
@@ -1107,6 +1403,7 @@ export function ProjectWizard({
       {
         title: "Máquinas",
         fields: ["initialMachineAllocations"],
+        fieldLabels: projectFieldLabels,
         component: (form) => (
           <MachineMobilization form={form} options={options} />
         ),
@@ -1114,6 +1411,7 @@ export function ProjectWizard({
       {
         title: "Combustível",
         fields: ["projectFuelAgreements"],
+        fieldLabels: projectFieldLabels,
         component: (form) => <FuelAgreements form={form} options={options} />,
       },
       {
@@ -1159,6 +1457,7 @@ export function ProjectWizard({
       size="xl"
       schema={projectCommandSchema}
       defaultValues={emptyProjectCommand}
+      fieldLabels={projectFieldLabels}
       steps={steps}
       notice={<ProjectWizardSubmissionNotice result={result} />}
       submitLabel={snapshot ? "Tentar novamente" : "Criar obra"}

@@ -39,6 +39,26 @@ const projectItemSchema = {
   },
 };
 const uuid = { type: "string", format: "uuid" } as const;
+const projectAddressOpenApiSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "postalCode",
+    "street",
+    "neighborhood",
+    "city",
+    "state",
+  ],
+  properties: {
+    postalCode: { type: "string", pattern: "^\\d{8}$" },
+    street: { type: "string", minLength: 1, maxLength: 160 },
+    number: { type: "string", nullable: true, maxLength: 30 },
+    complement: { type: "string", nullable: true, maxLength: 100 },
+    neighborhood: { type: "string", minLength: 1, maxLength: 100 },
+    city: { type: "string", minLength: 1, maxLength: 100 },
+    state: { type: "string", pattern: "^[A-Z]{2}$" },
+  },
+} as const;
 const projectCommandOpenApiSchema = {
   type: "object",
   additionalProperties: false,
@@ -47,10 +67,8 @@ const projectCommandOpenApiSchema = {
     "address",
     "latitude",
     "longitude",
-    "contractNumber",
     "approvedBudget",
     "plannedStartDate",
-    "plannedEndDate",
     "clientId",
     "managerEmploymentId",
     "technicalResponsibilityEmploymentIds",
@@ -62,13 +80,13 @@ const projectCommandOpenApiSchema = {
   ],
   properties: {
     name: { type: "string", minLength: 1, maxLength: 160 },
-    address: { type: "string", minLength: 1, maxLength: 500 },
+    address: projectAddressOpenApiSchema,
     latitude: { type: "string", nullable: true },
     longitude: { type: "string", nullable: true },
     contractNumber: { type: "string", nullable: true, maxLength: 120 },
     approvedBudget: { type: "string" },
     plannedStartDate: { type: "string", format: "date" },
-    plannedEndDate: { type: "string", format: "date" },
+    plannedEndDate: { type: "string", format: "date", nullable: true },
     clientId: uuid,
     managerEmploymentId: uuid,
     technicalResponsibilityEmploymentIds: {

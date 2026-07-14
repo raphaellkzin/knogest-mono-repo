@@ -1,36 +1,65 @@
 import { z } from "zod";
+import { decimalInputToCanonical, onlyDigits } from "@/lib/brazilian-input-mask";
 
 const controlPattern = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/u;
 const timePattern = /^(?:[01]\d|2[0-3]):[0-5]\d$/u;
 const datePattern = /^\d{4}-\d{2}-\d{2}$/u;
 
-const text = (max: number, multiline = false) =>
+const text = (
+  max: number,
+  multiline = false,
+  requiredMessage = "Preencha este campo.",
+) =>
   z
     .string()
     .transform((value) => value.trim().normalize("NFC"))
     .pipe(
       z
         .string()
-        .min(1)
-        .max(max)
+        .min(1, requiredMessage)
+        .max(max, `Use no máximo ${max} caracteres.`)
         .refine(
           (value) =>
             !controlPattern.test(value) &&
             (multiline || !/[\r\n]/u.test(value)),
-          "Texto contém caracteres inválidos",
+          "Remova caracteres inválidos do texto.",
         ),
     );
 
 const optionalText = (max: number) =>
-  z.union([z.null(), z
+  z.union([z.null(), z.undefined(), z
     .string()
     .transform((value) => value.trim().normalize("NFC"))
     .pipe(
       z
         .string()
-        .max(max)
-        .refine((value) => !controlPattern.test(value)),
+        .max(max, `Use no máximo ${max} caracteres.`)
+        .refine(
+          (value) => !controlPattern.test(value),
+          "Remova caracteres inválidos do texto.",
+        ),
     )])
+    .transform((value) => value || null);
+
+const optionalNullableText = (max: number) =>
+  z
+    .union([z.string(), z.null()])
+    .optional()
+    .transform((value) =>
+      typeof value === "string" ? value.trim().normalize("NFC") : value,
+    )
+    .pipe(
+      z.union([
+        z
+          .string()
+          .max(max, `Use no máximo ${max} caracteres.`)
+          .refine((value) => !controlPattern.test(value), {
+            message: "Remova caracteres inválidos do texto.",
+          }),
+        z.null(),
+        z.undefined(),
+      ]),
+    )
     .transform((value) => value || null);
 
 function decimal(scale: number, integral: number, positive: boolean) {
@@ -41,27 +70,86 @@ function decimal(scale: number, integral: number, positive: boolean) {
   return z
     .string()
     .trim()
-    .regex(pattern)
+    .transform((value) =>
+      value.includes(",") || /[^\d.]/u.test(value)
+        ? decimalInputToCanonical(value, scale)
+        : value,
+    )
+    .pipe(z.string().regex(pattern, "Informe um valor válido."))
     .transform((value) => {
       const [whole, fraction = ""] = value.split(".");
       return `${whole.replace(/^0+(?=\d)/u, "")}.${fraction.padEnd(scale, "0")}`;
     })
     .refine(
       (value) => !positive || !/^0+\.0+$/u.test(value),
-      "Deve ser positivo",
+      "Informe um valor maior que zero.",
     );
 }
+
+const optionalDate = z
+  .union([z.string(), z.null(), z.undefined()])
+  .transform((value) => (typeof value === "string" ? value.trim() : value))
+  .pipe(
+    z.union([z.string().regex(datePattern), z.literal(""), z.null(), z.undefined()]),
+  )
+  .transform((value) => value || null);
+
+export const projectAddressSchema = z
+  .object({
+    postalCode: z
+      .string()
+      .transform((value) => onlyDigits(value, 8))
+      .pipe(z.string().regex(/^\d{8}$/u, "Informe um CEP com 8 dígitos.")),
+    street: text(160, false, "Informe o logradouro."),
+    number: optionalNullableText(30),
+    complement: optionalNullableText(100),
+    neighborhood: text(100, false, "Informe o bairro."),
+    city: text(100, false, "Informe a cidade."),
+    state: z
+      .string()
+      .trim()
+      .transform((value) => value.toUpperCase())
+      .pipe(z.string().regex(/^[A-Z]{2}$/u, "Informe a UF com 2 letras.")),
+  })
+  .strict()
+  .superRefine((address, context) => {
+    const formatted = [
+      address.number ? `${address.street}, ${address.number}` : address.street,
+      address.complement,
+      `${address.neighborhood} - ${address.city}/${address.state}`,
+      `CEP ${address.postalCode.slice(0, 5)}-${address.postalCode.slice(5)}`,
+    ]
+      .filter(Boolean)
+      .join(" - ");
+    if (formatted.length > 500)
+      context.addIssue({
+        code: "custom",
+        path: ["street"],
+        message:
+          "O endereço ficou muito longo. Revise os campos de localização.",
+      });
+  });
 
 const coordinate = (min: number, max: number) =>
   z
     .string()
     .trim()
-    .regex(/^-?\d{1,3}(?:\.\d{1,6})?$/u)
-    .refine((value) => Number(value) >= min && Number(value) <= max)
+    .regex(/^-?\d{1,3}(?:\.\d{1,6})?$/u, "Informe uma coordenada válida.")
+    .refine(
+      (value) => Number(value) >= min && Number(value) <= max,
+      "Informe uma coordenada dentro do intervalo permitido.",
+    )
     .transform((value) => {
       const number = Number(value);
       return (Object.is(number, -0) ? 0 : number).toFixed(6);
     });
+
+const optionalCoordinate = (min: number, max: number) =>
+  z
+    .union([z.string(), z.null(), z.undefined()])
+    .transform((value) => (typeof value === "string" ? value.trim() : value))
+    .pipe(z.union([coordinate(min, max), z.literal(""), z.null(), z.undefined()]))
+    .transform((value) => value || null);
 
 export const weekDays = [1, 2, 3, 4, 5, 6, 7] as const;
 
@@ -78,7 +166,7 @@ const scheduleDaySchema = z
       if (day.startTime !== null || day.endTime !== null)
         context.addIssue({
           code: "custom",
-          message: "Dia sem trabalho não possui horário",
+          message: "Remova os horários de dias sem trabalho.",
         });
       return;
     }
@@ -86,19 +174,19 @@ const scheduleDaySchema = z
       context.addIssue({
         code: "custom",
         path: ["startTime"],
-        message: "Horário inicial inválido",
+        message: "Informe um horário inicial válido.",
       });
     if (!day.endTime || !timePattern.test(day.endTime))
       context.addIssue({
         code: "custom",
         path: ["endTime"],
-        message: "Horário final inválido",
+        message: "Informe um horário final válido.",
       });
     if (day.startTime && day.endTime && day.startTime >= day.endTime)
       context.addIssue({
         code: "custom",
         path: ["endTime"],
-        message: "O fim deve ser posterior ao início",
+        message: "O horário final deve ser posterior ao inicial.",
       });
   });
 
@@ -147,20 +235,22 @@ const fuelAgreementSchema = z.object({
 
 export const projectCommandSchema = z
   .object({
-    name: text(160),
-    address: text(500, true),
-    latitude: z.union([coordinate(-90, 90), z.null()]),
-    longitude: z.union([coordinate(-180, 180), z.null()]),
+    name: text(160, false, "Informe o nome da obra."),
+    address: projectAddressSchema,
+    latitude: optionalCoordinate(-90, 90),
+    longitude: optionalCoordinate(-180, 180),
     contractNumber: optionalText(120),
     approvedBudget: decimal(2, 16, false),
-    plannedStartDate: z.string().regex(datePattern),
-    plannedEndDate: z.string().regex(datePattern),
-    clientId: z.string().uuid(),
-    managerEmploymentId: z.string().uuid(),
+    plannedStartDate: z
+      .string()
+      .regex(datePattern, "Informe a data de início planejada."),
+    plannedEndDate: optionalDate,
+    clientId: z.string().uuid("Selecione o cliente."),
+    managerEmploymentId: z.string().uuid("Selecione o gestor da obra."),
     technicalResponsibilityEmploymentIds: z
       .array(z.string().uuid())
-      .min(1)
-      .max(20),
+      .min(1, "Selecione pelo menos um responsável técnico.")
+      .max(20, "Selecione no máximo 20 responsáveis técnicos."),
     weeklySchedule: z.array(scheduleDaySchema).length(7),
     breakTemplates: z.array(breakTemplateSchema).max(10),
     initialEmployeeAllocations: z.array(employeeAllocationSchema).max(200),
@@ -173,9 +263,12 @@ export const projectCommandSchema = z
       context.addIssue({
         code: "custom",
         path: [command.latitude === null ? "latitude" : "longitude"],
-        message: "Informe as duas coordenadas",
+        message: "Informe latitude e longitude para usar a prévia do mapa.",
       });
-    if (command.plannedEndDate < command.plannedStartDate)
+    if (
+      command.plannedEndDate !== null &&
+      command.plannedEndDate < command.plannedStartDate
+    )
       context.addIssue({
         code: "custom",
         path: ["plannedEndDate"],
@@ -238,7 +331,15 @@ export type ProjectCommand = z.infer<typeof projectCommandSchema>;
 
 export const emptyProjectCommand: ProjectCommand = {
   name: "",
-  address: "",
+  address: {
+    postalCode: "",
+    street: "",
+    number: "",
+    complement: null,
+    neighborhood: "",
+    city: "",
+    state: "",
+  },
   latitude: null,
   longitude: null,
   contractNumber: null,

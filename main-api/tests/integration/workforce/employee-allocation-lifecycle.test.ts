@@ -87,7 +87,15 @@ describe("Employee allocation lifecycle", () => {
     const projectService = new ProjectsService(app.handlerContext);
     const command = (name: string) => ({
       name,
-      address: "Address",
+      address: {
+        postalCode: "60170000",
+        street: "Rua A",
+        number: "10",
+        complement: null,
+        neighborhood: "Meireles",
+        city: "Fortaleza",
+        state: "CE",
+      },
       latitude: null,
       longitude: null,
       contractNumber: null,

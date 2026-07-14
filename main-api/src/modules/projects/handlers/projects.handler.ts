@@ -6,7 +6,11 @@ import {
   parseBoundCursor,
 } from "../../../lib/utils/cursor-pagination";
 import { hashProjectCommand } from "../project-canonicalization";
-import type { ProjectCommand, ProjectListQuery } from "../projects.dto";
+import {
+  formatProjectAddress,
+  type ProjectCommand,
+  type ProjectListQuery,
+} from "../projects.dto";
 
 export type ProjectScope = {
   corporationId: string;
@@ -280,12 +284,20 @@ export class ProjectsHandler {
         }
         const employments = await validateResources(tx, scope, command);
         const now = new Date();
+        const formattedAddress = formatProjectAddress(command.address);
         const project = await tx.prisma.project.create({
           data: {
             corporationId: scope.corporationId,
             companyId: scope.companyId,
             name: command.name,
-            address: command.address,
+            address: formattedAddress,
+            addressPostalCode: command.address.postalCode,
+            addressStreet: command.address.street,
+            addressNumber: command.address.number,
+            addressComplement: command.address.complement,
+            addressNeighborhood: command.address.neighborhood,
+            addressCity: command.address.city,
+            addressState: command.address.state,
             latitude: command.latitude,
             longitude: command.longitude,
             contractNumber: command.contractNumber,
@@ -303,7 +315,10 @@ export class ProjectsHandler {
             plannedStartDate: new Date(
               `${command.plannedStartDate}T00:00:00.000Z`,
             ),
-            plannedEndDate: new Date(`${command.plannedEndDate}T00:00:00.000Z`),
+            plannedEndDate:
+              command.plannedEndDate === null
+                ? null
+                : new Date(`${command.plannedEndDate}T00:00:00.000Z`),
             effectiveFrom: now,
           },
         });

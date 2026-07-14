@@ -16,6 +16,7 @@ import {
   Trash2,
 } from "lucide-react";
 
+import { FormErrorDeclaration } from "@/components/forms/form-error-declaration";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { FormSection } from "@/components/ui/form-section";
 import { Input } from "@/components/ui/input";
@@ -534,17 +535,17 @@ export function RegistryPage({
                   </div>
                 </FormSection>
 
-                {state.message && (
-                  <p
-                    role="status"
-                    className={`rounded-md border px-3 py-2 text-sm font-semibold ${
-                      state.ok
-                        ? "border-emerald-200 bg-emerald-50 text-emerald-950"
-                        : "border-red-200 bg-red-50 text-red-950"
-                    }`}
-                  >
-                    {state.message}
-                  </p>
+                {!state.ok && state.message && (
+                  <FormErrorDeclaration
+                    title={`Não foi possível ${copy.createLabel.toLowerCase()}.`}
+                    description="O servidor recusou o envio. Revise o formulário antes de tentar novamente."
+                    issues={[
+                      {
+                        location: "API",
+                        message: state.message,
+                      },
+                    ]}
+                  />
                 )}
               </form>
             </OperationsModal>

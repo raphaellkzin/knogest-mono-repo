@@ -4,10 +4,18 @@ import { emptyProjectCommand, projectCommandSchema } from "./projects-schema";
 const valid = () => ({
   ...structuredClone(emptyProjectCommand),
   name: "Obra Norte",
-  address: "Rua A, 10",
-  approvedBudget: "100.00",
+  address: {
+    postalCode: "60170-000",
+    street: "Rua A",
+    number: "10",
+    complement: null,
+    neighborhood: "Meireles",
+    city: "Fortaleza",
+    state: "ce",
+  },
+  approvedBudget: "R$ 100,00",
   plannedStartDate: "2026-07-01",
-  plannedEndDate: "2026-07-31",
+  plannedEndDate: null as string | null,
   clientId: "00000000-0000-4000-8000-000000000201",
   managerEmploymentId: "00000000-0000-4000-8000-000000000301",
   technicalResponsibilityEmploymentIds: [
@@ -19,7 +27,25 @@ describe("projectCommandSchema", () => {
   it("normalizes the exact command without binary decimals", () => {
     const parsed = projectCommandSchema.parse(valid());
     expect(parsed.approvedBudget).toBe("100.00");
+    expect(parsed.address.postalCode).toBe("60170000");
+    expect(parsed.address.state).toBe("CE");
+    expect(parsed.latitude).toBeNull();
+    expect(parsed.longitude).toBeNull();
+    expect(parsed.plannedEndDate).toBeNull();
     expect(parsed.weeklySchedule).toHaveLength(7);
+  });
+
+  it("accepts addresses without numbers", () => {
+    const emptyNumber = valid();
+    emptyNumber.address.number = "";
+    expect(projectCommandSchema.parse(emptyNumber).address.number).toBeNull();
+
+    const base = valid();
+    const nullNumber = {
+      ...base,
+      address: { ...base.address, number: null },
+    };
+    expect(projectCommandSchema.parse(nullNumber).address.number).toBeNull();
   });
 
   it("rejects reversed dates, partial coordinates and duplicate responsibilities", () => {
@@ -30,6 +56,25 @@ describe("projectCommandSchema", () => {
       command.managerEmploymentId,
     );
     expect(projectCommandSchema.safeParse(command).success).toBe(false);
+  });
+
+  it("rejects incomplete structured addresses", () => {
+    const command = valid();
+    command.address.postalCode = "123";
+    expect(projectCommandSchema.safeParse(command).success).toBe(false);
+  });
+
+  it("shows a readable error for partial coordinates", () => {
+    const command = valid();
+    command.latitude = "-3.700000";
+
+    const parsed = projectCommandSchema.safeParse(command);
+
+    expect(parsed.success).toBe(false);
+    if (!parsed.success)
+      expect(parsed.error.issues[0]?.message).toBe(
+        "Informe latitude e longitude para usar a prévia do mapa.",
+      );
   });
 
   it("accepts inclusive optional collection limits", () => {

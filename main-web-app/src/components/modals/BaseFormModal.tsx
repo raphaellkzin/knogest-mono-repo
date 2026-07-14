@@ -12,14 +12,18 @@ import {
 } from "lucide-react";
 import {
   type DefaultValues,
+  type FieldErrors,
   type FieldValues,
   type Path,
   type UseFormReturn,
   useForm,
 } from "react-hook-form";
-import { toast } from "sonner";
 import { z } from "zod";
 
+import {
+  FormErrorDeclaration,
+  type FormIssue,
+} from "@/components/forms/form-error-declaration";
 import { Button } from "@/components/ui/button";
 import {
   OperationsModal,
@@ -27,6 +31,7 @@ import {
 } from "@/components/ui/operations-modal";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
+import { configureZodPortugueseErrors } from "@/lib/zod-locale";
 
 export interface BaseFormModalRenderHelpers {
   closeModal: () => void;
@@ -37,6 +42,7 @@ export interface BaseFormModalRenderHelpers {
 export interface WizardStep<TData extends FieldValues> {
   title: string;
   fields: Path<TData>[];
+  fieldLabels?: Partial<Record<Path<TData>, string>>;
   component: (
     form: UseFormReturn<TData>,
     helpers: BaseFormModalRenderHelpers,
@@ -55,6 +61,7 @@ interface BaseFormModalProps<TData extends FieldValues> {
   confirmClose?: (dirty: boolean) => boolean | Promise<boolean>;
   onSessionStart?: () => void;
   notice?: React.ReactNode;
+  fieldLabels?: Partial<Record<Path<TData>, string>>;
   submitLabel?: string;
   children?: (
     form: UseFormReturn<TData>,
@@ -72,6 +79,7 @@ export function BaseFormModal<TData extends FieldValues>({
   onSessionStart,
   onSubmit,
   notice,
+  fieldLabels,
   schema,
   size = "lg",
   steps,
@@ -79,10 +87,14 @@ export function BaseFormModal<TData extends FieldValues>({
   title,
   trigger,
 }: BaseFormModalProps<TData>) {
+  configureZodPortugueseErrors();
+
   const [open, setOpen] = React.useState(false);
   const [currentStep, setCurrentStep] = React.useState(0);
   const [isAdvancing, setIsAdvancing] = React.useState(false);
+  const [errorIssues, setErrorIssues] = React.useState<FormIssue[]>([]);
   const advancingRef = React.useRef(false);
+  const errorSummaryRef = React.useRef<HTMLDivElement>(null);
   const stepHeadingRef = React.useRef<HTMLHeadingElement>(null);
 
   const form = useForm<TData>({
@@ -101,6 +113,10 @@ export function BaseFormModal<TData extends FieldValues>({
       stepHeadingRef.current?.focus();
     }
   }, [currentStep, isWizard, open]);
+
+  React.useEffect(() => {
+    if (errorIssues.length > 0) errorSummaryRef.current?.focus();
+  }, [errorIssues]);
 
   const goToStep = (step: number) => {
     if (!steps || navigationDisabled || step < 0 || step >= steps.length)
@@ -122,6 +138,7 @@ export function BaseFormModal<TData extends FieldValues>({
       setCurrentStep(0);
       advancingRef.current = false;
       setIsAdvancing(false);
+      setErrorIssues([]);
     }
 
     setOpen(nextOpen);
@@ -137,6 +154,7 @@ export function BaseFormModal<TData extends FieldValues>({
 
   const handleSubmitWrapper = async (data: TData) => {
     try {
+      setErrorIssues([]);
       const shouldClose = await onSubmit(data);
       if (shouldClose === false) return;
       setOpen(false);
@@ -145,9 +163,53 @@ export function BaseFormModal<TData extends FieldValues>({
     } catch (error: unknown) {
       const message =
         error instanceof Error ? error.message : "Não foi possível salvar.";
-      toast.error(message, { position: "top-center" });
+      setErrorIssues([
+        {
+          location: "API",
+          message,
+        },
+      ]);
     }
   };
+
+  const allFieldLabels = React.useMemo(() => {
+    const labels: Record<string, string> = {};
+    if (fieldLabels) {
+      for (const [field, label] of Object.entries(fieldLabels)) {
+        if (typeof label === "string") labels[field] = label;
+      }
+    }
+    for (const step of steps ?? []) {
+      for (const [field, label] of Object.entries(step.fieldLabels ?? {})) {
+        if (typeof label === "string") labels[field] = label;
+      }
+    }
+    return labels;
+  }, [fieldLabels, steps]);
+
+  const buildIssues = React.useCallback(
+    (errors: FieldErrors<TData>, fields?: Path<TData>[]) =>
+      collectFormIssues(errors, {
+        fieldLabels: allFieldLabels,
+        fields: fields?.map(String),
+        steps: steps?.map((step) => ({
+          title: step.title,
+          fields: step.fields.map(String),
+        })),
+      }),
+    [allFieldLabels, steps],
+  );
+
+  const showIssues = React.useCallback((issues: FormIssue[]) => {
+    setErrorIssues(issues);
+  }, []);
+
+  const handleInvalidSubmit = React.useCallback(
+    (errors: FieldErrors<TData>) => {
+      showIssues(buildIssues(errors));
+    },
+    [buildIssues, showIssues],
+  );
 
   const handleNextStep = async () => {
     if (!steps || navigationDisabled || advancingRef.current) return;
@@ -161,7 +223,12 @@ export function BaseFormModal<TData extends FieldValues>({
       });
 
       if (isStepValid) {
+        setErrorIssues([]);
         setCurrentStep((previous) => Math.min(previous + 1, steps.length - 1));
+      } else {
+        showIssues(
+          buildIssues(form.formState.errors, steps[currentStep].fields),
+        );
       }
     } finally {
       advancingRef.current = false;
@@ -196,7 +263,7 @@ export function BaseFormModal<TData extends FieldValues>({
       <form
         className="flex max-h-[calc(100vh-9rem)] min-h-0 flex-col"
         onKeyDown={handleKeyDown}
-        onSubmit={form.handleSubmit(handleSubmitWrapper)}
+        onSubmit={form.handleSubmit(handleSubmitWrapper, handleInvalidSubmit)}
       >
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
           {isWizard && steps && activeStep ? (
@@ -206,12 +273,28 @@ export function BaseFormModal<TData extends FieldValues>({
               </h2>
               <WizardProgress steps={steps} currentStep={currentStep} />
               <div className="mt-5 min-h-52 space-y-4">
+                <div ref={errorSummaryRef} tabIndex={-1} className="outline-none">
+                  <FormErrorDeclaration
+                    issues={errorIssues}
+                    title="Há erros nesta etapa do formulário."
+                    description="Confira onde está o erro, ajuste os dados e tente novamente."
+                  />
+                </div>
                 {activeStep.component(form, helpers)}
                 {notice}
               </div>
             </>
           ) : (
-            children?.(form, helpers)
+            <div className="space-y-4">
+              <div ref={errorSummaryRef} tabIndex={-1} className="outline-none">
+                <FormErrorDeclaration
+                  issues={errorIssues}
+                  title="Há erros no formulário."
+                  description="Confira onde está o erro, ajuste os dados e tente salvar novamente."
+                />
+              </div>
+              {children?.(form, helpers)}
+            </div>
           )}
         </div>
 
@@ -292,6 +375,125 @@ export function BaseFormModal<TData extends FieldValues>({
       </form>
     </OperationsModal>
   );
+}
+
+function collectFormIssues<TData extends FieldValues>(
+  errors: FieldErrors<TData>,
+  options: {
+    fieldLabels: Record<string, string>;
+    fields?: string[];
+    steps?: Array<{ title: string; fields: string[] }>;
+  },
+) {
+  const fieldFilter = options.fields ? new Set(options.fields) : null;
+  const issues: FormIssue[] = [];
+
+  const visit = (value: unknown, path: string[]) => {
+    if (!value || typeof value !== "object") return;
+
+    const maybeError = value as { message?: unknown; root?: unknown };
+    const fieldPath = path.join(".");
+    const isIncluded =
+      !fieldFilter ||
+      [...fieldFilter].some(
+        (field) => fieldPath === field || fieldPath.startsWith(`${field}.`),
+      );
+
+    if (typeof maybeError.message === "string" && isIncluded) {
+      issues.push({
+        field: findFieldLabel(fieldPath, options.fieldLabels),
+        location: findStepTitle(fieldPath, options.steps),
+        message: normalizeValidationMessage(maybeError.message),
+      });
+    }
+
+    for (const [key, child] of Object.entries(value)) {
+      if (key === "ref" || key === "types" || key === "message" || key === "type")
+        continue;
+      if (key === "root") {
+        visit(child, path);
+        continue;
+      }
+      visit(child, [...path, key]);
+    }
+  };
+
+  visit(errors, []);
+
+  return issues.length > 0
+    ? issues
+    : [
+        {
+          location: "Formulário",
+          message: "Revise os campos destacados antes de continuar.",
+        },
+      ];
+}
+
+function findStepTitle(
+  fieldPath: string,
+  steps?: Array<{ title: string; fields: string[] }>,
+) {
+  return steps?.find((step) =>
+    step.fields.some(
+      (field) => fieldPath === field || fieldPath.startsWith(`${field}.`),
+    ),
+  )?.title;
+}
+
+function findFieldLabel(fieldPath: string, labels: Record<string, string>) {
+  if (labels[fieldPath]) return labels[fieldPath];
+
+  const matchingParent = Object.keys(labels)
+    .filter((field) => fieldPath.startsWith(`${field}.`))
+    .sort((left, right) => right.length - left.length)[0];
+  if (matchingParent) return labels[matchingParent];
+
+  const matchingChild = Object.keys(labels)
+    .filter((field) => field.endsWith(`.${fieldPath}`))
+    .sort((left, right) => right.length - left.length)[0];
+  if (matchingChild) return labels[matchingChild];
+
+  return humanizeFieldPath(fieldPath);
+}
+
+function normalizeValidationMessage(message: string) {
+  const trimmed = message.trim();
+  const lower = trimmed.toLowerCase();
+
+  if (
+    lower.includes("muito pequeno") ||
+    lower.includes("too small") ||
+    lower.includes("expected string") ||
+    lower.includes("invalid string") ||
+    lower.includes("expected that string")
+  ) {
+    return "Preencha este campo.";
+  }
+
+  if (
+    lower.includes("uuid") ||
+    lower.includes("invalid input") ||
+    lower.includes("entrada inválida")
+  ) {
+    return "Selecione uma opção válida.";
+  }
+
+  return trimmed.endsWith(".") ? trimmed : `${trimmed}.`;
+}
+
+function humanizeFieldPath(fieldPath: string) {
+  if (!fieldPath) return "Campo";
+  return fieldPath
+    .split(".")
+    .filter((segment) => Number.isNaN(Number(segment)))
+    .map((segment) =>
+      segment
+        .replace(/([a-z])([A-Z])/g, "$1 $2")
+        .replaceAll("_", " ")
+        .toLowerCase(),
+    )
+    .join(" / ");
 }
 
 function WizardProgress<TData extends FieldValues>({
