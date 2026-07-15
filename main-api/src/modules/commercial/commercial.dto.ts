@@ -214,6 +214,19 @@ export const updateSuppliedItemSchema = z
 
 export type UpdateSuppliedItemInput = z.infer<typeof updateSuppliedItemSchema>;
 
+export const addSupplierToSuppliedItemSchema = z
+  .object({
+    supplierId: uuid,
+    price: decimal(4, 14, true),
+    conversionToBase: decimal(6, 12, true),
+    propagateToExistingOffers: z.boolean().default(false),
+  })
+  .strict();
+
+export type AddSupplierToSuppliedItemInput = z.infer<
+  typeof addSupplierToSuppliedItemSchema
+>;
+
 export const createSuppliedItemCategorySchema = z
   .object({
     name: z.string().trim().min(1).max(120),

@@ -12,6 +12,7 @@ import {
   validateQuery,
 } from "../../lib/utils/zodResolver";
 import {
+  addSupplierToSuppliedItemSchema,
   createSuppliedItemCategorySchema,
   createMeasurementUnitSchema,
   createCommercialRegistrySchema,
@@ -108,6 +109,18 @@ const updateSupplierOfferBodyOpenApiSchema = {
   type: "object",
   additionalProperties: false,
   properties: supplierOfferBodyOpenApiSchema.properties,
+} as const;
+
+const addSupplierToSuppliedItemBodySchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["supplierId", "price", "conversionToBase"],
+  properties: {
+    supplierId: { type: "string", format: "uuid" },
+    price: { type: "string", pattern: "^\\d{1,14}\\.\\d{4}$" },
+    conversionToBase: { type: "string", pattern: "^\\d{1,12}\\.\\d{6}$" },
+    propagateToExistingOffers: { type: "boolean", default: false },
+  },
 } as const;
 
 const listRegistryQuerySchema = {
@@ -1344,6 +1357,56 @@ export const v1CommercialController = async (app: FastifyInstance) => {
         request.body as z.infer<typeof updateSuppliedItemSchema>,
       );
       return jsonResponse.success({ reply, data });
+    },
+  );
+
+  app.post(
+    "/supplied-items/:itemId/suppliers",
+    {
+      preHandler: [
+        app.requireCompanyScope,
+        validateParams(suppliedItemParamsSchema),
+        validateBody(addSupplierToSuppliedItemSchema),
+      ],
+      schema: {
+        tags: ["Commercial"],
+        summary: "Create a Supplier Offer from a global Supplied Item",
+        security: [{ bearerAuth: [] }],
+        params: {
+          type: "object",
+          additionalProperties: false,
+          required: ["itemId"],
+          properties: { itemId: { type: "string", format: "uuid" } },
+        },
+        body: addSupplierToSuppliedItemBodySchema,
+        response: {
+          201: {
+            type: "object",
+            required: ["success", "message", "data"],
+            properties: {
+              success: { type: "boolean", const: true },
+              message: { type: "string" },
+              data: supplierOfferSchema,
+            },
+          },
+          400: errorSchema,
+          401: errorSchema,
+          403: errorSchema,
+          404: errorSchema,
+          409: errorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { itemId } = request.params as z.infer<
+        typeof suppliedItemParamsSchema
+      >;
+      const data = await commercialService.addSupplierToSuppliedItem(
+        scopeFromRequest(request),
+        itemId,
+        request.body as z.infer<typeof addSupplierToSuppliedItemSchema>,
+      );
+      return jsonResponse.success({ reply, data, statusCode: 201 });
     },
   );
 

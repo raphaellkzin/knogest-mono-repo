@@ -1,0 +1,1321 @@
+"use client";
+
+import * as React from "react";
+import {
+  useActionState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { createPortal, useFormStatus } from "react-dom";
+import {
+  ChevronDown,
+  ChevronRight,
+  FolderPlus,
+  MoreHorizontal,
+  PackagePlus,
+  Pencil,
+  Plus,
+  Search,
+  Trash2,
+} from "lucide-react";
+import { toast } from "sonner";
+
+import { FormErrorDeclaration } from "@/components/forms/form-error-declaration";
+import { Button } from "@/components/ui/button";
+import { FormSection } from "@/components/ui/form-section";
+import { Input } from "@/components/ui/input";
+import { OperationsModal } from "@/components/ui/operations-modal";
+import {
+  canonicalDecimalToBrazilian,
+  formatBrazilianDecimalInput,
+} from "@/lib/brazilian-input-mask";
+import type { RegistryActionState } from "../commercial-registry-action-state";
+import type {
+  MeasurementUnitOption,
+  SupplierSelectorOption,
+  SuppliedItemCatalogItem,
+  SuppliedItemCategory,
+  SuppliedItemOption,
+} from "../commercial-registry.server";
+
+type RegistryAction = (
+  state: RegistryActionState,
+  formData: FormData,
+) => Promise<RegistryActionState>;
+
+type SupplierLookupAction = (
+  search: string,
+) => Promise<SupplierSelectorOption[]>;
+
+type CatalogOptions = {
+  units: MeasurementUnitOption[];
+  items: SuppliedItemOption[];
+  categories?: SuppliedItemCategory[];
+  catalogItems?: SuppliedItemCatalogItem[];
+};
+
+type ItemDraft = {
+  id: string;
+  name: string;
+  categoryId: string;
+  baseUnitId: string;
+  basePrice: string;
+  useValueUnit: boolean;
+  valueUnitQuantity: string;
+};
+
+type CategoryDraft = {
+  id: string;
+  name: string;
+  parentId: string;
+};
+
+type ItemSupplierDraft = {
+  item: SuppliedItemCatalogItem | null;
+  search: string;
+  suppliers: SupplierSelectorOption[];
+  selectedSupplier: SupplierSelectorOption | null;
+  price: string;
+  conversionToBase: string;
+  propagateToExistingOffers: boolean;
+};
+
+type FormAction = NonNullable<React.ComponentProps<"form">["action"]>;
+
+const emptyItemDraft: ItemDraft = {
+  id: "",
+  name: "",
+  categoryId: "",
+  baseUnitId: "",
+  basePrice: "",
+  useValueUnit: false,
+  valueUnitQuantity: "1,000000",
+};
+
+const emptyCategoryDraft: CategoryDraft = {
+  id: "",
+  name: "",
+  parentId: "",
+};
+
+const emptyItemSupplierDraft: ItemSupplierDraft = {
+  item: null,
+  search: "",
+  suppliers: [],
+  selectedSupplier: null,
+  price: "",
+  conversionToBase: "1,00000",
+  propagateToExistingOffers: false,
+};
+
+const noopAction: RegistryAction = async (state) => state;
+
+export function SuppliedItemsCatalog({
+  addSupplierToSuppliedItemAction,
+  catalog,
+  initialState,
+  lookupFuelSupplierOptionsAction,
+  removeSuppliedItemAction,
+  removeSuppliedItemCategoryAction,
+  saveSuppliedItemAction,
+  saveSuppliedItemCategoryAction,
+}: {
+  addSupplierToSuppliedItemAction: RegistryAction;
+  catalog: CatalogOptions;
+  initialState: RegistryActionState;
+  lookupFuelSupplierOptionsAction: SupplierLookupAction;
+  removeSuppliedItemAction: RegistryAction;
+  removeSuppliedItemCategoryAction: RegistryAction;
+  saveSuppliedItemAction: RegistryAction;
+  saveSuppliedItemCategoryAction: RegistryAction;
+}) {
+  const catalogItems = useMemo(
+    () =>
+      catalog.catalogItems ??
+      catalog.items.map(
+        (item): SuppliedItemCatalogItem => ({
+          id: item.id,
+          name: item.name,
+          categoryId: item.categoryId ?? null,
+          baseUnitId: item.baseUnitId,
+          baseUnit:
+            catalog.units.find((unit) => unit.id === item.baseUnitId) ?? null,
+          valueUnitQuantity: item.valueUnitQuantity ?? "1.000000",
+          basePrice: item.basePrice ?? "0.0000",
+          activeSupplierCount: 0,
+          spentQuantity: null,
+          lastSpentAt: null,
+          updatedAt: "",
+        }),
+      ),
+    [catalog.catalogItems, catalog.items, catalog.units],
+  );
+  const categories = catalog.categories ?? [];
+  const [isItemModalOpen, setIsItemModalOpen] = useState(false);
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [isItemSupplierModalOpen, setIsItemSupplierModalOpen] = useState(false);
+  const [openCategoryIds, setOpenCategoryIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
+  const [itemActionId, setItemActionId] = useState<string | null>(null);
+  const [itemDraft, setItemDraft] = useState<ItemDraft>({
+    ...emptyItemDraft,
+    baseUnitId: catalog.units[0]?.id ?? "",
+  });
+  const [categoryDraft, setCategoryDraft] =
+    useState<CategoryDraft>(emptyCategoryDraft);
+  const [itemSupplierDraft, setItemSupplierDraft] = useState<ItemSupplierDraft>(
+    emptyItemSupplierDraft,
+  );
+  const [isSupplierSearchPending, startSupplierSearch] = React.useTransition();
+
+  const handleSaveItemAction = useCallback<RegistryAction>(
+    async (state, formData) => {
+      const result = await saveSuppliedItemAction(state, formData);
+      if (result.ok && result.message) setIsItemModalOpen(false);
+      return result;
+    },
+    [saveSuppliedItemAction],
+  );
+  const handleSaveCategoryAction = useCallback<RegistryAction>(
+    async (state, formData) => {
+      const result = await saveSuppliedItemCategoryAction(state, formData);
+      if (result.ok && result.message) setIsCategoryModalOpen(false);
+      return result;
+    },
+    [saveSuppliedItemCategoryAction],
+  );
+  const handleAddSupplierAction = useCallback<RegistryAction>(
+    async (state, formData) => {
+      const result = await addSupplierToSuppliedItemAction(state, formData);
+      if (result.ok && result.message) {
+        setIsItemSupplierModalOpen(false);
+        setItemSupplierDraft(emptyItemSupplierDraft);
+      }
+      return result;
+    },
+    [addSupplierToSuppliedItemAction],
+  );
+  const [saveItemState, saveItemFormAction] = useActionState(
+    handleSaveItemAction,
+    initialState,
+  );
+  const [removeItemState, removeItemFormAction] = useActionState(
+    removeSuppliedItemAction ?? noopAction,
+    initialState,
+  );
+  const [saveCategoryState, saveCategoryFormAction] = useActionState(
+    handleSaveCategoryAction,
+    initialState,
+  );
+  const [removeCategoryState, removeCategoryFormAction] = useActionState(
+    removeSuppliedItemCategoryAction ?? noopAction,
+    initialState,
+  );
+  const [addSupplierState, addSupplierFormAction] = useActionState(
+    handleAddSupplierAction,
+    initialState,
+  );
+  useActionToast(removeItemState);
+  useActionToast(removeCategoryState);
+  useActionToast(addSupplierState);
+
+  const searchSuppliers = useCallback(
+    (search: string) => {
+      startSupplierSearch(() => {
+        void lookupFuelSupplierOptionsAction(search).then((suppliers) => {
+          setItemSupplierDraft((current) => ({ ...current, suppliers }));
+        });
+      });
+    },
+    [lookupFuelSupplierOptionsAction],
+  );
+
+  const openItemModal = useCallback(
+    (item: SuppliedItemCatalogItem | null, categoryId = "") => {
+      setItemActionId(null);
+      setItemDraft(
+        item
+          ? {
+              id: item.id,
+              name: item.name,
+              categoryId: item.categoryId ?? "",
+              baseUnitId: item.baseUnitId,
+              basePrice: canonicalDecimalToBrazilian(item.basePrice, 4),
+              useValueUnit: item.valueUnitQuantity !== "1.000000",
+              valueUnitQuantity: canonicalDecimalToBrazilian(
+                item.valueUnitQuantity,
+                6,
+              ),
+            }
+          : {
+              ...emptyItemDraft,
+              categoryId,
+              baseUnitId: catalog.units[0]?.id ?? "",
+            },
+      );
+      setIsItemModalOpen(true);
+    },
+    [catalog.units],
+  );
+
+  const openCategoryModal = useCallback(
+    (category: SuppliedItemCategory | null, parentId = "") => {
+      setCategoryDraft(
+        category
+          ? {
+              id: category.id,
+              name: category.name,
+              parentId: category.parentId ?? "",
+            }
+          : {
+              ...emptyCategoryDraft,
+              parentId,
+            },
+      );
+      setIsCategoryModalOpen(true);
+    },
+    [],
+  );
+
+  const openItemSupplierModal = useCallback(
+    (item: SuppliedItemCatalogItem) => {
+      setItemActionId(null);
+      setItemSupplierDraft({
+        ...emptyItemSupplierDraft,
+        item,
+        price: canonicalDecimalToBrazilian(item.basePrice, 4),
+        conversionToBase: canonicalDecimalToBrazilian(
+          item.valueUnitQuantity,
+          5,
+        ),
+      });
+      setIsItemSupplierModalOpen(true);
+      searchSuppliers("");
+    },
+    [searchSuppliers],
+  );
+
+  useEffect(() => {
+    if (!isItemSupplierModalOpen) {
+      setItemSupplierDraft(emptyItemSupplierDraft);
+    }
+  }, [isItemSupplierModalOpen]);
+
+  const toggleCategory = (categoryId: string) => {
+    setOpenCategoryIds((current) => {
+      const next = new Set(current);
+      if (next.has(categoryId)) {
+        next.delete(categoryId);
+        if (activeCategoryId === categoryId) setActiveCategoryId(null);
+      } else {
+        next.add(categoryId);
+        setActiveCategoryId(categoryId);
+      }
+      return next;
+    });
+  };
+
+  return (
+    <section className="rounded-lg border border-border bg-card">
+      <div className="border-b border-border bg-secondary/60 px-5 py-4">
+        <h2 className="text-lg font-bold">Itens fornecidos</h2>
+        <p className="mt-1 text-sm font-medium text-muted-foreground">
+          Organize o catálogo global de itens e vincule fornecedores às ofertas.
+        </p>
+      </div>
+
+      <div className="grid gap-4 px-5 py-4">
+        <div className="flex flex-col gap-3 rounded-md border border-primary/35 bg-primary/[0.035] p-4 md:flex-row md:items-center md:justify-between">
+          <div className="min-w-0">
+            <p className="text-sm font-bold">Ações da raiz</p>
+            <p className="mt-1 text-sm font-medium text-muted-foreground">
+              Para criar dentro de uma categoria, abra o card dela e use as
+              ações internas.
+            </p>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button type="button" onClick={() => openItemModal(null, "")}>
+              <Plus className="size-4" />
+              Criar item
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => openCategoryModal(null, "")}
+            >
+              <FolderPlus className="size-4" />
+              Criar categoria
+            </Button>
+          </div>
+        </div>
+
+        {catalogItems.length > 0 || categories.length > 0 ? (
+          <CatalogTree
+            activeCategoryId={activeCategoryId}
+            categories={categories}
+            items={catalogItems}
+            itemActionId={itemActionId}
+            onAddSupplier={openItemSupplierModal}
+            onCreateItem={(categoryId) => openItemModal(null, categoryId)}
+            onCreateSubcategory={(parentId) =>
+              openCategoryModal(null, parentId)
+            }
+            onEditCategory={openCategoryModal}
+            onEditItem={openItemModal}
+            onItemActionChange={setItemActionId}
+            onRemoveCategory={removeCategoryFormAction}
+            onRemoveItem={removeItemFormAction}
+            onToggleCategory={toggleCategory}
+            openCategoryIds={openCategoryIds}
+          />
+        ) : (
+          <div className="rounded-md border border-dashed border-border px-5 py-10 text-center">
+            <PackagePlus className="mx-auto size-9 text-primary" />
+            <p className="mt-3 text-base font-bold">
+              Nenhum item fornecido cadastrado
+            </p>
+            <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
+              Crie itens na raiz ou organize por categorias antes de vincular
+              ofertas de fornecedores.
+            </p>
+          </div>
+        )}
+      </div>
+
+      <OperationsModal
+        icon={PackagePlus}
+        open={isItemModalOpen}
+        onOpenChange={setIsItemModalOpen}
+        size="lg"
+        title={itemDraft.id ? "Editar item" : "Novo item"}
+        description="Cadastre o item global da empresa com unidade de medida e preço base."
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsItemModalOpen(false)}
+            >
+              Cancelar
+            </Button>
+            <SaveItemButton formId="supplied-item-form" />
+          </>
+        }
+      >
+        <form
+          id="supplied-item-form"
+          action={saveItemFormAction}
+          className="grid gap-4"
+        >
+          {itemDraft.id && (
+            <input type="hidden" name="itemId" value={itemDraft.id} />
+          )}
+          <input type="hidden" name="categoryId" value={itemDraft.categoryId} />
+          <FormSection
+            title="Dados do item"
+            description="O item fica disponível para as ofertas de todos os fornecedores desta empresa."
+          >
+            <Field
+              label="Nome"
+              name="name"
+              required
+              value={itemDraft.name}
+              onChange={(event) =>
+                setItemDraft((current) => ({
+                  ...current,
+                  name: event.target.value,
+                }))
+              }
+              maxLength={160}
+              placeholder="Ex.: Diesel S10"
+            />
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="grid gap-1.5 text-sm font-semibold">
+                <span>Unidade de medida</span>
+                <select
+                  name="baseUnitId"
+                  value={itemDraft.baseUnitId}
+                  required
+                  onChange={(event) =>
+                    setItemDraft((current) => ({
+                      ...current,
+                      baseUnitId: event.target.value,
+                    }))
+                  }
+                  className="min-h-11 rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
+                >
+                  {catalog.units.map((unit) => (
+                    <option key={unit.id} value={unit.id}>
+                      {unit.code} - {unit.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="grid gap-1.5 text-sm font-semibold">
+                <span>Preço base</span>
+                <Input
+                  name="basePrice"
+                  value={itemDraft.basePrice}
+                  inputMode="numeric"
+                  onChange={(event) =>
+                    setItemDraft((current) => ({
+                      ...current,
+                      basePrice: formatBrazilianDecimalInput(
+                        event.target.value,
+                        4,
+                      ),
+                    }))
+                  }
+                  placeholder="0,0000"
+                  className="min-h-11"
+                />
+              </label>
+            </div>
+            <label className="flex min-h-11 items-center gap-3 rounded-md border border-border bg-background px-3 text-sm font-semibold">
+              <input
+                type="checkbox"
+                name="useValueUnit"
+                checked={itemDraft.useValueUnit}
+                onChange={(event) =>
+                  setItemDraft((current) => ({
+                    ...current,
+                    useValueUnit: event.target.checked,
+                  }))
+                }
+                className="size-4 accent-primary"
+              />
+              Informar unidade de valor
+            </label>
+            {itemDraft.useValueUnit && (
+              <label className="grid gap-1.5 text-sm font-semibold">
+                <span>Unidade de valor</span>
+                <Input
+                  name="valueUnitQuantity"
+                  value={itemDraft.valueUnitQuantity}
+                  inputMode="numeric"
+                  onChange={(event) =>
+                    setItemDraft((current) => ({
+                      ...current,
+                      valueUnitQuantity: formatBrazilianDecimalInput(
+                        event.target.value,
+                        6,
+                      ),
+                    }))
+                  }
+                  placeholder="1,000000"
+                  className="min-h-11"
+                />
+              </label>
+            )}
+          </FormSection>
+
+          {!saveItemState.ok && saveItemState.message && (
+            <FormErrorDeclaration
+              title="Não foi possível salvar o item."
+              description="Revise nome, unidade de medida e valores antes de tentar novamente."
+              issues={[{ location: "API", message: saveItemState.message }]}
+            />
+          )}
+        </form>
+      </OperationsModal>
+
+      <OperationsModal
+        icon={FolderPlus}
+        open={isCategoryModalOpen}
+        onOpenChange={setIsCategoryModalOpen}
+        size="md"
+        title={categoryDraft.id ? "Editar categoria" : "Nova categoria"}
+        description="Organize os itens em categorias e subcategorias com até 3 níveis."
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsCategoryModalOpen(false)}
+            >
+              Cancelar
+            </Button>
+            <SaveCategoryButton formId="supplied-item-category-form" />
+          </>
+        }
+      >
+        <form
+          id="supplied-item-category-form"
+          action={saveCategoryFormAction}
+          className="grid gap-4"
+        >
+          {categoryDraft.id && (
+            <input type="hidden" name="categoryId" value={categoryDraft.id} />
+          )}
+          <input type="hidden" name="parentId" value={categoryDraft.parentId} />
+          <FormSection title="Categoria">
+            <Field
+              label="Nome"
+              name="name"
+              required
+              value={categoryDraft.name}
+              onChange={(event) =>
+                setCategoryDraft((current) => ({
+                  ...current,
+                  name: event.target.value,
+                }))
+              }
+              maxLength={120}
+              placeholder="Ex.: Combustíveis"
+            />
+          </FormSection>
+
+          {!saveCategoryState.ok && saveCategoryState.message && (
+            <FormErrorDeclaration
+              title="Não foi possível salvar a categoria."
+              description="Revise o nome e a profundidade da categoria."
+              issues={[{ location: "API", message: saveCategoryState.message }]}
+            />
+          )}
+        </form>
+      </OperationsModal>
+
+      <OperationsModal
+        icon={PackagePlus}
+        open={isItemSupplierModalOpen}
+        onOpenChange={setIsItemSupplierModalOpen}
+        size="lg"
+        title="Adicionar fornecedor"
+        description="Escolha um fornecedor ativo e confirme a oferta deste item."
+        footer={
+          itemSupplierDraft.selectedSupplier ? (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() =>
+                  setItemSupplierDraft((current) => ({
+                    ...current,
+                    selectedSupplier: null,
+                  }))
+                }
+              >
+                Voltar
+              </Button>
+              <SaveItemSupplierButton formId="supplied-item-supplier-form" />
+            </>
+          ) : (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsItemSupplierModalOpen(false)}
+            >
+              Cancelar
+            </Button>
+          )
+        }
+      >
+        {itemSupplierDraft.selectedSupplier && itemSupplierDraft.item ? (
+          <form
+            id="supplied-item-supplier-form"
+            action={addSupplierFormAction}
+            className="grid gap-4"
+          >
+            <input
+              type="hidden"
+              name="itemId"
+              value={itemSupplierDraft.item.id}
+            />
+            <input
+              type="hidden"
+              name="supplierId"
+              value={itemSupplierDraft.selectedSupplier.id}
+            />
+            <FormSection
+              title="Confirmar oferta"
+              description="Os valores iniciam pelo item e podem ser ajustados só para esta oferta."
+            >
+              <div className="grid gap-3 rounded-md border border-primary/35 bg-primary/[0.035] p-3 text-sm font-semibold">
+                <p>{itemSupplierDraft.item.name}</p>
+                <p className="text-muted-foreground">
+                  {itemSupplierDraft.selectedSupplier.name}
+                </p>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <label className="grid gap-1.5 text-sm font-semibold">
+                  <span>Preço vigente</span>
+                  <Input
+                    name="price"
+                    value={itemSupplierDraft.price}
+                    inputMode="numeric"
+                    onChange={(event) =>
+                      setItemSupplierDraft((current) => ({
+                        ...current,
+                        price: formatBrazilianDecimalInput(
+                          event.target.value,
+                          4,
+                        ),
+                      }))
+                    }
+                    placeholder="0,0000"
+                    className="min-h-11"
+                  />
+                </label>
+                <label className="grid gap-1.5 text-sm font-semibold">
+                  <span>Conversão</span>
+                  <Input
+                    name="conversionToBase"
+                    value={itemSupplierDraft.conversionToBase}
+                    inputMode="numeric"
+                    onChange={(event) =>
+                      setItemSupplierDraft((current) => ({
+                        ...current,
+                        conversionToBase: formatBrazilianDecimalInput(
+                          event.target.value,
+                          5,
+                        ),
+                      }))
+                    }
+                    placeholder="1,00000"
+                    className="min-h-11"
+                  />
+                </label>
+              </div>
+              <label className="flex min-h-11 items-start gap-3 rounded-md border border-border bg-background px-3 py-3 text-sm font-semibold">
+                <input
+                  type="checkbox"
+                  name="propagateToExistingOffers"
+                  checked={itemSupplierDraft.propagateToExistingOffers}
+                  onChange={(event) =>
+                    setItemSupplierDraft((current) => ({
+                      ...current,
+                      propagateToExistingOffers: event.target.checked,
+                    }))
+                  }
+                  className="mt-0.5 size-4 accent-primary"
+                />
+                Propagar preço e conversão para ofertas ativas existentes deste
+                item
+              </label>
+            </FormSection>
+
+            {!addSupplierState.ok && addSupplierState.message && (
+              <FormErrorDeclaration
+                title="Não foi possível vincular o fornecedor."
+                description="Revise o fornecedor e os valores antes de tentar novamente."
+                issues={[
+                  { location: "API", message: addSupplierState.message },
+                ]}
+              />
+            )}
+          </form>
+        ) : (
+          <div className="grid gap-4">
+            <FormSection
+              title="Selecionar fornecedor"
+              description="Busque fornecedores ativos desta empresa por nome."
+            >
+              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                <label className="grid gap-1.5 text-sm font-semibold">
+                  <span>Fornecedor</span>
+                  <Input
+                    value={itemSupplierDraft.search}
+                    onChange={(event) =>
+                      setItemSupplierDraft((current) => ({
+                        ...current,
+                        search: event.target.value,
+                      }))
+                    }
+                    placeholder="Buscar por nome do fornecedor"
+                    className="min-h-11"
+                  />
+                </label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="self-end"
+                  disabled={isSupplierSearchPending}
+                  onClick={() => searchSuppliers(itemSupplierDraft.search)}
+                >
+                  <Search className="size-4" />
+                  {isSupplierSearchPending ? "Buscando" : "Buscar"}
+                </Button>
+              </div>
+              <div className="grid gap-2">
+                {itemSupplierDraft.suppliers.map((supplier) => (
+                  <button
+                    key={supplier.id}
+                    type="button"
+                    className="rounded-md border border-border bg-background px-3 py-3 text-left outline-none transition-colors hover:border-primary/50 hover:bg-primary/[0.035] focus-visible:ring-3 focus-visible:ring-ring/30"
+                    onClick={() =>
+                      setItemSupplierDraft((current) => ({
+                        ...current,
+                        selectedSupplier: supplier,
+                      }))
+                    }
+                  >
+                    <span className="block text-sm font-bold">
+                      {supplier.name}
+                    </span>
+                    <span className="mt-1 block text-xs font-semibold text-muted-foreground">
+                      {supplier.tradeName ? `${supplier.tradeName} · ` : ""}
+                      {supplier.document.documentType}{" "}
+                      {supplier.document.maskedDocument}
+                    </span>
+                  </button>
+                ))}
+                {itemSupplierDraft.suppliers.length === 0 && (
+                  <p className="rounded-md border border-dashed border-border px-3 py-4 text-sm font-semibold text-muted-foreground">
+                    {isSupplierSearchPending
+                      ? "Buscando fornecedores..."
+                      : "Nenhum fornecedor ativo encontrado."}
+                  </p>
+                )}
+              </div>
+            </FormSection>
+          </div>
+        )}
+      </OperationsModal>
+    </section>
+  );
+}
+
+function CatalogTree({
+  activeCategoryId,
+  categories,
+  items,
+  itemActionId,
+  onAddSupplier,
+  onCreateItem,
+  onCreateSubcategory,
+  onEditCategory,
+  onEditItem,
+  onItemActionChange,
+  onRemoveCategory,
+  onRemoveItem,
+  onToggleCategory,
+  openCategoryIds,
+}: {
+  activeCategoryId: string | null;
+  categories: SuppliedItemCategory[];
+  items: SuppliedItemCatalogItem[];
+  itemActionId: string | null;
+  onAddSupplier: (item: SuppliedItemCatalogItem) => void;
+  onCreateItem: (categoryId: string) => void;
+  onCreateSubcategory: (parentId: string) => void;
+  onEditCategory: (category: SuppliedItemCategory) => void;
+  onEditItem: (item: SuppliedItemCatalogItem) => void;
+  onItemActionChange: (itemId: string | null) => void;
+  onRemoveCategory: FormAction;
+  onRemoveItem: FormAction;
+  onToggleCategory: (categoryId: string) => void;
+  openCategoryIds: Set<string>;
+}) {
+  return (
+    <div className="grid gap-2">
+      <CatalogLevel
+        activeCategoryId={activeCategoryId}
+        categories={categories}
+        depth={0}
+        itemActionId={itemActionId}
+        items={items}
+        onAddSupplier={onAddSupplier}
+        onCreateItem={onCreateItem}
+        onCreateSubcategory={onCreateSubcategory}
+        onEditCategory={onEditCategory}
+        onEditItem={onEditItem}
+        onItemActionChange={onItemActionChange}
+        onRemoveCategory={onRemoveCategory}
+        onRemoveItem={onRemoveItem}
+        onToggleCategory={onToggleCategory}
+        openCategoryIds={openCategoryIds}
+        parentId={null}
+      />
+    </div>
+  );
+}
+
+function CatalogLevel({
+  activeCategoryId,
+  categories,
+  depth,
+  itemActionId,
+  items,
+  onAddSupplier,
+  onCreateItem,
+  onCreateSubcategory,
+  onEditCategory,
+  onEditItem,
+  onItemActionChange,
+  onRemoveCategory,
+  onRemoveItem,
+  onToggleCategory,
+  openCategoryIds,
+  parentId,
+}: {
+  activeCategoryId: string | null;
+  categories: SuppliedItemCategory[];
+  depth: number;
+  itemActionId: string | null;
+  items: SuppliedItemCatalogItem[];
+  onAddSupplier: (item: SuppliedItemCatalogItem) => void;
+  onCreateItem: (categoryId: string) => void;
+  onCreateSubcategory: (parentId: string) => void;
+  onEditCategory: (category: SuppliedItemCategory) => void;
+  onEditItem: (item: SuppliedItemCatalogItem) => void;
+  onItemActionChange: (itemId: string | null) => void;
+  onRemoveCategory: FormAction;
+  onRemoveItem: FormAction;
+  onToggleCategory: (categoryId: string) => void;
+  openCategoryIds: Set<string>;
+  parentId: string | null;
+}) {
+  const childCategories = categories.filter(
+    (category) => category.parentId === parentId,
+  );
+  const levelItems = items.filter((item) => item.categoryId === parentId);
+
+  return (
+    <div className="grid gap-2">
+      {childCategories.map((category) => {
+        const isOpen = openCategoryIds.has(category.id);
+        const isActive = activeCategoryId === category.id;
+        const canCreateSubcategory = depth < 3;
+        return (
+          <div
+            key={category.id}
+            className={
+              isActive
+                ? "rounded-md border border-primary/35 bg-primary/[0.035]"
+                : "rounded-md border border-border bg-background"
+            }
+          >
+            <div className="flex min-h-11 items-center gap-2 px-3 py-2">
+              <button
+                type="button"
+                className="flex min-w-0 flex-1 items-center gap-2 text-left text-sm font-bold outline-none focus-visible:ring-3 focus-visible:ring-ring/30"
+                onClick={() => onToggleCategory(category.id)}
+              >
+                {isOpen ? (
+                  <ChevronDown className="size-4 shrink-0 text-primary" />
+                ) : (
+                  <ChevronRight className="size-4 shrink-0 text-primary" />
+                )}
+                <span className="truncate">{category.name}</span>
+              </button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => onEditCategory(category)}
+              >
+                <Pencil className="size-4" />
+                Editar
+              </Button>
+              <form action={onRemoveCategory}>
+                <input type="hidden" name="categoryId" value={category.id} />
+                <RemoveCategoryButton />
+              </form>
+            </div>
+            {isOpen && (
+              <div className="grid gap-2 border-t border-border px-3 py-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => onCreateItem(category.id)}
+                  >
+                    <Plus className="size-4" />
+                    Adicionar item
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={!canCreateSubcategory}
+                    onClick={() => onCreateSubcategory(category.id)}
+                  >
+                    <FolderPlus className="size-4" />
+                    Criar subcategoria
+                  </Button>
+                </div>
+                <CatalogLevel
+                  activeCategoryId={activeCategoryId}
+                  categories={categories}
+                  depth={depth + 1}
+                  itemActionId={itemActionId}
+                  items={items}
+                  onAddSupplier={onAddSupplier}
+                  onCreateItem={onCreateItem}
+                  onCreateSubcategory={onCreateSubcategory}
+                  onEditCategory={onEditCategory}
+                  onEditItem={onEditItem}
+                  onItemActionChange={onItemActionChange}
+                  onRemoveCategory={onRemoveCategory}
+                  onRemoveItem={onRemoveItem}
+                  onToggleCategory={onToggleCategory}
+                  openCategoryIds={openCategoryIds}
+                  parentId={category.id}
+                />
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {levelItems.map((item) => (
+        <CatalogItemRow
+          key={item.id}
+          item={item}
+          isActionOpen={itemActionId === item.id}
+          onActionChange={onItemActionChange}
+          onAddSupplier={onAddSupplier}
+          onEditItem={onEditItem}
+          onRemoveItem={onRemoveItem}
+        />
+      ))}
+
+      {childCategories.length === 0 && levelItems.length === 0 && depth > 0 && (
+        <p className="rounded-md border border-dashed border-border px-3 py-3 text-sm font-medium text-muted-foreground">
+          Nenhum item nesta categoria.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function CatalogItemRow({
+  isActionOpen,
+  item,
+  onActionChange,
+  onAddSupplier,
+  onEditItem,
+  onRemoveItem,
+}: {
+  isActionOpen: boolean;
+  item: SuppliedItemCatalogItem;
+  onActionChange: (itemId: string | null) => void;
+  onAddSupplier: (item: SuppliedItemCatalogItem) => void;
+  onEditItem: (item: SuppliedItemCatalogItem) => void;
+  onRemoveItem: FormAction;
+}) {
+  const actionButtonRef = useRef<HTMLButtonElement | null>(null);
+  return (
+    <div className="rounded-md border border-border bg-background">
+      <div className="grid gap-3 px-3 py-3 md:grid-cols-[minmax(0,1.4fr)_repeat(3,minmax(8rem,0.75fr))_auto] md:items-center">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-bold">{item.name}</p>
+          <p className="mt-1 text-xs font-semibold text-muted-foreground">
+            {item.baseUnit
+              ? `${item.baseUnit.code} - ${item.baseUnit.name}`
+              : "Unidade não encontrada"}{" "}
+            · Base {formatCurrency(item.basePrice)}
+          </p>
+        </div>
+        <Metric
+          label="Fornecedores ativos"
+          value={`${item.activeSupplierCount}`}
+        />
+        <Metric
+          label="Quantidade gasta"
+          value={item.spentQuantity ?? "Sem consumo"}
+        />
+        <Metric
+          label="Último gasto"
+          value={
+            item.lastSpentAt ? formatDate(item.lastSpentAt) : "Sem registro"
+          }
+        />
+        <Button
+          ref={actionButtonRef}
+          type="button"
+          size="icon-sm"
+          variant="ghost"
+          aria-label={`Ações de ${item.name}`}
+          aria-expanded={isActionOpen}
+          aria-haspopup="menu"
+          onClick={() => onActionChange(isActionOpen ? null : item.id)}
+        >
+          <MoreHorizontal className="size-4" />
+        </Button>
+      </div>
+      {isActionOpen && (
+        <FloatingItemActionMenu
+          anchorRef={actionButtonRef}
+          item={item}
+          onAddSupplier={onAddSupplier}
+          onClose={() => onActionChange(null)}
+          onEditItem={onEditItem}
+          onRemoveItem={onRemoveItem}
+        />
+      )}
+    </div>
+  );
+}
+
+function FloatingItemActionMenu({
+  anchorRef,
+  item,
+  onAddSupplier,
+  onClose,
+  onEditItem,
+  onRemoveItem,
+}: {
+  anchorRef: React.RefObject<HTMLButtonElement | null>;
+  item: SuppliedItemCatalogItem;
+  onAddSupplier: (item: SuppliedItemCatalogItem) => void;
+  onClose: () => void;
+  onEditItem: (item: SuppliedItemCatalogItem) => void;
+  onRemoveItem: FormAction;
+}) {
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const [position, setPosition] = useState<{
+    left: number;
+    placement: "above" | "below";
+    top: number;
+  } | null>(null);
+
+  const updatePosition = useCallback(() => {
+    const anchor = anchorRef.current;
+    if (!anchor) return;
+    const rect = anchor.getBoundingClientRect();
+    const menuWidth = 224;
+    const estimatedMenuHeight = 156;
+    const gutter = 12;
+    const belowTop = rect.bottom + 8;
+    const opensAbove =
+      belowTop + estimatedMenuHeight > window.innerHeight &&
+      rect.top > estimatedMenuHeight;
+
+    setPosition({
+      left: Math.min(
+        window.innerWidth - menuWidth - gutter,
+        Math.max(gutter, rect.right - menuWidth),
+      ),
+      placement: opensAbove ? "above" : "below",
+      top: opensAbove ? rect.top - 8 : belowTop,
+    });
+  }, [anchorRef]);
+
+  useEffect(() => {
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [updatePosition]);
+
+  useEffect(() => {
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (
+        menuRef.current?.contains(target) ||
+        anchorRef.current?.contains(target)
+      ) {
+        return;
+      }
+      onClose();
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [anchorRef, onClose]);
+
+  if (!position) return null;
+
+  return createPortal(
+    <div
+      ref={menuRef}
+      role="menu"
+      aria-label={`Ações de ${item.name}`}
+      className="fixed z-40 grid w-56 gap-1 rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-sm ring-1 ring-foreground/10"
+      style={{
+        left: position.left,
+        top: position.top,
+        transform:
+          position.placement === "above" ? "translateY(-100%)" : undefined,
+      }}
+    >
+      <button
+        type="button"
+        role="menuitem"
+        className="flex min-h-9 w-full items-center gap-2 rounded-md px-2.5 text-left text-sm font-semibold outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/30"
+        onClick={() => {
+          onClose();
+          onAddSupplier(item);
+        }}
+      >
+        <PackagePlus className="size-4 text-primary" />
+        Adicionar fornecedor
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        className="flex min-h-9 w-full items-center gap-2 rounded-md px-2.5 text-left text-sm font-semibold outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/30"
+        onClick={() => {
+          onClose();
+          onEditItem(item);
+        }}
+      >
+        <Pencil className="size-4 text-primary" />
+        Editar
+      </button>
+      <form action={onRemoveItem}>
+        <input type="hidden" name="itemId" value={item.id} />
+        <RemoveItemButton className="w-full justify-start border-transparent shadow-none hover:bg-red-50" />
+      </form>
+    </div>,
+    document.body,
+  );
+}
+
+function useActionToast(state: RegistryActionState) {
+  const lastMessageRef = useRef("");
+
+  useEffect(() => {
+    if (!state.message) return;
+    const messageKey = `${state.ok ? "ok" : "error"}:${state.message}`;
+    if (lastMessageRef.current === messageKey) return;
+    lastMessageRef.current = messageKey;
+
+    if (state.ok) {
+      toast.success(state.message);
+      return;
+    }
+    toast.error(state.message);
+  }, [state.message, state.ok]);
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-xs font-bold text-muted-foreground">{label}</p>
+      <p className="mt-1 truncate text-sm font-semibold">{value}</p>
+    </div>
+  );
+}
+
+function Field({
+  label,
+  name,
+  required = false,
+  type = "text",
+  value,
+  onChange,
+  className,
+  ...inputProps
+}: {
+  label: string;
+  name: string;
+  required?: boolean;
+  type?: string;
+  value: string;
+  onChange: React.ChangeEventHandler<HTMLInputElement>;
+  className?: string;
+} & Omit<
+  React.ComponentProps<typeof Input>,
+  "className" | "name" | "onChange" | "required" | "type" | "value"
+>) {
+  const id = `supplied-item-${name}`;
+  return (
+    <div
+      className={`grid min-w-0 gap-1.5 text-sm font-semibold ${className ?? ""}`}
+    >
+      <label htmlFor={id}>{label}</label>
+      <Input
+        id={id}
+        name={name}
+        required={required}
+        type={type}
+        value={value}
+        onChange={onChange}
+        className="min-h-11"
+        {...inputProps}
+      />
+    </div>
+  );
+}
+
+function SaveItemButton({ formId }: { formId: string }) {
+  const { pending } = useFormStatus();
+  return (
+    <Button form={formId} type="submit" disabled={pending}>
+      <PackagePlus className="size-4" />
+      {pending ? "Salvando" : "Salvar item"}
+    </Button>
+  );
+}
+
+function SaveCategoryButton({ formId }: { formId: string }) {
+  const { pending } = useFormStatus();
+  return (
+    <Button form={formId} type="submit" disabled={pending}>
+      <FolderPlus className="size-4" />
+      {pending ? "Salvando" : "Salvar categoria"}
+    </Button>
+  );
+}
+
+function SaveItemSupplierButton({ formId }: { formId: string }) {
+  const { pending } = useFormStatus();
+  return (
+    <Button form={formId} type="submit" disabled={pending}>
+      <PackagePlus className="size-4" />
+      {pending ? "Confirmando" : "Confirmar oferta"}
+    </Button>
+  );
+}
+
+function RemoveItemButton({ className }: { className?: string }) {
+  const { pending } = useFormStatus();
+  return (
+    <Button
+      type="submit"
+      size="sm"
+      variant="outline"
+      disabled={pending}
+      role="menuitem"
+      className={`border-red-200 text-red-900 hover:bg-red-50 ${className ?? ""}`}
+    >
+      <Trash2 className="size-4" />
+      {pending ? "Desativando" : "Desativar item"}
+    </Button>
+  );
+}
+
+function RemoveCategoryButton() {
+  const { pending } = useFormStatus();
+  return (
+    <Button
+      type="submit"
+      size="sm"
+      variant="outline"
+      disabled={pending}
+      className="border-red-200 text-red-900 hover:bg-red-50"
+    >
+      <Trash2 className="size-4" />
+      {pending ? "Desativando" : "Desativar"}
+    </Button>
+  );
+}
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat("pt-BR").format(new Date(value));
+}
+
+function formatCurrency(value: string) {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(Number(value));
+}

@@ -8,6 +8,7 @@ import type { PostApiV1ClientsMutationRequest } from "@/generated/models/PostApi
 import client, { ApiClientError } from "@/lib/api/server-client";
 import { decimalInputToCanonicalFixed } from "@/lib/brazilian-input-mask";
 import type { RegistryActionState } from "./commercial-registry-action-state";
+import type { SupplierSelectorOption } from "./commercial-registry.server";
 import { supplierOfferPayload } from "./commercial-registry-offer-payload";
 import { z } from "zod";
 
@@ -114,6 +115,28 @@ function suppliedItemCategoryPayload(formData: FormData) {
   };
 }
 
+function itemSupplierOfferPayload(formData: FormData) {
+  return {
+    supplierId: optionalString(formData, "supplierId") ?? "",
+    price: decimalInputToCanonicalFixed(
+      optionalString(formData, "price") ?? "",
+      4,
+      4,
+    ),
+    conversionToBase: decimalInputToCanonicalFixed(
+      optionalString(formData, "conversionToBase") ?? "",
+      5,
+      6,
+    ),
+    propagateToExistingOffers: optionalString(
+      formData,
+      "propagateToExistingOffers",
+    )
+      ? true
+      : false,
+  };
+}
+
 function failureMessage(error: unknown) {
   if (error instanceof ApiClientError) {
     if (error.code === "DOCUMENT_ALREADY_EXISTS") {
@@ -136,6 +159,9 @@ function failureMessage(error: unknown) {
     }
     if (error.code === "SUPPLIER_OFFER_NOT_FOUND") {
       return "Oferta não encontrada ou já removida do catálogo ativo.";
+    }
+    if (error.code === "SUPPLIER_OFFER_ALREADY_EXISTS") {
+      return "Este fornecedor já tem uma oferta ativa para este item.";
     }
     if (error.code === "SUPPLIED_ITEM_NOT_FOUND") {
       return "Item fornecido não encontrado ou indisponível.";
@@ -344,6 +370,38 @@ export async function removeSuppliedItemCategoryAction(
   } catch (error) {
     return { ok: false, message: failureMessage(error) };
   }
+}
+
+export async function addSupplierToSuppliedItemAction(
+  _state: RegistryActionState,
+  formData: FormData,
+): Promise<RegistryActionState> {
+  const itemId = optionalString(formData, "itemId") ?? "";
+  try {
+    await client({
+      url: `/api/v1/supplied-items/${itemId}/suppliers`,
+      method: "POST",
+      data: itemSupplierOfferPayload(formData),
+    });
+    revalidatePath("/home/fornecedores");
+    return { ok: true, message: "Fornecedor vinculado ao item." };
+  } catch (error) {
+    return { ok: false, message: failureMessage(error) };
+  }
+}
+
+export async function lookupFuelSupplierOptionsAction(
+  search: string,
+): Promise<SupplierSelectorOption[]> {
+  const response = await client<{
+    success: true;
+    data: SupplierSelectorOption[];
+  }>({
+    url: "/api/v1/fuel-suppliers/selectors/active",
+    method: "GET",
+    params: { search, limit: 25 },
+  });
+  return response.data.data;
 }
 
 export type RegistryCepLookupResult =

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  addSupplierToSuppliedItemSchema,
   createSuppliedItemCategorySchema,
   createSuppliedItemSchema,
   updateSupplierSchema,
@@ -75,6 +76,37 @@ describe("Commercial DTOs", () => {
     ).toEqual({
       name: "Combustíveis",
       parentId: null,
+    });
+  });
+
+  it("accepts adding a supplier to an item with explicit propagation", () => {
+    expect(
+      addSupplierToSuppliedItemSchema.parse({
+        supplierId: "00000000-0000-4000-8000-000000000701",
+        price: "7.5000",
+        conversionToBase: "1.234560",
+        propagateToExistingOffers: true,
+      }),
+    ).toEqual({
+      supplierId: "00000000-0000-4000-8000-000000000701",
+      price: "7.5000",
+      conversionToBase: "1.234560",
+      propagateToExistingOffers: true,
+    });
+  });
+
+  it("defaults supplier item propagation to false", () => {
+    expect(
+      addSupplierToSuppliedItemSchema.parse({
+        supplierId: "00000000-0000-4000-8000-000000000701",
+        price: "7.5000",
+        conversionToBase: "1.234560",
+      }),
+    ).toEqual({
+      supplierId: "00000000-0000-4000-8000-000000000701",
+      price: "7.5000",
+      conversionToBase: "1.234560",
+      propagateToExistingOffers: false,
     });
   });
 });

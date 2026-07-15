@@ -75,6 +75,12 @@ export type SuppliedItemCatalogItem = {
   lastSpentAt: string | null;
   updatedAt: string;
 };
+export type SupplierSelectorOption = {
+  id: string;
+  name: string;
+  tradeName: string | null;
+  document: { documentType: string; maskedDocument: string };
+};
 
 const pageSize = 10;
 

@@ -10,6 +10,7 @@ import {
   toProtectedDocumentDto,
 } from "../../lib/security/sensitive-document";
 import type {
+  AddSupplierToSuppliedItemInput,
   CreateMeasurementUnitInput,
   CreateCommercialRegistryInput,
   CreateSuppliedItemCategoryInput,
@@ -158,15 +159,16 @@ async function categoryDepth(
       });
     }
     seen.add(currentId);
-    const category = await store.suppliedItemCategory.findFirst({
-      where: {
-        id: currentId,
-        corporationId: scope.corporationId,
-        companyId: scope.companyId,
-        isActive: true,
-      },
-      select: { id: true, parentId: true },
-    });
+    const category: { id: string; parentId: string | null } | null =
+      await store.suppliedItemCategory.findFirst({
+        where: {
+          id: currentId,
+          corporationId: scope.corporationId,
+          companyId: scope.companyId,
+          isActive: true,
+        },
+        select: { id: true, parentId: true },
+      });
     if (!category) {
       throw new AppError({
         code: "SUPPLIED_ITEM_CATEGORY_NOT_FOUND",
@@ -1170,6 +1172,146 @@ export class CommercialService {
       valueUnitQuantity: item.valueUnitQuantity.toFixed(6),
       basePrice: item.basePrice.toFixed(4),
     };
+  }
+
+  async addSupplierToSuppliedItem(
+    scope: AuthenticatedCompanyScope,
+    itemId: string,
+    input: AddSupplierToSuppliedItemInput,
+  ) {
+    const now = new Date();
+    return this.context.transaction(async (transactionContext) => {
+      const store = commercialRegistryStore(transactionContext);
+      const item = await store.suppliedItem.findFirst({
+        where: {
+          id: itemId,
+          corporationId: scope.corporationId,
+          companyId: scope.companyId,
+          isGlobal: true,
+          isActive: true,
+        },
+        select: { id: true, baseUnitId: true },
+      });
+      if (!item) {
+        throw new AppError({
+          code: "SUPPLIED_ITEM_NOT_FOUND",
+          message: "Supplied item not found",
+          statusCode: 404,
+        });
+      }
+
+      const supplier = await store.fuelSupplier.findFirst({
+        where: {
+          id: input.supplierId,
+          corporationId: scope.corporationId,
+          companyId: scope.companyId,
+          isGlobal: true,
+          isActive: true,
+        },
+        select: { id: true },
+      });
+      if (!supplier) {
+        throw new AppError({
+          code: "SUPPLIER_NOT_FOUND",
+          message: "Supplier not found",
+          statusCode: 404,
+        });
+      }
+
+      const duplicate = await store.supplierOffer.findFirst({
+        where: {
+          corporationId: scope.corporationId,
+          companyId: scope.companyId,
+          supplierId: input.supplierId,
+          itemId,
+          purchaseUnitId: item.baseUnitId,
+          isActive: true,
+        },
+        select: { id: true },
+      });
+      if (duplicate) {
+        throw new AppError({
+          code: "SUPPLIER_OFFER_ALREADY_EXISTS",
+          message: "Supplier already has an active offer for this item",
+          statusCode: 409,
+        });
+      }
+
+      const created = await store.supplierOffer.create({
+        data: {
+          corporationId: scope.corporationId,
+          companyId: scope.companyId,
+          supplierId: input.supplierId,
+          itemId,
+          purchaseUnitId: item.baseUnitId,
+          conversionToBase: input.conversionToBase,
+        },
+        select: { id: true },
+      });
+      await store.supplierOfferPrice.create({
+        data: {
+          corporationId: scope.corporationId,
+          companyId: scope.companyId,
+          offerId: created.id,
+          price: input.price,
+          effectiveFrom: now,
+        },
+      });
+
+      if (input.propagateToExistingOffers) {
+        const existingOffers = await store.supplierOffer.findMany({
+          where: {
+            corporationId: scope.corporationId,
+            companyId: scope.companyId,
+            itemId,
+            isActive: true,
+            id: { not: created.id },
+          },
+          select: { id: true },
+        });
+        const existingOfferIds = existingOffers.map((offer) => offer.id);
+        if (existingOfferIds.length > 0) {
+          await store.supplierOffer.updateMany({
+            where: {
+              corporationId: scope.corporationId,
+              companyId: scope.companyId,
+              id: { in: existingOfferIds },
+            },
+            data: { conversionToBase: input.conversionToBase },
+          });
+          await store.supplierOfferPrice.updateMany({
+            where: {
+              corporationId: scope.corporationId,
+              companyId: scope.companyId,
+              offerId: { in: existingOfferIds },
+              effectiveTo: null,
+            },
+            data: { effectiveTo: now },
+          });
+          await store.supplierOfferPrice.createMany({
+            data: existingOfferIds.map((offerId) => ({
+              corporationId: scope.corporationId,
+              companyId: scope.companyId,
+              offerId,
+              price: input.price,
+              effectiveFrom: now,
+            })),
+          });
+        }
+      }
+
+      const dto = (
+        await supplierOffersDto(transactionContext, scope, input.supplierId)
+      ).find((offer) => offer.id === created.id);
+      if (!dto) {
+        throw new AppError({
+          code: "SUPPLIER_OFFER_NOT_FOUND",
+          message: "Supplier offer not found",
+          statusCode: 404,
+        });
+      }
+      return dto;
+    });
   }
 
   async removeSuppliedItem(scope: AuthenticatedCompanyScope, itemId: string) {
