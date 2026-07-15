@@ -1296,12 +1296,30 @@ export function MachineMobilization({
 }) {
   const allocations = form.watch("initialMachineAllocations");
   const employeeAllocations = form.watch("initialEmployeeAllocations");
+  const [activeMachineId, setActiveMachineId] = React.useState<string | null>(
+    null,
+  );
+  const [draft, setDraft] = React.useState<{
+    machineId: string;
+    operatorEmploymentId: string;
+  } | null>(null);
+  const [machineMessage, setMachineMessage] = React.useState("");
   const teamEmploymentIds = React.useMemo(
     () => new Set(employeeAllocations.map((item) => item.employmentId)),
     [employeeAllocations],
   );
   const teamOptions = options.employees.filter((option) =>
     teamEmploymentIds.has(option.id),
+  );
+  const usedOperatorIds = React.useMemo(
+    () =>
+      new Set(
+        allocations
+          .filter((allocation) => allocation.machineId !== activeMachineId)
+          .map((allocation) => allocation.operatorEmploymentId)
+          .filter(Boolean),
+      ),
+    [activeMachineId, allocations],
   );
 
   React.useEffect(() => {
@@ -1323,99 +1341,247 @@ export function MachineMobilization({
       });
   }, [allocations, form, teamEmploymentIds]);
 
-  const replaceAllocation = (
-    machineId: string,
-    patch: Partial<ProjectCommand["initialMachineAllocations"][number]>,
-  ) =>
+  React.useEffect(() => {
+    setDraft((current) =>
+      current && teamEmploymentIds.has(current.operatorEmploymentId)
+        ? current
+        : current
+          ? { ...current, operatorEmploymentId: "" }
+          : current,
+    );
+  }, [teamEmploymentIds]);
+
+  const cancelEditing = () => {
+    setActiveMachineId(null);
+    setDraft(null);
+    setMachineMessage("");
+  };
+  const beginEditing = (option: Option) => {
+    const allocation = allocations.find((item) => item.machineId === option.id);
+    if (!option.readingId) {
+      setMachineMessage("Esta máquina ainda não tem leitura inicial.");
+      return;
+    }
+    if (!allocation && teamOptions.length === 0) return;
+    setActiveMachineId(option.id);
+    setDraft({
+      machineId: option.id,
+      operatorEmploymentId: allocation?.operatorEmploymentId ?? "",
+    });
+    setMachineMessage("");
+  };
+  const removeAllocation = (machineId: string) => {
     form.setValue(
       "initialMachineAllocations",
-      allocations.map((item) =>
-        item.machineId === machineId ? { ...item, ...patch } : item,
-      ),
+      allocations.filter((item) => item.machineId !== machineId),
       { shouldDirty: true, shouldValidate: true },
     );
+    if (activeMachineId === machineId) cancelEditing();
+  };
+  const confirmDraft = () => {
+    if (!draft) return;
+    const option = options.machines.find((item) => item.id === draft.machineId);
+    if (!option?.readingId) {
+      setMachineMessage("Esta máquina ainda não tem leitura inicial.");
+      return;
+    }
+    if (!draft.operatorEmploymentId) {
+      setMachineMessage("Selecione um operador da equipe inicial.");
+      return;
+    }
+    if (usedOperatorIds.has(draft.operatorEmploymentId)) {
+      setMachineMessage("Este operador já está vinculado a outra máquina.");
+      return;
+    }
+    const allocation = {
+      machineId: draft.machineId,
+      startMeterReadingId: option.readingId,
+      operatorEmploymentId: draft.operatorEmploymentId,
+    };
+    form.setValue(
+      "initialMachineAllocations",
+      allocations.some((item) => item.machineId === draft.machineId)
+        ? allocations.map((item) =>
+            item.machineId === draft.machineId ? allocation : item,
+          )
+        : [...allocations, allocation],
+      { shouldDirty: true, shouldValidate: true },
+    );
+    cancelEditing();
+  };
+
+  const activeOption = activeMachineId
+    ? options.machines.find((option) => option.id === activeMachineId)
+    : undefined;
 
   return (
     <FormSection
       title="Mobilização inicial de máquinas"
       description="Opcional. Cada máquina selecionada precisa de um operador da equipe inicial."
     >
-      <p className="text-sm font-semibold text-muted-foreground">
-        {allocations.length} máquina(s) selecionada(s)
-      </p>
-      {teamOptions.length === 0 && (
-        <p className="text-sm font-medium text-muted-foreground">
-          Selecione funcionários na equipe inicial antes de vincular máquinas.
-        </p>
-      )}
-      <div className="grid gap-2">
-        {options.machines.length > 0 ? (
-          options.machines.map((option) => {
-            const allocation = allocations.find(
-              (item) => item.machineId === option.id,
-            );
-            const checked = Boolean(allocation);
-            const disabled = !option.readingId || teamOptions.length === 0;
-            return (
-              <div key={option.id} className="grid gap-3">
-                <SelectionRow
-                  checked={checked}
-                  disabled={disabled}
-                  onChange={(nextChecked) =>
-                    form.setValue(
-                      "initialMachineAllocations",
-                      nextChecked && option.readingId
-                        ? [
-                            ...allocations,
-                            {
-                              machineId: option.id,
-                              startMeterReadingId: option.readingId,
-                              operatorEmploymentId: "",
-                            },
-                          ]
-                        : allocations.filter(
-                            (item) => item.machineId !== option.id,
-                          ),
-                      { shouldDirty: true, shouldValidate: true },
-                    )
-                  }
-                >
-                  {option.label}
-                  {option.detail ? ` — leitura ${option.detail}` : ""}
-                  {!option.readingId ? " — leitura indisponível" : ""}
-                  {teamOptions.length === 0 ? " — equipe não selecionada" : ""}
-                </SelectionRow>
-                {allocation && (
-                  <label className="grid gap-1.5 border-t border-border pt-3 text-sm font-semibold">
-                    <span>Operador</span>
-                    <select
-                      className={controlClass}
-                      value={allocation.operatorEmploymentId}
-                      onChange={(event) =>
-                        replaceAllocation(option.id, {
+      {activeOption && draft ? (
+        <div className="grid gap-5 rounded-lg border border-primary/35 bg-primary/[0.035] p-4 sm:p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border pb-4">
+            <div className="min-w-0">
+              <p className="text-base font-bold">{activeOption.label}</p>
+              <p className="mt-1 text-sm font-medium text-muted-foreground">
+                Leitura inicial: {activeOption.detail || "Não informada"}
+              </p>
+            </div>
+            <span className="inline-flex min-h-8 items-center rounded-md bg-primary px-2.5 text-sm font-bold text-primary-foreground">
+              Em configuração
+            </span>
+          </div>
+          <div className="grid gap-4">
+            <label className="grid gap-1.5 text-sm font-semibold">
+              <span>Operador da equipe</span>
+              <select
+                className={controlClass}
+                value={draft.operatorEmploymentId}
+                onChange={(event) => {
+                  setDraft((current) =>
+                    current
+                      ? {
+                          ...current,
                           operatorEmploymentId: event.target.value,
-                        })
-                      }
-                    >
-                      <option value="">Selecione um operador da equipe</option>
-                      {teamOptions.map((employee) => (
-                        <option key={employee.id} value={employee.id}>
-                          {employee.label}
-                          {employee.detail ? ` — ${employee.detail}` : ""}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                )}
-              </div>
-            );
-          })
-        ) : (
-          <p className="text-sm font-medium text-muted-foreground">
-            Nenhuma máquina disponível para mobilização.
+                        }
+                      : current,
+                  );
+                  setMachineMessage("");
+                }}
+              >
+                <option value="">Selecione um operador da equipe</option>
+                {teamOptions.map((employee) => (
+                  <option
+                    key={employee.id}
+                    value={employee.id}
+                    disabled={usedOperatorIds.has(employee.id)}
+                  >
+                    {employee.label}
+                    {employee.detail ? ` — ${employee.detail}` : ""}
+                    {usedOperatorIds.has(employee.id)
+                      ? " — já alocado em outra máquina"
+                      : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          {machineMessage && (
+            <p
+              role="status"
+              className="text-sm font-semibold text-muted-foreground"
+            >
+              {machineMessage}
+            </p>
+          )}
+          <div className="flex flex-wrap justify-end gap-2 border-t border-border pt-4">
+            <Button type="button" variant="outline" onClick={cancelEditing}>
+              <X className="size-4" />
+              Cancelar
+            </Button>
+            <Button type="button" onClick={confirmDraft}>
+              <Check className="size-4" />
+              Confirmar máquina
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <p className="text-sm font-semibold text-muted-foreground">
+            {allocations.length} máquina(s) selecionada(s)
           </p>
-        )}
-      </div>
+          {teamOptions.length === 0 && (
+            <p className="text-sm font-medium text-muted-foreground">
+              Selecione funcionários na equipe inicial antes de vincular
+              máquinas.
+            </p>
+          )}
+          {machineMessage && (
+            <p
+              role="status"
+              className="text-sm font-semibold text-muted-foreground"
+            >
+              {machineMessage}
+            </p>
+          )}
+          <div className="grid gap-2">
+            {options.machines.length > 0 ? (
+              options.machines.map((option) => {
+                const allocation = allocations.find(
+                  (item) => item.machineId === option.id,
+                );
+                const operator = allocation
+                  ? options.employees.find(
+                      (employee) =>
+                        employee.id === allocation.operatorEmploymentId,
+                    )
+                  : undefined;
+                if (!allocation) {
+                  const disabled =
+                    !option.readingId || teamOptions.length === 0;
+                  return (
+                    <SelectionRow
+                      key={option.id}
+                      checked={false}
+                      disabled={disabled}
+                      onChange={(checked) => checked && beginEditing(option)}
+                    >
+                      {option.label}
+                      {option.detail ? ` — leitura ${option.detail}` : ""}
+                      {!option.readingId ? " — leitura indisponível" : ""}
+                      {teamOptions.length === 0
+                        ? " — equipe não selecionada"
+                        : ""}
+                    </SelectionRow>
+                  );
+                }
+                return (
+                  <div
+                    key={option.id}
+                    className="flex min-h-11 flex-wrap items-center gap-2 rounded-md border border-primary/35 bg-primary/[0.035] px-3 py-2"
+                  >
+                    <Check
+                      className="size-4 shrink-0 text-primary"
+                      aria-hidden="true"
+                    />
+                    <p className="min-w-0 flex-1 text-sm font-semibold">
+                      {option.label}
+                    </p>
+                    <span className="min-h-7 rounded-md bg-background px-2 py-1 text-xs font-semibold text-muted-foreground">
+                      Leitura {option.detail || "não informada"} ·{" "}
+                      {operator?.label || "Operador pendente"}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-lg"
+                      aria-label={`Editar máquina ${option.label}`}
+                      disabled={teamOptions.length === 0}
+                      onClick={() => beginEditing(option)}
+                    >
+                      <Pencil className="size-4" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-lg"
+                      aria-label={`Remover máquina ${option.label}`}
+                      onClick={() => removeAllocation(option.id)}
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </div>
+                );
+              })
+            ) : (
+              <p className="text-sm font-medium text-muted-foreground">
+                Nenhuma máquina disponível para mobilização.
+              </p>
+            )}
+          </div>
+        </>
+      )}
     </FormSection>
   );
 }

@@ -159,6 +159,33 @@ describe("Projects DTO", () => {
     expect(
       projectCommandSchema.safeParse({
         ...command,
+        initialEmployeeAllocations: [
+          {
+            employmentId: operator,
+            confirmedJobRolePeriodId: "00000000-0000-4000-8000-000000000402",
+            expectedDailyWorkloadMinutes: 480,
+            compensationMode: "monthly",
+            compensationValue: "0.00",
+            overtimeRate: "0.00",
+          },
+        ],
+        initialMachineAllocations: [
+          {
+            machineId: "00000000-0000-4000-8000-000000000501",
+            startMeterReadingId: "00000000-0000-4000-8000-000000000601",
+            operatorEmploymentId: operator,
+          },
+          {
+            machineId: "00000000-0000-4000-8000-000000000502",
+            startMeterReadingId: "00000000-0000-4000-8000-000000000602",
+            operatorEmploymentId: operator,
+          },
+        ],
+      }).success,
+    ).toBe(false);
+    expect(
+      projectCommandSchema.safeParse({
+        ...command,
         initialMachineAllocations: [
           {
             machineId: "00000000-0000-4000-8000-000000000501",

@@ -124,6 +124,14 @@ describe("projectCommandSchema", () => {
     ];
     expect(projectCommandSchema.safeParse(command).success).toBe(true);
 
+    command.initialMachineAllocations.push({
+      machineId: "00000000-0000-4000-8000-000000000502",
+      startMeterReadingId: "00000000-0000-4000-8000-000000000602",
+      operatorEmploymentId: operator,
+    });
+    expect(projectCommandSchema.safeParse(command).success).toBe(false);
+
+    command.initialMachineAllocations.pop();
     command.initialMachineAllocations[0].operatorEmploymentId =
       "00000000-0000-4000-8000-000000000303";
     expect(projectCommandSchema.safeParse(command).success).toBe(false);

@@ -419,6 +419,15 @@ export const projectCommandSchema = z
     const teamEmploymentIds = new Set(
       command.initialEmployeeAllocations.map((item) => item.employmentId),
     );
+    const machineOperatorIds = command.initialMachineAllocations.map(
+      (item) => item.operatorEmploymentId,
+    );
+    if (new Set(machineOperatorIds).size !== machineOperatorIds.length)
+      context.addIssue({
+        code: "custom",
+        path: ["initialMachineAllocations"],
+        message: "Um operador não pode operar duas máquinas ao mesmo tempo.",
+      });
     command.initialMachineAllocations.forEach((allocation, index) => {
       if (!teamEmploymentIds.has(allocation.operatorEmploymentId))
         context.addIssue({

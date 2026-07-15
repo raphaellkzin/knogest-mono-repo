@@ -47,6 +47,12 @@ const options: ProjectWizardOptions = {
       detail: "10.00",
       readingId: "reading-1",
     },
+    {
+      id: "machine-2",
+      label: "Trator",
+      detail: "20.00",
+      readingId: "reading-2",
+    },
   ],
   suppliers: [],
   suppliedItems: [],
@@ -115,21 +121,52 @@ function ReviewHarness() {
   );
 }
 
-function MachineHarness() {
+function MachineHarness({
+  duplicateOperator = false,
+  withTeam = true,
+}: {
+  duplicateOperator?: boolean;
+  withTeam?: boolean;
+} = {}) {
   const form = useForm<ProjectCommand>({
     defaultValues: {
       ...structuredClone(emptyProjectCommand),
-      initialEmployeeAllocations: [
-        {
-          employmentId: "employee-1",
-          confirmedJobRoleId: "job-role-1",
-          confirmedJobRolePeriodId: "role-period-1",
-          expectedDailyWorkloadMinutes: 480,
-          compensationMode: "monthly",
-          compensationValue: "0.00",
-          overtimeRate: "0.00",
-        },
-      ],
+      initialEmployeeAllocations: withTeam
+        ? [
+            {
+              employmentId: "employee-1",
+              confirmedJobRoleId: "job-role-1",
+              confirmedJobRolePeriodId: "role-period-1",
+              expectedDailyWorkloadMinutes: 480,
+              compensationMode: "monthly",
+              compensationValue: "0.00",
+              overtimeRate: "0.00",
+            },
+            {
+              employmentId: "employee-2",
+              confirmedJobRoleId: "job-role-1",
+              confirmedJobRolePeriodId: "role-period-2",
+              expectedDailyWorkloadMinutes: 480,
+              compensationMode: "monthly",
+              compensationValue: "0.00",
+              overtimeRate: "0.00",
+            },
+          ]
+        : [],
+      initialMachineAllocations: duplicateOperator
+        ? [
+            {
+              machineId: "machine-1",
+              startMeterReadingId: "reading-1",
+              operatorEmploymentId: "employee-1",
+            },
+            {
+              machineId: "machine-2",
+              startMeterReadingId: "reading-2",
+              operatorEmploymentId: "employee-1",
+            },
+          ]
+        : [],
     },
   });
   const machineAllocations = useWatch({
@@ -297,7 +334,12 @@ describe("Project wizard polish", () => {
     render(<MachineHarness />);
 
     await user.click(screen.getByLabelText(/Escavadeira/));
-    await user.selectOptions(screen.getByLabelText("Operador"), "employee-1");
+    expect(screen.queryByText("Operador confirmado")).toBeNull();
+    await user.selectOptions(
+      screen.getByLabelText("Operador da equipe"),
+      "employee-1",
+    );
+    await user.click(screen.getByRole("button", { name: "Confirmar máquina" }));
 
     expect(screen.getByRole("status").textContent).toContain(
       '"operatorEmploymentId":"employee-1"',
@@ -305,9 +347,114 @@ describe("Project wizard polish", () => {
 
     await user.click(screen.getByRole("button", { name: "Remover equipe" }));
 
-    expect(screen.getByRole("status").textContent).toContain(
-      '"operatorEmploymentId":""',
+    await waitFor(() =>
+      expect(screen.getByRole("status").textContent).toContain(
+        '"operatorEmploymentId":""',
+      ),
     );
+  });
+
+  it("removes a confirmed machine allocation from the initial mobilization", async () => {
+    const user = userEvent.setup();
+    render(<MachineHarness />);
+
+    await user.click(screen.getByLabelText(/Escavadeira/));
+    await user.selectOptions(
+      screen.getByLabelText("Operador da equipe"),
+      "employee-1",
+    );
+    await user.click(screen.getByRole("button", { name: "Confirmar máquina" }));
+    await user.click(
+      screen.getByRole("button", { name: "Remover máquina Escavadeira" }),
+    );
+
+    expect(screen.getByRole("status").textContent).toBe("[]");
+  });
+
+  it("keeps an assigned operator unavailable for other machines", async () => {
+    const user = userEvent.setup();
+    render(<MachineHarness />);
+
+    await user.click(screen.getByLabelText(/Escavadeira/));
+    await user.selectOptions(
+      screen.getByLabelText("Operador da equipe"),
+      "employee-1",
+    );
+    await user.click(screen.getByRole("button", { name: "Confirmar máquina" }));
+
+    await user.click(screen.getByLabelText(/Trator/));
+    expect(
+      (
+        screen.getByRole("option", {
+          name: /Ana Silva — Engenheira — já alocado em outra máquina/,
+        }) as HTMLOptionElement
+      ).disabled,
+    ).toBe(true);
+
+    await user.selectOptions(
+      screen.getByLabelText("Operador da equipe"),
+      "employee-2",
+    );
+    await user.click(screen.getByRole("button", { name: "Confirmar máquina" }));
+    await user.click(
+      screen.getByRole("button", { name: "Editar máquina Escavadeira" }),
+    );
+
+    expect(
+      (
+        screen.getByRole("option", {
+          name: "Ana Silva — Engenheira",
+        }) as HTMLOptionElement
+      ).disabled,
+    ).toBe(false);
+
+    await user.click(screen.getByRole("button", { name: "Cancelar" }));
+    await user.click(
+      screen.getByRole("button", { name: "Remover máquina Escavadeira" }),
+    );
+    await user.click(screen.getByLabelText(/Escavadeira/));
+
+    expect(
+      (
+        screen.getByRole("option", {
+          name: "Ana Silva — Engenheira",
+        }) as HTMLOptionElement
+      ).disabled,
+    ).toBe(false);
+  });
+
+  it("blocks confirmation when a duplicated operator reaches the machine draft", async () => {
+    const user = userEvent.setup();
+    render(<MachineHarness duplicateOperator />);
+
+    await user.click(
+      screen.getByRole("button", { name: "Editar máquina Trator" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Confirmar máquina" }));
+
+    expect(
+      screen.getByText("Este operador já está vinculado a outra máquina."),
+    ).toBeTruthy();
+  });
+
+  it("keeps machines unavailable until the initial team has employees", async () => {
+    const user = userEvent.setup();
+    render(<MachineHarness withTeam={false} />);
+
+    expect(
+      screen.getByText(
+        "Selecione funcionários na equipe inicial antes de vincular máquinas.",
+      ),
+    ).toBeTruthy();
+    expect(
+      (screen.getByLabelText(/Escavadeira/) as HTMLInputElement).disabled,
+    ).toBe(true);
+
+    await user.click(screen.getByLabelText(/Escavadeira/));
+
+    expect(
+      screen.queryByRole("button", { name: "Confirmar máquina" }),
+    ).toBeNull();
   });
 
   it("keeps project-only job roles temporary inside the current wizard session", async () => {
