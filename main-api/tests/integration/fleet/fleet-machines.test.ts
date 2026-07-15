@@ -362,7 +362,33 @@ describe("fleet Machine registry and meter readings", () => {
             operatorEmploymentId: employmentId,
           },
         ],
-        projectFuelAgreements: [],
+        projectSupplierOffers: [
+          {
+            supplier: {
+              entityType: "legal_entity",
+              document: "11.222.333/0001-81",
+              fullName: null,
+              legalName: "Synthetic Supplier",
+              tradeName: null,
+              phone: null,
+              email: null,
+              addressLine: null,
+              city: null,
+              state: null,
+              postalCode: null,
+              saveGlobally: false,
+            },
+            item: {
+              name: "Diesel S10",
+              baseUnitId: "00000000-0000-4000-8000-00000000a001",
+              saveGlobally: false,
+            },
+            sourceOfferId: null,
+            purchaseUnitId: "00000000-0000-4000-8000-00000000a001",
+            conversionToBase: "1.000000",
+            price: "1.0000",
+          },
+        ],
       },
     );
     expect(

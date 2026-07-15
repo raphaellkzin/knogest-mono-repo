@@ -4,8 +4,7 @@ import { getApiV1ProjectsProjectid } from "@/generated/clients/getApiV1ProjectsP
 import { getApiV1Clients } from "@/generated/clients/getApiV1Clients";
 import { getApiV1Employees } from "@/generated/clients/getApiV1Employees";
 import { getApiV1Machines } from "@/generated/clients/getApiV1Machines";
-import { getApiV1FuelSuppliers } from "@/generated/clients/getApiV1FuelSuppliers";
-import { getApiV1FuelTypes } from "@/generated/clients/getApiV1FuelTypes";
+import client from "@/lib/api/server-client";
 
 export async function getProjectRegistry(search?: string, cursor?: string) {
   return (
@@ -26,7 +25,7 @@ export async function getProjectDetail(projectId: string) {
 }
 
 export async function getProjectWizardOptions() {
-  const [clients, employees, machines, suppliers, fuelTypes] =
+  const [clients, employees, machines, suppliers, suppliedItems, units] =
     await Promise.all([
       getApiV1Clients({
         params: {
@@ -51,14 +50,28 @@ export async function getProjectWizardOptions() {
           sortDirection: "asc",
         },
       }),
-      getApiV1FuelSuppliers({
-        params: {
-          limit: 100,
-          sortBy: "name",
-          sortDirection: "asc",
-        },
+      client<{
+        success: true;
+        data: {
+          data: Array<{
+            id: string;
+            name: string;
+            document: { maskedDocument: string };
+          }>;
+        };
+      }>({
+        url: "/api/v1/suppliers",
+        method: "GET",
+        params: { limit: 100, sortBy: "name", sortDirection: "asc" },
       }),
-      getApiV1FuelTypes(),
+      client<{
+        success: true;
+        data: Array<{ id: string; name: string; baseUnitId: string }>;
+      }>({ url: "/api/v1/supplied-items", method: "GET" }),
+      client<{
+        success: true;
+        data: Array<{ id: string; code: string; name: string }>;
+      }>({ url: "/api/v1/measurement-units", method: "GET" }),
     ]);
   return {
     clients: clients.data.data.map((item) => ({
@@ -85,11 +98,21 @@ export async function getProjectWizardOptions() {
         detail: `${item.latestMeterReading!.value}`,
         readingId: item.latestMeterReading!.id,
       })),
-    suppliers: suppliers.data.data.map((item) => ({
+    suppliers: suppliers.data.data.data.map((item) => ({
       id: item.id,
       label: item.name,
       detail: item.document.maskedDocument,
     })),
-    fuelTypes: fuelTypes.data,
+    suppliedItems: suppliedItems.data.data.map((item) => ({
+      id: item.id,
+      label: item.name,
+      detail: item.baseUnitId,
+      baseUnitId: item.baseUnitId,
+    })),
+    units: units.data.data.map((item) => ({
+      id: item.id,
+      label: item.code,
+      detail: item.name,
+    })),
   };
 }

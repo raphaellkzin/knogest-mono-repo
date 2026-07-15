@@ -27,6 +27,10 @@ export interface CommercialRegistryRecord {
   phone: string | null;
   email: string | null;
   addressLine: string | null;
+  addressStreet?: string | null;
+  addressNumber?: string | null;
+  addressComplement?: string | null;
+  addressNeighborhood?: string | null;
   city: string | null;
   state: string | null;
   postalCode: string | null;
@@ -59,12 +63,35 @@ export interface CommercialRegistryCreateData {
   phone?: string;
   email?: string;
   addressLine?: string;
+  addressStreet?: string;
+  addressNumber?: string;
+  addressComplement?: string;
+  addressNeighborhood?: string;
   city?: string;
   state?: string;
   postalCode?: string;
+  isGlobal?: boolean;
+  projectId?: string;
 }
 
-const registrySelect = {
+export interface CommercialRegistryUpdateData {
+  displayName?: string;
+  fullName?: string | null;
+  legalName?: string | null;
+  tradeName?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  addressLine?: string | null;
+  addressStreet?: string | null;
+  addressNumber?: string | null;
+  addressComplement?: string | null;
+  addressNeighborhood?: string | null;
+  city?: string | null;
+  state?: string | null;
+  postalCode?: string | null;
+}
+
+const baseRegistrySelect = {
   id: true,
   corporationId: true,
   companyId: true,
@@ -91,6 +118,18 @@ const registrySelect = {
   createdAt: true,
   updatedAt: true,
 };
+
+const supplierRegistrySelect = {
+  ...baseRegistrySelect,
+  addressStreet: true,
+  addressNumber: true,
+  addressComplement: true,
+  addressNeighborhood: true,
+};
+
+export function commercialRegistryStore(context: HandlerContext) {
+  return context.prisma;
+}
 
 function isUniqueError(error: unknown): boolean {
   return (
@@ -132,14 +171,29 @@ export async function createCommercialRegistryHandler(
 ): Promise<CommercialRegistryRecord> {
   try {
     if (kind === "client") {
+      const clientData: Omit<
+        CommercialRegistryCreateData,
+        | "addressStreet"
+        | "addressNumber"
+        | "addressComplement"
+        | "addressNeighborhood"
+      > = { ...data };
+      delete (clientData as Partial<CommercialRegistryCreateData>)
+        .addressStreet;
+      delete (clientData as Partial<CommercialRegistryCreateData>)
+        .addressNumber;
+      delete (clientData as Partial<CommercialRegistryCreateData>)
+        .addressComplement;
+      delete (clientData as Partial<CommercialRegistryCreateData>)
+        .addressNeighborhood;
       return (await context.prisma.client.create({
-        data,
-        select: registrySelect,
+        data: clientData,
+        select: baseRegistrySelect,
       })) as CommercialRegistryRecord;
     }
     return (await context.prisma.fuelSupplier.create({
       data,
-      select: registrySelect,
+      select: supplierRegistrySelect,
     })) as CommercialRegistryRecord;
   } catch (error) {
     if (isUniqueError(error)) throw duplicateDocumentError();
@@ -233,6 +287,7 @@ export async function listCommercialRegistryHandler(
     corporationId: input.corporationId,
     companyId: input.companyId,
     isActive: true,
+    ...(kind === "fuelSupplier" ? { isGlobal: true } : {}),
     ...(input.entityType ? { entityType: input.entityType } : {}),
     ...searchWhere(input.search),
     ...boundaryWhere(input),
@@ -242,14 +297,14 @@ export async function listCommercialRegistryHandler(
       where: where as Prisma.ClientWhereInput,
       orderBy: orderBy(input),
       take: input.limit + 1,
-      select: registrySelect,
+      select: baseRegistrySelect,
     })) as CommercialRegistryRecord[];
   }
   return (await context.prisma.fuelSupplier.findMany({
     where: where as Prisma.FuelSupplierWhereInput,
     orderBy: orderBy(input) as Prisma.FuelSupplierOrderByWithRelationInput[],
     take: input.limit + 1,
-    select: registrySelect,
+    select: supplierRegistrySelect,
   })) as CommercialRegistryRecord[];
 }
 
@@ -268,15 +323,48 @@ export async function findCommercialRegistryDetailHandler(
     kind === "client"
       ? ((await context.prisma.client.findFirst({
           where,
-          select: registrySelect,
+          select: baseRegistrySelect,
         })) as CommercialRegistryRecord | null)
       : ((await context.prisma.fuelSupplier.findFirst({
           where,
-          select: registrySelect,
+          select: supplierRegistrySelect,
         })) as CommercialRegistryRecord | null);
 
   if (!record) throw notFoundError();
   return record;
+}
+
+export async function updateCommercialRegistryHandler(
+  context: HandlerContext,
+  kind: RegistryKind,
+  input: {
+    corporationId: string;
+    companyId: string;
+    id: string;
+    data: CommercialRegistryUpdateData;
+  },
+): Promise<CommercialRegistryRecord> {
+  const where = {
+    id: input.id,
+    corporationId: input.corporationId,
+    companyId: input.companyId,
+    isActive: true,
+  };
+  const result =
+    kind === "client"
+      ? await context.prisma.client.updateMany({ where, data: input.data })
+      : await context.prisma.fuelSupplier.updateMany({
+          where,
+          data: input.data,
+        });
+
+  if (result.count === 0) throw unavailableError();
+
+  return findCommercialRegistryDetailHandler(context, kind, {
+    corporationId: input.corporationId,
+    companyId: input.companyId,
+    id: input.id,
+  });
 }
 
 export async function findCommercialRegistryForRemovalHandler(
@@ -310,16 +398,29 @@ export async function findCommercialRemovalBlockersHandler(
         }
       : null;
   }
-  const rows = await context.prisma.projectFuelAgreement.findMany({
-    where: {
-      corporationId: input.corporationId,
-      companyId: input.companyId,
-      fuelSupplierId: input.id,
-      effectiveTo: null,
-    },
-    select: { projectId: true },
-    take: 100,
-  });
+  const [legacyRows, offerRows] = await Promise.all([
+    context.prisma.projectFuelAgreement.findMany({
+      where: {
+        corporationId: input.corporationId,
+        companyId: input.companyId,
+        fuelSupplierId: input.id,
+        effectiveTo: null,
+      },
+      select: { projectId: true },
+      take: 100,
+    }),
+    context.prisma.projectSupplierOffer.findMany({
+      where: {
+        corporationId: input.corporationId,
+        companyId: input.companyId,
+        supplierId: input.id,
+        effectiveTo: null,
+      },
+      select: { projectId: true },
+      take: 100,
+    }),
+  ]);
+  const rows = [...legacyRows, ...offerRows];
   return rows.length
     ? {
         projectIds: rows.map((row) => row.projectId),
@@ -367,11 +468,11 @@ export async function removeCommercialRegistryHandler(
     kind === "client"
       ? ((await context.prisma.client.findFirst({
           where: removedWhere,
-          select: registrySelect,
+          select: baseRegistrySelect,
         })) as CommercialRegistryRecord | null)
       : ((await context.prisma.fuelSupplier.findFirst({
           where: removedWhere,
-          select: registrySelect,
+          select: supplierRegistrySelect,
         })) as CommercialRegistryRecord | null);
 
   if (!record) throw unavailableError();
@@ -391,12 +492,13 @@ export async function listActiveFuelSupplierSelectorHandler(
     where: {
       corporationId: input.corporationId,
       companyId: input.companyId,
+      isGlobal: true,
       isActive: true,
       ...(searchWhere(input.search) as Prisma.FuelSupplierWhereInput),
     },
     orderBy: [{ displayName: "asc" }, { id: "asc" }],
     take: input.limit,
-    select: registrySelect,
+    select: supplierRegistrySelect,
   })) as CommercialRegistryRecord[];
 }
 

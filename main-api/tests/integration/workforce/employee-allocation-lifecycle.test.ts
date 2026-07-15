@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { buildApp } from "../../../src/app";
 import { OrganizationService } from "../../../src/modules/organization/organization.service";
+import type { ProjectCommand } from "../../../src/modules/projects/projects.dto";
 import { ProjectsService } from "../../../src/modules/projects/projects.service";
 import { resetIntegrationData } from "../reset-integration-data";
 
@@ -85,7 +86,10 @@ describe("Employee allocation lifecycle", () => {
       ],
     });
     const projectService = new ProjectsService(app.handlerContext);
-    const command = (name: string) => ({
+    const command = (
+      name: string,
+      supplierDocument: string,
+    ): ProjectCommand => ({
       name,
       address: {
         postalCode: "60170000",
@@ -114,7 +118,33 @@ describe("Employee allocation lifecycle", () => {
       breakTemplates: [],
       initialEmployeeAllocations: [],
       initialMachineAllocations: [],
-      projectFuelAgreements: [],
+      projectSupplierOffers: [
+        {
+          supplier: {
+            entityType: "legal_entity",
+            document: supplierDocument,
+            fullName: null,
+            legalName: "Synthetic Supplier",
+            tradeName: null,
+            phone: null,
+            email: null,
+            addressLine: null,
+            city: null,
+            state: null,
+            postalCode: null,
+            saveGlobally: false,
+          },
+          item: {
+            name: "Diesel S10",
+            baseUnitId: "00000000-0000-4000-8000-00000000a001",
+            saveGlobally: false,
+          },
+          sourceOfferId: null,
+          purchaseUnitId: "00000000-0000-4000-8000-00000000a001",
+          conversionToBase: "1.000000",
+          price: "1.0000",
+        },
+      ],
     });
     const scope = {
       corporationId: pilot.corporation.id,
@@ -123,17 +153,19 @@ describe("Employee allocation lifecycle", () => {
       userId: pilot.administrator.id,
       role: "MASTER_ADMIN" as const,
     };
+    const plannedSyntheticSupplierDocument = "11.222.333/0001-81";
+    const activeSyntheticSupplierDocument = "12.345.678/0001-95";
     const plannedResult = await projectService.finalize(
       scope,
       company.id,
       "00000000-0000-4000-8000-000000000001",
-      command("Planned"),
+      command("Planned", plannedSyntheticSupplierDocument),
     );
     const activeResult = await projectService.finalize(
       scope,
       company.id,
       "00000000-0000-4000-8000-000000000002",
-      command("Active"),
+      command("Active", activeSyntheticSupplierDocument),
     );
     const planned = await app.prisma.project.findUniqueOrThrow({
       where: { id: plannedResult.projectId },

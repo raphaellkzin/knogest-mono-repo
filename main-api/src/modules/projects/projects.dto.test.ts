@@ -36,7 +36,16 @@ const command = {
   breakTemplates: [],
   initialEmployeeAllocations: [],
   initialMachineAllocations: [],
-  projectFuelAgreements: [],
+  projectSupplierOffers: [
+    {
+      supplierId: "00000000-0000-4000-8000-000000000701",
+      itemId: "00000000-0000-4000-8000-000000000702",
+      sourceOfferId: null,
+      purchaseUnitId: "00000000-0000-4000-8000-00000000a001",
+      conversionToBase: "1.000000",
+      price: "1.0000",
+    },
+  ],
 };
 
 describe("Projects DTO", () => {

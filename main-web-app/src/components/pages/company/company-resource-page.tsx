@@ -498,7 +498,7 @@ const resourceConfigs: Record<CompanyResource, ResourceConfig> = {
         label: "Categoria",
         required: true,
         options: [
-          "Combustível",
+          "Fornecimento",
           "Transporte",
           "Ensaios",
           "Peças",
@@ -526,7 +526,7 @@ const resourceConfigs: Record<CompanyResource, ResourceConfig> = {
       {
         id: "for-1",
         name: "Petrobase Diesel",
-        category: "Combustível",
+        category: "Fornecimento",
         contact: "Cláudia Nunes",
         contract: "R$ 6,11/L",
         status: "Ativo",

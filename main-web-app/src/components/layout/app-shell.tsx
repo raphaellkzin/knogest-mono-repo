@@ -51,7 +51,7 @@ const areaMeta: Record<
     title: "Obras",
   },
   suppliers: {
-    title: "Fornecedores de combustível",
+    title: "Fornecedores",
   },
   settings: {
     title: "Configurações",
@@ -86,7 +86,7 @@ const navItems = [
   { href: "/home/obras", label: "Obras", icon: Map, area: "works" },
   {
     href: "/home/fornecedores",
-    label: "Combustível",
+    label: "Fornecedores",
     icon: Fuel,
     area: "suppliers",
   },

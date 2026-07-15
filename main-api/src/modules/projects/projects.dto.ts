@@ -38,7 +38,9 @@ const optionalNullableText = (max: number) =>
     )
     .transform((value) => value || null);
 const optionalContractText = (max: number) =>
-  z.union([nullableText(max), z.undefined()]).transform((value) => value ?? null);
+  z
+    .union([nullableText(max), z.undefined()])
+    .transform((value) => value ?? null);
 
 function decimal(scale: number, integral: number, positive = false) {
   const pattern = new RegExp(`^\\d{1,${integral}}\\.\\d{${scale}}$`, "u");
@@ -54,8 +56,45 @@ const coordinate = (min: number, max: number) =>
     .regex(/^-?\d{1,3}\.\d{6}$/u)
     .refine((value) => Number(value) >= min && Number(value) <= max);
 const uuid = z.string().uuid();
-const unique = <T>(items: T[], key: (item: T) => string) =>
-  new Set(items.map(key)).size === items.length;
+
+const supplierInlineSchema = z
+  .object({
+    entityType: z.enum(["individual", "legal_entity"]),
+    document: z.string().trim().min(1).max(32),
+    fullName: optionalNullableText(180),
+    legalName: optionalNullableText(180),
+    tradeName: optionalNullableText(180),
+    phone: optionalNullableText(32),
+    email: optionalNullableText(254),
+    addressLine: optionalNullableText(220),
+    city: optionalNullableText(120),
+    state: optionalNullableText(80),
+    postalCode: optionalNullableText(24),
+    saveGlobally: z.boolean().default(false),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.entityType === "individual" && !value.fullName)
+      ctx.addIssue({
+        code: "custom",
+        path: ["fullName"],
+        message: "Supplier full name required",
+      });
+    if (value.entityType === "legal_entity" && !value.legalName)
+      ctx.addIssue({
+        code: "custom",
+        path: ["legalName"],
+        message: "Supplier legal name required",
+      });
+  });
+
+const suppliedItemInlineSchema = z
+  .object({
+    name: text(160),
+    baseUnitId: uuid,
+    saveGlobally: z.boolean().default(false),
+  })
+  .strict();
 
 export const projectAddressSchema = z
   .object({
@@ -184,27 +223,49 @@ export const projectCommandSchema = z
           .strict(),
       )
       .max(100),
-    projectFuelAgreements: z
+    projectSupplierOffers: z
       .array(
         z
           .object({
-            fuelSupplierId: uuid,
-            fuelTypes: z
-              .array(
-                z
-                  .object({
-                    fuelTypeId: z.enum(["diesel-s10", "diesel-s500"]),
-                    pricePerLiter: decimal(4, 14, true),
-                  })
-                  .strict(),
-              )
-              .min(1)
-              .max(2)
-              .refine((items) => unique(items, (item) => item.fuelTypeId)),
+            supplierId: uuid.optional(),
+            supplier: supplierInlineSchema.optional(),
+            itemId: uuid.optional(),
+            item: suppliedItemInlineSchema.optional(),
+            sourceOfferId: uuid.nullable().optional(),
+            purchaseUnitId: uuid,
+            conversionToBase: decimal(6, 12, true),
+            price: decimal(4, 14, true),
           })
-          .strict(),
+          .strict()
+          .superRefine((offer, ctx) => {
+            if (!offer.supplierId && !offer.supplier)
+              ctx.addIssue({
+                code: "custom",
+                path: ["supplier"],
+                message: "Supplier is required",
+              });
+            if (offer.supplierId && offer.supplier)
+              ctx.addIssue({
+                code: "custom",
+                path: ["supplierId"],
+                message: "Choose an existing supplier or create a new one",
+              });
+            if (!offer.itemId && !offer.item)
+              ctx.addIssue({
+                code: "custom",
+                path: ["item"],
+                message: "Supplied item is required",
+              });
+            if (offer.itemId && offer.item)
+              ctx.addIssue({
+                code: "custom",
+                path: ["itemId"],
+                message: "Choose an existing item or create a new one",
+              });
+          }),
       )
-      .max(10),
+      .min(1)
+      .max(50),
   })
   .strict()
   .superRefine((command, context) => {
@@ -247,8 +308,14 @@ export const projectCommandSchema = z
         command.initialMachineAllocations.map((item) => item.machineId),
       ],
       [
-        "projectFuelAgreements",
-        command.projectFuelAgreements.map((item) => item.fuelSupplierId),
+        "projectSupplierOffers",
+        command.projectSupplierOffers
+          .map((item) =>
+            item.supplierId && item.itemId && item.purchaseUnitId
+              ? `${item.supplierId}:${item.itemId}:${item.purchaseUnitId}`
+              : "",
+          )
+          .filter(Boolean),
       ],
     ];
     for (const [path, ids] of collections)
@@ -301,6 +368,10 @@ export const projectResourceDetailSchema = z
       "machine",
       "fuelSupplier",
       "fuelType",
+      "supplier",
+      "suppliedItem",
+      "measurementUnit",
+      "supplierOffer",
       "workspace",
       "jobRole",
     ]),
@@ -312,6 +383,7 @@ export const projectResourceDetailSchema = z
       "employees",
       "machines",
       "fuelAgreements",
+      "supplierOffers",
     ]),
     reason: z.enum([
       "unavailable",

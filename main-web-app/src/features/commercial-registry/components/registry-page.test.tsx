@@ -2,9 +2,15 @@
 
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { RegistryPage } from "./registry-page";
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: vi.fn(),
+  }),
+}));
 
 const initialState = { ok: false, message: "" };
 const query = { sortBy: "createdAt" as const, sortDirection: "desc" as const };

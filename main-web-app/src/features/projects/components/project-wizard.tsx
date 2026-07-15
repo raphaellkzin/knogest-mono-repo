@@ -39,6 +39,7 @@ type Option = {
   detail?: string;
   readingId?: string;
   jobRolePeriodId?: string;
+  baseUnitId?: string;
 };
 
 type AddressAutofillState =
@@ -51,7 +52,8 @@ export type ProjectWizardOptions = {
   employees: Option[];
   machines: Option[];
   suppliers: Option[];
-  fuelTypes: Array<{ id: string; name: string }>;
+  suppliedItems: Option[];
+  units: Option[];
 };
 
 const controlClass =
@@ -79,7 +81,7 @@ const projectFieldLabels: Partial<Record<Path<ProjectCommand>, string>> = {
   breakTemplates: "Intervalos sugeridos",
   initialEmployeeAllocations: "Mobilização inicial da equipe",
   initialMachineAllocations: "Mobilização inicial de máquinas",
-  projectFuelAgreements: "Acordos de combustível",
+  projectSupplierOffers: "Fornecimentos da obra",
 };
 
 function getFieldError(error: unknown, name: string): unknown {
@@ -1052,64 +1054,333 @@ export function MachineMobilization({
   );
 }
 
-function FuelAgreements({
+function SupplierOffers({
   form,
   options,
 }: {
   form: UseFormReturn<ProjectCommand>;
   options: ProjectWizardOptions;
 }) {
-  const agreements = form.watch("projectFuelAgreements");
+  const offers = form.watch("projectSupplierOffers");
+  const addOffer = () =>
+    form.setValue(
+      "projectSupplierOffers",
+      [
+        ...offers,
+        {
+          supplierId: options.suppliers[0]?.id,
+          supplier:
+            options.suppliers.length > 0
+              ? undefined
+              : {
+                  entityType: "legal_entity",
+                  document: "",
+                  fullName: null,
+                  legalName: "",
+                  tradeName: null,
+                  phone: null,
+                  email: null,
+                  addressLine: null,
+                  city: null,
+                  state: null,
+                  postalCode: null,
+                  saveGlobally: false,
+                },
+          itemId: options.suppliedItems[0]?.id,
+          item:
+            options.suppliedItems.length > 0
+              ? undefined
+              : {
+                  name: "",
+                  baseUnitId: options.units[0]?.id ?? "",
+                  saveGlobally: false,
+                },
+          sourceOfferId: null,
+          purchaseUnitId: options.units[0]?.id ?? "",
+          conversionToBase: "1.000000",
+          price: "1.0000",
+        },
+      ],
+      { shouldDirty: true, shouldValidate: true },
+    );
+  const updateOffer = (
+    index: number,
+    value: ProjectCommand["projectSupplierOffers"][number],
+  ) => {
+    const next = [...offers];
+    next[index] = value;
+    form.setValue("projectSupplierOffers", next, {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+  };
   return (
     <FormSection
-      title="Acordos de combustível"
-      description="Opcional. Selecione até 10 fornecedores para iniciar o abastecimento da obra."
+      title="Fornecimentos da obra"
+      description="Obrigatório. Configure itens, unidades, conversão e preço específico desta obra."
     >
       <p className="text-sm font-semibold text-muted-foreground">
-        {agreements.length}/10 acordo(s) configurado(s)
+        {offers.length}/50 fornecimento(s) configurado(s)
       </p>
-      <div className="grid gap-2">
-        {options.suppliers.length > 0 ? (
-          options.suppliers.map((option) => {
-            const checked = agreements.some(
-              (item) => item.fuelSupplierId === option.id,
-            );
-            return (
-              <SelectionRow
-                key={option.id}
-                checked={checked}
-                onChange={(nextChecked) =>
-                  form.setValue(
-                    "projectFuelAgreements",
-                    nextChecked
-                      ? [
-                          ...agreements,
-                          {
-                            fuelSupplierId: option.id,
-                            fuelTypes: [
-                              {
-                                fuelTypeId: "diesel-s10",
-                                pricePerLiter: "1.0000",
-                              },
-                            ],
+      <div className="grid gap-3">
+        {offers.map((offer, index) => {
+          const item = offer.itemId
+            ? options.suppliedItems.find((option) => option.id === offer.itemId)
+            : null;
+          const baseUnit = options.units.find(
+            (option) => option.id === (item?.baseUnitId ?? offer.item?.baseUnitId),
+          );
+          return (
+            <div
+              key={index}
+              className="grid gap-3 rounded-lg border border-border bg-background p-3"
+            >
+              <div className="grid gap-3 md:grid-cols-2">
+                <label className="grid gap-1.5 text-sm font-semibold">
+                  <span>Fornecedor</span>
+                  <select
+                    className={controlClass}
+                    value={offer.supplierId ?? "__new"}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      updateOffer(index, {
+                        ...offer,
+                        supplierId: value === "__new" ? undefined : value,
+                        supplier:
+                          value === "__new"
+                            ? {
+                                entityType: "legal_entity",
+                                document: "",
+                                fullName: null,
+                                legalName: "",
+                                tradeName: null,
+                                phone: null,
+                                email: null,
+                                addressLine: null,
+                                city: null,
+                                state: null,
+                                postalCode: null,
+                                saveGlobally: false,
+                              }
+                            : undefined,
+                      });
+                    }}
+                  >
+                    {options.suppliers.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label}
+                      </option>
+                    ))}
+                    <option value="__new">Novo fornecedor desta obra</option>
+                  </select>
+                </label>
+                <label className="grid gap-1.5 text-sm font-semibold">
+                  <span>Item fornecido</span>
+                  <select
+                    className={controlClass}
+                    value={offer.itemId ?? "__new"}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      const selected = options.suppliedItems.find(
+                        (option) => option.id === value,
+                      );
+                      updateOffer(index, {
+                        ...offer,
+                        itemId: value === "__new" ? undefined : value,
+                        item:
+                          value === "__new"
+                            ? {
+                                name: "",
+                                baseUnitId: options.units[0]?.id ?? "",
+                                saveGlobally: false,
+                              }
+                            : undefined,
+                        purchaseUnitId:
+                          selected?.baseUnitId ??
+                          offer.purchaseUnitId ??
+                          options.units[0]?.id ??
+                          "",
+                      });
+                    }}
+                  >
+                    {options.suppliedItems.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label}
+                      </option>
+                    ))}
+                    <option value="__new">Novo item desta obra</option>
+                  </select>
+                </label>
+              </div>
+
+              {offer.supplier && (
+                <div className="grid gap-3 md:grid-cols-3">
+                  <label className="grid gap-1.5 text-sm font-semibold">
+                    <span>Documento</span>
+                    <Input
+                      className="h-11"
+                      value={offer.supplier.document}
+                      onChange={(event) =>
+                        updateOffer(index, {
+                          ...offer,
+                          supplier: {
+                            ...offer.supplier!,
+                            document: event.target.value,
                           },
-                        ]
-                      : agreements.filter(
-                          (item) => item.fuelSupplierId !== option.id,
-                        ),
-                    { shouldDirty: true, shouldValidate: true },
-                  )
-                }
-              >
-                {option.label} — Diesel S10 inicial
-              </SelectionRow>
-            );
-          })
-        ) : (
-          <p className="text-sm font-medium text-muted-foreground">
-            Nenhum fornecedor de combustível disponível.
-          </p>
-        )}
+                        })
+                      }
+                    />
+                  </label>
+                  <label className="grid gap-1.5 text-sm font-semibold md:col-span-2">
+                    <span>Razão social ou nome</span>
+                    <Input
+                      className="h-11"
+                      value={
+                        offer.supplier.legalName ??
+                        offer.supplier.fullName ??
+                        ""
+                      }
+                      onChange={(event) =>
+                        updateOffer(index, {
+                          ...offer,
+                          supplier: {
+                            ...offer.supplier!,
+                            legalName: event.target.value,
+                            fullName: event.target.value,
+                          },
+                        })
+                      }
+                    />
+                  </label>
+                  <label className="flex items-center gap-2 text-sm font-semibold md:col-span-3">
+                    <input
+                      type="checkbox"
+                      checked={offer.supplier.saveGlobally}
+                      onChange={(event) =>
+                        updateOffer(index, {
+                          ...offer,
+                          supplier: {
+                            ...offer.supplier!,
+                            saveGlobally: event.target.checked,
+                          },
+                        })
+                      }
+                    />
+                    Salvar fornecedor no cadastro global
+                  </label>
+                </div>
+              )}
+
+              {offer.item && (
+                <div className="grid gap-3 md:grid-cols-3">
+                  <label className="grid gap-1.5 text-sm font-semibold md:col-span-2">
+                    <span>Nome do item</span>
+                    <Input
+                      className="h-11"
+                      value={offer.item.name}
+                      onChange={(event) =>
+                        updateOffer(index, {
+                          ...offer,
+                          item: { ...offer.item!, name: event.target.value },
+                        })
+                      }
+                    />
+                  </label>
+                  <label className="grid gap-1.5 text-sm font-semibold">
+                    <span>Unidade-base</span>
+                    <select
+                      className={controlClass}
+                      value={offer.item.baseUnitId}
+                      onChange={(event) =>
+                        updateOffer(index, {
+                          ...offer,
+                          item: {
+                            ...offer.item!,
+                            baseUnitId: event.target.value,
+                          },
+                        })
+                      }
+                    >
+                      {options.units.map((option) => (
+                        <option key={option.id} value={option.id}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="flex items-center gap-2 text-sm font-semibold md:col-span-3">
+                    <input
+                      type="checkbox"
+                      checked={offer.item.saveGlobally}
+                      onChange={(event) =>
+                        updateOffer(index, {
+                          ...offer,
+                          item: {
+                            ...offer.item!,
+                            saveGlobally: event.target.checked,
+                          },
+                        })
+                      }
+                    />
+                    Salvar item no catálogo global
+                  </label>
+                </div>
+              )}
+
+              <div className="grid gap-3 md:grid-cols-[1fr_1fr_1fr_auto] md:items-end">
+                <label className="grid gap-1.5 text-sm font-semibold">
+                  <span>Unidade de compra</span>
+                  <select
+                    className={controlClass}
+                    value={offer.purchaseUnitId}
+                    onChange={(event) =>
+                      updateOffer(index, {
+                        ...offer,
+                        purchaseUnitId: event.target.value,
+                      })
+                    }
+                  >
+                    {options.units.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label} — {option.detail}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <MoneyField
+                  fractionDigits={6}
+                  form={form}
+                  label={`Conversão para ${baseUnit?.label ?? "unidade-base"}`}
+                  name={`projectSupplierOffers.${index}.conversionToBase` as Path<ProjectCommand>}
+                />
+                <MoneyField
+                  fractionDigits={4}
+                  form={form}
+                  label="Preço da obra"
+                  name={`projectSupplierOffers.${index}.price` as Path<ProjectCommand>}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() =>
+                    form.setValue(
+                      "projectSupplierOffers",
+                      offers.filter((_, currentIndex) => currentIndex !== index),
+                      { shouldDirty: true, shouldValidate: true },
+                    )
+                  }
+                >
+                  <Trash2 className="size-4" />
+                  Remover
+                </Button>
+              </div>
+            </div>
+          );
+        })}
+        <Button type="button" variant="outline" onClick={addOffer}>
+          <Plus className="size-4" />
+          Adicionar fornecimento
+        </Button>
       </div>
     </FormSection>
   );
@@ -1279,10 +1550,10 @@ export function ProjectWizardReview({
             }
           />
           <SummaryRow
-            label="Acordos de combustível"
+            label="Fornecimentos"
             value={
-              value.projectFuelAgreements.length > 0
-                ? `${value.projectFuelAgreements.length} acordo(s)`
+              value.projectSupplierOffers.length > 0
+                ? `${value.projectSupplierOffers.length} fornecimento(s)`
                 : "Não informado"
             }
           />
@@ -1409,10 +1680,10 @@ export function ProjectWizard({
         ),
       },
       {
-        title: "Combustível",
-        fields: ["projectFuelAgreements"],
+        title: "Fornecimentos",
+        fields: ["projectSupplierOffers"],
         fieldLabels: projectFieldLabels,
-        component: (form) => <FuelAgreements form={form} options={options} />,
+        component: (form) => <SupplierOffers form={form} options={options} />,
       },
       {
         title: "Revisão",

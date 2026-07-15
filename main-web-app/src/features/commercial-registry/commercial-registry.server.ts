@@ -2,12 +2,10 @@ import "server-only";
 
 import { getApiV1Clients } from "@/generated/clients/getApiV1Clients";
 import { getApiV1ClientsClientid } from "@/generated/clients/getApiV1ClientsClientid";
-import { getApiV1FuelSuppliers } from "@/generated/clients/getApiV1FuelSuppliers";
-import { getApiV1FuelSuppliersFuelsupplierid } from "@/generated/clients/getApiV1FuelSuppliersFuelsupplierid";
 import type { GetApiV1ClientsQueryParams } from "@/generated/models/GetApiV1Clients";
-import type { GetApiV1FuelSuppliersQueryParams } from "@/generated/models/GetApiV1FuelSuppliers";
+import client from "@/lib/api/server-client";
 
-export type RegistryKind = "clients" | "fuel-suppliers";
+export type RegistryKind = "clients" | "suppliers";
 
 export type RegistryListQuery = {
   cursor?: string;
@@ -19,15 +17,37 @@ export type RegistryListQuery = {
 
 export type RegistryListItem = Awaited<
   ReturnType<typeof getApiV1Clients>
->["data"]["data"][number] | Awaited<
-  ReturnType<typeof getApiV1FuelSuppliers>
 >["data"]["data"][number];
 
 export type RegistryDetail = Awaited<
   ReturnType<typeof getApiV1ClientsClientid>
->["data"] | Awaited<
-  ReturnType<typeof getApiV1FuelSuppliersFuelsupplierid>
->["data"];
+>["data"] & {
+  addressStreet?: string | null;
+  addressNumber?: string | null;
+  addressComplement?: string | null;
+  addressNeighborhood?: string | null;
+  offers?: SupplierOfferDetail[];
+};
+
+export type SupplierOfferDetail = {
+  id: string;
+  item: { id: string; name: string; baseUnitId: string } | null;
+  baseUnit: { id: string; code: string; name: string } | null;
+  purchaseUnit: { id: string; code: string; name: string } | null;
+  conversionToBase: string;
+  currentPrice: { id: string; price: string; effectiveFrom: string } | null;
+  priceHistory: {
+    id: string;
+    price: string;
+    effectiveFrom: string;
+    effectiveTo: string | null;
+  }[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type MeasurementUnitOption = { id: string; code: string; name: string };
+export type SuppliedItemOption = { id: string; name: string; baseUnitId: string };
 
 const pageSize = 10;
 
@@ -71,15 +91,14 @@ export async function getRegistryList(
   kind: RegistryKind,
   query: RegistryListQuery,
 ) {
-  const params: GetApiV1ClientsQueryParams | GetApiV1FuelSuppliersQueryParams =
-    {
+  const params: GetApiV1ClientsQueryParams = {
       limit: pageSize,
       cursor: query.cursor,
       search: query.search,
       entityType: query.entityType,
       sortBy: query.sortBy ?? "createdAt",
       sortDirection: query.sortDirection ?? "desc",
-    };
+  };
 
   if (kind === "clients") {
     const response = await getApiV1Clients({
@@ -88,10 +107,18 @@ export async function getRegistryList(
     return response.data;
   }
 
-  const response = await getApiV1FuelSuppliers({
-    params: params as GetApiV1FuelSuppliersQueryParams,
+  const response = await client<{
+    success: true;
+    data: {
+      data: RegistryListItem[];
+      pageInfo: { hasNextPage: boolean; nextCursor: string | null };
+    };
+  }>({
+    url: "/api/v1/suppliers",
+    method: "GET",
+    params,
   });
-  return response.data;
+  return response.data.data;
 }
 
 export async function getRegistryDetail(kind: RegistryKind, id: string) {
@@ -99,8 +126,26 @@ export async function getRegistryDetail(kind: RegistryKind, id: string) {
     const response = await getApiV1ClientsClientid({ clientId: id });
     return response.data as RegistryDetail;
   }
-  const response = await getApiV1FuelSuppliersFuelsupplierid({
-    fuelSupplierId: id,
+  const response = await client<{
+    success: true;
+    data: RegistryDetail;
+  }>({
+    url: `/api/v1/suppliers/${id}`,
+    method: "GET",
   });
-  return response.data as RegistryDetail;
+  return response.data.data;
+}
+
+export async function getSupplierCatalogOptions() {
+  const [units, items] = await Promise.all([
+    client<{ success: true; data: MeasurementUnitOption[] }>({
+      url: "/api/v1/measurement-units",
+      method: "GET",
+    }),
+    client<{ success: true; data: SuppliedItemOption[] }>({
+      url: "/api/v1/supplied-items",
+      method: "GET",
+    }),
+  ]);
+  return { units: units.data.data, items: items.data.data };
 }

@@ -27,6 +27,10 @@ const resourceSchema = z.object({
     "machine",
     "fuelSupplier",
     "fuelType",
+    "supplier",
+    "suppliedItem",
+    "measurementUnit",
+    "supplierOffer",
     "workspace",
     "jobRole",
   ]),
@@ -38,6 +42,7 @@ const resourceSchema = z.object({
     "employees",
     "machines",
     "fuelAgreements",
+    "supplierOffers",
   ]),
   reason: z.string(),
 });
@@ -123,7 +128,7 @@ export async function finalizeProjectAction(input: {
   try {
     const response = await postApiV1Projects(
       {
-        data: command,
+        data: command as never,
         headers: {
           "content-type": "application/json",
           "idempotency-key": key,

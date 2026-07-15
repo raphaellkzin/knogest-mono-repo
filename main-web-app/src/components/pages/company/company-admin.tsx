@@ -98,7 +98,7 @@ const projects = [
 const suppliers = [
   {
     name: "Petrobase Diesel",
-    category: "Combustível",
+    category: "Fornecimento",
     contract: "R$ 6,11/L",
     status: "Ativo",
   },

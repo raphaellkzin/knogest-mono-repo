@@ -4,13 +4,16 @@ import * as React from "react";
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ArrowDownAZ,
   Building2,
   CalendarArrowDown,
+  CheckCircle2,
   ChevronRight,
   Eye,
   FileSearch,
+  ListPlus,
   Plus,
   Search,
   Trash2,
@@ -50,6 +53,22 @@ type RegistryAction = (
 ) => Promise<RegistryActionState>;
 
 type RemoveAction = RegistryAction;
+
+type RegistryCepLookupResult =
+  | {
+      kind: "success";
+      address: {
+        street: string;
+        neighborhood: string;
+        city: string;
+        state: string;
+      };
+    }
+  | { kind: "failure"; message: string };
+
+type RegistryCepLookupAction = (
+  postalCode: string,
+) => Promise<RegistryCepLookupResult>;
 
 function SubmitButton({ formId, label }: { formId?: string; label: string }) {
   const { pending } = useFormStatus();
@@ -100,7 +119,9 @@ function Field({
 >) {
   const id = `registry-${name}`;
   return (
-    <div className={`grid gap-1.5 text-sm font-semibold ${className ?? ""}`}>
+    <div
+      className={`grid min-w-0 gap-1.5 text-sm font-semibold ${className ?? ""}`}
+    >
       <label htmlFor={id}>{label}</label>
       <Input
         id={id}
@@ -116,36 +137,6 @@ function Field({
   );
 }
 
-const BRAZILIAN_STATES = [
-  ["AC", "Acre"],
-  ["AL", "Alagoas"],
-  ["AP", "Amapá"],
-  ["AM", "Amazonas"],
-  ["BA", "Bahia"],
-  ["CE", "Ceará"],
-  ["DF", "Distrito Federal"],
-  ["ES", "Espírito Santo"],
-  ["GO", "Goiás"],
-  ["MA", "Maranhão"],
-  ["MT", "Mato Grosso"],
-  ["MS", "Mato Grosso do Sul"],
-  ["MG", "Minas Gerais"],
-  ["PA", "Pará"],
-  ["PB", "Paraíba"],
-  ["PR", "Paraná"],
-  ["PE", "Pernambuco"],
-  ["PI", "Piauí"],
-  ["RJ", "Rio de Janeiro"],
-  ["RN", "Rio Grande do Norte"],
-  ["RS", "Rio Grande do Sul"],
-  ["RO", "Rondônia"],
-  ["RR", "Roraima"],
-  ["SC", "Santa Catarina"],
-  ["SP", "São Paulo"],
-  ["SE", "Sergipe"],
-  ["TO", "Tocantins"],
-] as const;
-
 type IndividualDraft = { document: string; fullName: string };
 type LegalEntityDraft = {
   document: string;
@@ -156,9 +147,18 @@ type SharedDraft = {
   phone: string;
   email: string;
   addressLine: string;
+  addressStreet: string;
+  addressNumber: string;
+  addressComplement: string;
+  addressNeighborhood: string;
   city: string;
   state: string;
   postalCode: string;
+};
+
+type AddressAutofillState = {
+  status: "locked" | "manual" | "partial";
+  filled: Set<string>;
 };
 
 const emptyIndividualDraft: IndividualDraft = { document: "", fullName: "" };
@@ -171,6 +171,10 @@ const emptySharedDraft: SharedDraft = {
   phone: "",
   email: "",
   addressLine: "",
+  addressStreet: "",
+  addressNumber: "",
+  addressComplement: "",
+  addressNeighborhood: "",
   city: "",
   state: "",
   postalCode: "",
@@ -180,6 +184,7 @@ export function RegistryPage({
   action,
   copy,
   initialState,
+  lookupAddressByCep,
   pageInfo,
   query,
   removeAction,
@@ -188,11 +193,13 @@ export function RegistryPage({
   action: RegistryAction;
   copy: RegistryCopy;
   initialState: RegistryActionState;
+  lookupAddressByCep?: RegistryCepLookupAction;
   pageInfo: { hasNextPage: boolean; nextCursor: string | null };
   query: RegistryListQuery;
   removeAction: RemoveAction;
   rows: RegistryListItem[];
 }) {
+  const router = useRouter();
   const [entityType, setEntityType] = React.useState<
     "individual" | "legal_entity"
   >("individual");
@@ -203,6 +210,15 @@ export function RegistryPage({
   const [sharedDraft, setSharedDraft] =
     React.useState<SharedDraft>(emptySharedDraft);
   const [isCreateModalOpen, setIsCreateModalOpen] = React.useState(false);
+  const [isNextStepOpen, setIsNextStepOpen] = React.useState(false);
+  const [createdSupplierId, setCreatedSupplierId] = React.useState("");
+  const [isCepLoading, setIsCepLoading] = React.useState(false);
+  const [addressAutofill, setAddressAutofill] =
+    React.useState<AddressAutofillState>({
+      status: "locked",
+      filled: new Set(),
+    });
+  const lastLookupRef = React.useRef("");
   const [removeState, removeFormAction] = useActionState(
     removeAction,
     initialState,
@@ -221,11 +237,16 @@ export function RegistryPage({
     setLegalEntityDraft((draft) => ({ ...draft, [key]: value }));
   const setShared = (key: keyof SharedDraft, value: string) =>
     setSharedDraft((draft) => ({ ...draft, [key]: value }));
+  const addressIsLocked = addressAutofill.status === "locked" || isCepLoading;
+  const fieldIsDisabled = (name: keyof SharedDraft) =>
+    addressIsLocked || addressAutofill.filled.has(name);
   const resetCreateForm = React.useCallback(() => {
     setEntityType("individual");
     setIndividualDraft(emptyIndividualDraft);
     setLegalEntityDraft(emptyLegalEntityDraft);
     setSharedDraft(emptySharedDraft);
+    setAddressAutofill({ status: "locked", filled: new Set() });
+    lastLookupRef.current = "";
   }, []);
   const handleCreateModalChange = React.useCallback(
     (open: boolean) => {
@@ -234,6 +255,61 @@ export function RegistryPage({
     },
     [resetCreateForm],
   );
+  const lookupCep = async (digits: string) => {
+    if (lastLookupRef.current === digits || isCepLoading) return;
+    lastLookupRef.current = digits;
+    setIsCepLoading(true);
+    setAddressAutofill({ status: "locked", filled: new Set() });
+    try {
+      const result = lookupAddressByCep
+        ? await lookupAddressByCep(digits)
+        : {
+            kind: "failure" as const,
+            message: "Consulta de CEP indisponível.",
+          };
+      if (result.kind === "failure") {
+        setAddressAutofill({ status: "manual", filled: new Set() });
+        return;
+      }
+      const filled = new Set<string>();
+      const fill = (name: keyof SharedDraft, value: string | undefined) => {
+        if (!value) return;
+        setShared(name, value);
+        filled.add(name);
+      };
+      fill("addressStreet", result.address.street);
+      fill("addressNeighborhood", result.address.neighborhood);
+      fill("city", result.address.city);
+      fill("state", result.address.state);
+      setAddressAutofill({ status: "partial", filled });
+    } catch {
+      setAddressAutofill({ status: "manual", filled: new Set() });
+    } finally {
+      setIsCepLoading(false);
+    }
+  };
+  const updateCep = (value: string) => {
+    const formatted = formatCep(value);
+    const digits = formatted.replace(/\D/g, "");
+    if (digits !== sharedDraft.postalCode.replace(/\D/g, "")) {
+      setSharedDraft((draft) => ({
+        ...draft,
+        postalCode: formatted,
+        addressLine: "",
+        addressStreet: "",
+        addressNumber: "",
+        addressComplement: "",
+        addressNeighborhood: "",
+        city: "",
+        state: "",
+      }));
+      setAddressAutofill({ status: "locked", filled: new Set() });
+    } else {
+      setShared("postalCode", formatted);
+    }
+    if (digits.length !== 8) lastLookupRef.current = "";
+    if (digits.length === 8) void lookupCep(digits);
+  };
 
   const [state, formAction] = useActionState(
     async (previousState: RegistryActionState, formData: FormData) => {
@@ -241,6 +317,10 @@ export function RegistryPage({
       if (result.ok) {
         resetCreateForm();
         setIsCreateModalOpen(false);
+        if (result.createdId) {
+          setCreatedSupplierId(result.createdId);
+          setIsNextStepOpen(true);
+        }
       }
       return result;
     },
@@ -340,6 +420,18 @@ export function RegistryPage({
                 className="grid gap-4"
               >
                 <input name="entityType" type="hidden" value={entityType} />
+                {!state.ok && state.message && (
+                  <FormErrorDeclaration
+                    title={`Não foi possível ${copy.createLabel.toLowerCase()}.`}
+                    description="Corrija os pontos indicados e tente novamente."
+                    issues={[
+                      {
+                        location: "API",
+                        message: state.message,
+                      },
+                    ]}
+                  />
+                )}
                 <FormSection
                   title="Tipo de pessoa"
                   description="Escolha como este cadastro será identificado. Seus dados ficam preservados ao alternar."
@@ -480,16 +572,74 @@ export function RegistryPage({
                 </FormSection>
 
                 <FormSection title="Endereço">
-                  <div className="grid gap-3 md:grid-cols-2">
+                  <input
+                    type="hidden"
+                    name="addressLine"
+                    value={
+                      sharedDraft.addressLine ||
+                      [sharedDraft.addressStreet, sharedDraft.addressNumber]
+                        .filter(Boolean)
+                        .join(", ")
+                    }
+                  />
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-8">
                     <Field
-                      label="Endereço"
-                      name="addressLine"
-                      value={sharedDraft.addressLine}
+                      label="CEP"
+                      name="postalCode"
+                      value={sharedDraft.postalCode}
+                      onChange={(event) => updateCep(event.target.value)}
+                      onBlur={(event) => updateCep(event.target.value)}
+                      inputMode="numeric"
+                      autoComplete="postal-code"
+                      placeholder="00000-000"
+                      maxLength={9}
+                      className="sm:col-span-2 lg:col-span-2"
+                    />
+                    <Field
+                      label="Logradouro"
+                      name="addressStreet"
+                      value={sharedDraft.addressStreet}
                       onChange={(event) =>
-                        setShared("addressLine", event.target.value)
+                        setShared("addressStreet", event.target.value)
                       }
+                      disabled={fieldIsDisabled("addressStreet")}
                       autoComplete="street-address"
-                      className="md:col-span-2"
+                      className="sm:col-span-2 lg:col-span-6"
+                    />
+                    {isCepLoading && (
+                      <p className="-mt-1 text-sm font-medium text-muted-foreground sm:col-span-2 lg:col-span-8">
+                        Buscando endereço...
+                      </p>
+                    )}
+                    <Field
+                      label="Número"
+                      name="addressNumber"
+                      value={sharedDraft.addressNumber}
+                      onChange={(event) =>
+                        setShared("addressNumber", event.target.value)
+                      }
+                      disabled={addressIsLocked}
+                      className="lg:col-span-2"
+                    />
+                    <Field
+                      label="Complemento"
+                      name="addressComplement"
+                      value={sharedDraft.addressComplement}
+                      onChange={(event) =>
+                        setShared("addressComplement", event.target.value)
+                      }
+                      disabled={addressIsLocked}
+                      className="lg:col-span-3"
+                    />
+                    <Field
+                      label="Bairro"
+                      name="addressNeighborhood"
+                      value={sharedDraft.addressNeighborhood}
+                      onChange={(event) =>
+                        setShared("addressNeighborhood", event.target.value)
+                      }
+                      disabled={fieldIsDisabled("addressNeighborhood")}
+                      className="sm:col-span-2 lg:col-span-3"
                     />
                     <Field
                       label="Cidade"
@@ -498,56 +648,89 @@ export function RegistryPage({
                       onChange={(event) =>
                         setShared("city", event.target.value)
                       }
+                      disabled={fieldIsDisabled("city")}
                       autoComplete="address-level2"
+                      className="sm:col-span-2 lg:col-span-6"
                     />
-                    <div className="grid gap-1.5 text-sm font-semibold">
-                      <label htmlFor="registry-state">Estado</label>
-                      <select
-                        id="registry-state"
-                        name="state"
-                        value={sharedDraft.state}
-                        onChange={(event) =>
-                          setShared("state", event.target.value)
-                        }
-                        autoComplete="address-level1"
-                        className="min-h-11 rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
-                      >
-                        <option value="">Selecione a UF</option>
-                        {BRAZILIAN_STATES.map(([code, name]) => (
-                          <option key={code} value={code}>
-                            {code} — {name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
                     <Field
-                      label="CEP"
-                      name="postalCode"
-                      value={sharedDraft.postalCode}
+                      label="UF"
+                      name="state"
+                      value={sharedDraft.state}
                       onChange={(event) =>
-                        setShared("postalCode", formatCep(event.target.value))
+                        setShared("state", event.target.value.toUpperCase())
                       }
-                      inputMode="numeric"
-                      autoComplete="postal-code"
-                      placeholder="00000-000"
-                      maxLength={9}
+                      disabled={fieldIsDisabled("state")}
+                      autoComplete="address-level1"
+                      maxLength={2}
+                      className="lg:col-span-2"
                     />
                   </div>
                 </FormSection>
-
-                {!state.ok && state.message && (
-                  <FormErrorDeclaration
-                    title={`Não foi possível ${copy.createLabel.toLowerCase()}.`}
-                    description="O servidor recusou o envio. Revise o formulário antes de tentar novamente."
-                    issues={[
-                      {
-                        location: "API",
-                        message: state.message,
-                      },
-                    ]}
-                  />
-                )}
               </form>
+            </OperationsModal>
+
+            <OperationsModal
+              icon={CheckCircle2}
+              open={isNextStepOpen}
+              onOpenChange={setIsNextStepOpen}
+              size="md"
+              title="Fornecedor cadastrado"
+              description="Escolha o próximo passo para continuar o cadastro operacional."
+              footer={
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setIsNextStepOpen(false);
+                    setCreatedSupplierId("");
+                    setIsCreateModalOpen(true);
+                  }}
+                >
+                  <Plus className="size-4" />
+                  Criar outro fornecedor
+                </Button>
+              }
+            >
+              <div className="grid gap-3">
+                <button
+                  type="button"
+                  className="flex min-h-16 items-center gap-3 rounded-md border border-border bg-background px-4 py-3 text-left text-sm transition-colors hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
+                  onClick={() => {
+                    if (!createdSupplierId) return;
+                    router.push(`${copy.detailBasePath}/${createdSupplierId}`);
+                  }}
+                >
+                  <Eye className="size-5 text-primary" />
+                  <span>
+                    <span className="block font-bold">
+                      Ir para a página do fornecedor
+                    </span>
+                    <span className="block text-muted-foreground">
+                      Conferir identificação, contato e endereço.
+                    </span>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="flex min-h-16 items-center gap-3 rounded-md border border-border bg-background px-4 py-3 text-left text-sm transition-colors hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
+                  onClick={() => {
+                    if (!createdSupplierId) return;
+                    router.push(
+                      `${copy.detailBasePath}/${createdSupplierId}?catalog=new`,
+                    );
+                  }}
+                >
+                  <ListPlus className="size-5 text-primary" />
+                  <span>
+                    <span className="block font-bold">
+                      Criar catálogo de itens
+                    </span>
+                    <span className="block text-muted-foreground">
+                      Registrar itens, unidades, conversão e preço.
+                    </span>
+                  </span>
+                </button>
+              </div>
             </OperationsModal>
           </div>
         </div>

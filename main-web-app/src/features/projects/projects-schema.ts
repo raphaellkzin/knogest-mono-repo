@@ -216,22 +216,79 @@ const machineAllocationSchema = z.object({
   operatorEmploymentId: z.string().uuid(),
 });
 
-const fuelAgreementSchema = z.object({
-  fuelSupplierId: z.string().uuid(),
-  fuelTypes: z
-    .array(
-      z.object({
-        fuelTypeId: z.enum(["diesel-s10", "diesel-s500"]),
-        pricePerLiter: decimal(4, 14, true),
-      }),
-    )
-    .min(1)
-    .max(2)
-    .refine(
-      (items) =>
-        new Set(items.map((item) => item.fuelTypeId)).size === items.length,
-    ),
+const supplierInlineSchema = z
+  .object({
+    entityType: z.enum(["individual", "legal_entity"]),
+    document: text(32, false, "Informe o documento do fornecedor."),
+    fullName: optionalText(180),
+    legalName: optionalText(180),
+    tradeName: optionalText(180),
+    phone: optionalText(32),
+    email: optionalText(254),
+    addressLine: optionalText(220),
+    city: optionalText(120),
+    state: optionalText(80),
+    postalCode: optionalText(24),
+    saveGlobally: z.boolean().default(false),
+  })
+  .superRefine((supplier, context) => {
+    if (supplier.entityType === "individual" && !supplier.fullName)
+      context.addIssue({
+        code: "custom",
+        path: ["fullName"],
+        message: "Informe o nome do fornecedor.",
+      });
+    if (supplier.entityType === "legal_entity" && !supplier.legalName)
+      context.addIssue({
+        code: "custom",
+        path: ["legalName"],
+        message: "Informe a razão social do fornecedor.",
+      });
+  });
+
+const suppliedItemInlineSchema = z.object({
+  name: text(160, false, "Informe o item fornecido."),
+  baseUnitId: z.string().uuid("Selecione a unidade-base."),
+  saveGlobally: z.boolean().default(false),
 });
+
+const projectSupplierOfferSchema = z
+  .object({
+    supplierId: z.string().uuid().optional(),
+    supplier: supplierInlineSchema.optional(),
+    itemId: z.string().uuid().optional(),
+    item: suppliedItemInlineSchema.optional(),
+    sourceOfferId: z.string().uuid().nullable().optional(),
+    purchaseUnitId: z.string().uuid("Selecione a unidade de compra."),
+    conversionToBase: decimal(6, 12, true),
+    price: decimal(4, 14, true),
+  })
+  .superRefine((offer, context) => {
+    if (!offer.supplierId && !offer.supplier)
+      context.addIssue({
+        code: "custom",
+        path: ["supplier"],
+        message: "Selecione ou crie um fornecedor.",
+      });
+    if (offer.supplierId && offer.supplier)
+      context.addIssue({
+        code: "custom",
+        path: ["supplierId"],
+        message: "Use fornecedor existente ou novo, não os dois.",
+      });
+    if (!offer.itemId && !offer.item)
+      context.addIssue({
+        code: "custom",
+        path: ["item"],
+        message: "Selecione ou crie um item fornecido.",
+      });
+    if (offer.itemId && offer.item)
+      context.addIssue({
+        code: "custom",
+        path: ["itemId"],
+        message: "Use item existente ou novo, não os dois.",
+      });
+  });
 
 export const projectCommandSchema = z
   .object({
@@ -255,7 +312,10 @@ export const projectCommandSchema = z
     breakTemplates: z.array(breakTemplateSchema).max(10),
     initialEmployeeAllocations: z.array(employeeAllocationSchema).max(200),
     initialMachineAllocations: z.array(machineAllocationSchema).max(100),
-    projectFuelAgreements: z.array(fuelAgreementSchema).max(10),
+    projectSupplierOffers: z
+      .array(projectSupplierOfferSchema)
+      .min(1, "Configure pelo menos um fornecimento da obra.")
+      .max(50, "Configure no máximo 50 fornecimentos."),
   })
   .strict()
   .superRefine((command, context) => {
@@ -303,8 +363,14 @@ export const projectCommandSchema = z
         command.initialMachineAllocations.map((item) => item.machineId),
       ],
       [
-        "projectFuelAgreements",
-        command.projectFuelAgreements.map((item) => item.fuelSupplierId),
+        "projectSupplierOffers",
+        command.projectSupplierOffers
+          .map((item) =>
+            item.supplierId && item.itemId && item.purchaseUnitId
+              ? `${item.supplierId}:${item.itemId}:${item.purchaseUnitId}`
+              : "",
+          )
+          .filter(Boolean),
       ],
     ] as const) {
       if (new Set(values).size !== values.length)
@@ -358,5 +424,5 @@ export const emptyProjectCommand: ProjectCommand = {
   breakTemplates: [],
   initialEmployeeAllocations: [],
   initialMachineAllocations: [],
-  projectFuelAgreements: [],
+  projectSupplierOffers: [],
 };

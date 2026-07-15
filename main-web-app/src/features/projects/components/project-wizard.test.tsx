@@ -45,7 +45,8 @@ const options: ProjectWizardOptions = {
     },
   ],
   suppliers: [],
-  fuelTypes: [],
+  suppliedItems: [],
+  units: [{ id: "unit-1", label: "L", detail: "Litro" }],
 };
 
 const command: ProjectCommand = {

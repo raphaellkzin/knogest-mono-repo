@@ -24,14 +24,21 @@ export function canonicalProjectCommand(command: ProjectCommand) {
     initialMachineAllocations: [...command.initialMachineAllocations].sort(
       (a, b) => a.machineId.localeCompare(b.machineId),
     ),
-    projectFuelAgreements: [...command.projectFuelAgreements]
-      .map((agreement) => ({
-        ...agreement,
-        fuelTypes: [...agreement.fuelTypes].sort((a, b) =>
-          a.fuelTypeId.localeCompare(b.fuelTypeId),
+    projectSupplierOffers: [...command.projectSupplierOffers].sort((a, b) =>
+      [
+        a.supplierId ?? a.supplier?.document ?? "",
+        a.itemId ?? a.item?.name ?? "",
+        a.purchaseUnitId,
+      ]
+        .join(":")
+        .localeCompare(
+          [
+            b.supplierId ?? b.supplier?.document ?? "",
+            b.itemId ?? b.item?.name ?? "",
+            b.purchaseUnitId,
+          ].join(":"),
         ),
-      }))
-      .sort((a, b) => a.fuelSupplierId.localeCompare(b.fuelSupplierId)),
+    ),
   };
   return `project-finalization:v1\n${JSON.stringify(canonicalize(semantic))}`;
 }

@@ -1,5 +1,6 @@
 import {
   createFuelSupplierAction,
+  lookupRegistryAddressByCepAction,
   removeFuelSupplierAction,
 } from "@/features/commercial-registry/commercial-registry.actions";
 import { getInitialRegistryActionState } from "@/features/commercial-registry/commercial-registry-action-state";
@@ -15,7 +16,7 @@ export async function FuelSuppliersPage({
   searchParams: Record<string, string | string[] | undefined>;
 }) {
   const query = parseRegistrySearchParams(searchParams);
-  const page = await getRegistryList("fuel-suppliers", query);
+  const page = await getRegistryList("suppliers", query);
   return (
     <RegistryPage
       action={createFuelSupplierAction}
@@ -23,14 +24,14 @@ export async function FuelSuppliersPage({
         basePath: "/home/fornecedores",
         createLabel: "Novo fornecedor",
         detailBasePath: "/home/fornecedores",
-        emptyDescription:
-          "Fornecedores de combustível ativos aparecem aqui por empresa.",
+        emptyDescription: "Fornecedores ativos aparecem aqui por empresa.",
         emptyTitle: "Nenhum fornecedor encontrado",
-        newTitle: "Cadastrar fornecedor de combustível",
+        newTitle: "Cadastrar fornecedor",
         removeLabel: "Remover",
         searchPlaceholder: "Buscar por razão social, nome ou contato",
       }}
       initialState={getInitialRegistryActionState()}
+      lookupAddressByCep={lookupRegistryAddressByCepAction}
       pageInfo={page.pageInfo}
       query={query}
       removeAction={removeFuelSupplierAction}

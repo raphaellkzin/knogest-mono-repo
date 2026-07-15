@@ -249,11 +249,12 @@ describe("commercial Client and Fuel Supplier registries", () => {
 
     await seedReferenceData(app.prisma);
     await seedReferenceData(app.prisma);
-    expect(await app.prisma.fuelType.findMany({ orderBy: { id: "asc" } }))
-      .toMatchObject([
-        { id: "diesel-s10", name: "Diesel S10", isActive: true },
-        { id: "diesel-s500", name: "Diesel S500", isActive: true },
-      ]);
+    expect(
+      await app.prisma.fuelType.findMany({ orderBy: { id: "asc" } }),
+    ).toMatchObject([
+      { id: "diesel-s10", name: "Diesel S10", isActive: true },
+      { id: "diesel-s500", name: "Diesel S500", isActive: true },
+    ]);
 
     const created = await app.inject({
       method: "POST",
@@ -294,5 +295,130 @@ describe("commercial Client and Fuel Supplier registries", () => {
     });
     expect(inactiveSelector.statusCode).toBe(200);
     expect(inactiveSelector.json().data).toEqual([]);
+  });
+
+  it("updates Supplier registry information without changing identity", async () => {
+    const pilot = await provision("supplier-update");
+    const companyOneAuthorization = await authFor({
+      corporationId: pilot.corporation.id,
+      userId: pilot.administrator.id,
+      companyId: pilot.companies[0].id,
+    });
+    const companyTwoAuthorization = await authFor({
+      corporationId: pilot.corporation.id,
+      userId: pilot.administrator.id,
+      companyId: pilot.companies[1].id,
+    });
+
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/v1/suppliers",
+      headers: { authorization: companyOneAuthorization },
+      payload: {
+        entityType: "legal_entity",
+        document: syntheticCnpjFixture,
+        legalName: "Synthetic Diesel Supplier Ltda",
+        tradeName: "Synthetic Diesel",
+        phone: "(85) 3333-0000",
+        addressStreet: "Rua Inicial",
+        addressNumber: "10",
+        addressNeighborhood: "Centro",
+        city: "Fortaleza",
+        state: "CE",
+        postalCode: "60170-000",
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    const supplierId = created.json().data.id;
+
+    const invalidIdentityPatch = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/suppliers/${supplierId}`,
+      headers: { authorization: companyOneAuthorization },
+      payload: {
+        document: syntheticCpfFixture,
+        legalName: "Synthetic Identity Edit",
+      },
+    });
+    expect(invalidIdentityPatch.statusCode).toBe(400);
+    expect(invalidIdentityPatch.json()).toMatchObject({
+      code: "VALIDATION_ERROR",
+    });
+
+    const wrongCompanyPatch = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/suppliers/${supplierId}`,
+      headers: { authorization: companyTwoAuthorization },
+      payload: {
+        legalName: "Synthetic Foreign Edit",
+      },
+    });
+    expect(wrongCompanyPatch.statusCode).toBe(404);
+
+    const updated = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/suppliers/${supplierId}`,
+      headers: { authorization: companyOneAuthorization },
+      payload: {
+        legalName: "Synthetic Diesel Supplier Nordeste Ltda",
+        tradeName: null,
+        phone: "(85) 4000-0000",
+        email: "supplier@example.test",
+        addressStreet: "Avenida Atualizada",
+        addressNumber: "200",
+        addressComplement: "",
+        addressNeighborhood: "Meireles",
+        city: "Fortaleza",
+        state: "CE",
+        postalCode: "60175-001",
+      },
+    });
+    expect(updated.statusCode).toBe(200);
+    expect(updated.json().data).toMatchObject({
+      id: supplierId,
+      name: "Synthetic Diesel Supplier Nordeste Ltda",
+      legalName: "Synthetic Diesel Supplier Nordeste Ltda",
+      tradeName: null,
+      phone: "(85) 4000-0000",
+      email: "supplier@example.test",
+      addressLine: "Avenida Atualizada, 200",
+      addressStreet: "Avenida Atualizada",
+      addressNumber: "200",
+      addressComplement: null,
+      addressNeighborhood: "Meireles",
+      city: "Fortaleza",
+      state: "CE",
+      postalCode: "60175-001",
+    });
+    expect(updated.json().data.document.plaintextDocument).toBe(
+      syntheticCnpjNormalizedFixture,
+    );
+
+    const persisted = await app.prisma.fuelSupplier.findUniqueOrThrow({
+      where: { id: supplierId },
+    });
+    expect(persisted).toMatchObject({
+      displayName: "Synthetic Diesel Supplier Nordeste Ltda",
+      legalName: "Synthetic Diesel Supplier Nordeste Ltda",
+      tradeName: null,
+      addressLine: "Avenida Atualizada, 200",
+      addressStreet: "Avenida Atualizada",
+      addressNumber: "200",
+      addressComplement: null,
+    });
+
+    await app.prisma.fuelSupplier.update({
+      where: { id: supplierId },
+      data: { isActive: false, inactivatedAt: new Date() },
+    });
+    const inactivePatch = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/suppliers/${supplierId}`,
+      headers: { authorization: companyOneAuthorization },
+      payload: {
+        legalName: "Synthetic Inactive Edit",
+      },
+    });
+    expect(inactivePatch.statusCode).toBe(404);
   });
 });

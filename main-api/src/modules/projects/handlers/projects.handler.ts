@@ -2,6 +2,9 @@ import { Prisma } from "../../../db/generated/prisma/client";
 import type { HandlerContext } from "../../../lib/utils/handler.dto";
 import { AppError } from "../../../lib/utils/appError";
 import {
+  protectSensitiveDocument,
+} from "../../../lib/security/sensitive-document";
+import {
   buildCursorPage,
   parseBoundCursor,
 } from "../../../lib/utils/cursor-pagination";
@@ -37,6 +40,10 @@ function conflict(resources: Array<ReturnType<typeof resource>> = []) {
   });
 }
 
+function mapEntityType(entityType: "individual" | "legal_entity") {
+  return entityType === "individual" ? "INDIVIDUAL" : "LEGAL_ENTITY";
+}
+
 async function assertWorkspace(
   context: HandlerContext,
   scope: ProjectScope,
@@ -66,7 +73,25 @@ async function validateResources(
   scope: ProjectScope,
   command: ProjectCommand,
 ) {
-  const [client, employments, suppliers, fuelTypes, machines] =
+  const existingSupplierIds = command.projectSupplierOffers
+    .map((item) => item.supplierId)
+    .filter((id): id is string => Boolean(id));
+  const uniqueExistingSupplierIds = [...new Set(existingSupplierIds)];
+  const existingItemIds = command.projectSupplierOffers
+    .map((item) => item.itemId)
+    .filter((id): id is string => Boolean(id));
+  const uniqueExistingItemIds = [...new Set(existingItemIds)];
+  const unitIds = [
+    ...command.projectSupplierOffers.map((item) => item.purchaseUnitId),
+    ...command.projectSupplierOffers
+      .map((item) => item.item?.baseUnitId)
+      .filter((id): id is string => Boolean(id)),
+  ];
+  const sourceOfferIds = command.projectSupplierOffers
+    .map((item) => item.sourceOfferId)
+    .filter((id): id is string => Boolean(id));
+
+  const [client, employments, suppliers, items, units, sourceOffers, machines] =
     await Promise.all([
       context.prisma.client.findFirst({
         where: {
@@ -110,20 +135,43 @@ async function validateResources(
       }),
       context.prisma.fuelSupplier.findMany({
         where: {
-          id: {
-            in: command.projectFuelAgreements.map(
-              (item) => item.fuelSupplierId,
-            ),
-          },
+          id: { in: uniqueExistingSupplierIds },
           corporationId: scope.corporationId,
           companyId: scope.companyId,
           isActive: true,
           removedAt: null,
+          isGlobal: true,
         },
         select: { id: true },
       }),
-      context.prisma.fuelType.findMany({
-        where: { id: { in: ["diesel-s10", "diesel-s500"] }, isActive: true },
+      context.prisma.suppliedItem.findMany({
+        where: {
+          id: { in: uniqueExistingItemIds },
+          corporationId: scope.corporationId,
+          companyId: scope.companyId,
+          isGlobal: true,
+          isActive: true,
+        },
+        select: { id: true },
+      }),
+      context.prisma.measurementUnit.findMany({
+        where: {
+          id: { in: unitIds },
+          isActive: true,
+          OR: [
+            { corporationId: null, companyId: null },
+            { corporationId: scope.corporationId, companyId: scope.companyId },
+          ],
+        },
+        select: { id: true },
+      }),
+      context.prisma.supplierOffer.findMany({
+        where: {
+          id: { in: sourceOfferIds },
+          corporationId: scope.corporationId,
+          companyId: scope.companyId,
+          isActive: true,
+        },
         select: { id: true },
       }),
       context.prisma.machine.findMany({
@@ -194,15 +242,14 @@ async function validateResources(
       throw conflict([
         resource("employee", allocation.operatorEmploymentId, "machines"),
       ]);
-  if (suppliers.length !== command.projectFuelAgreements.length)
-    throw conflict();
-  if (fuelTypes.length !== 2)
-    throw new AppError({
-      code: "PROJECT_RESOURCE_CONFLICT",
-      statusCode: 503,
-      message: "Fuel catalog unavailable",
-      data: { fields: [], resources: [] },
-    });
+  if (suppliers.length !== uniqueExistingSupplierIds.length)
+    throw conflict([resource("supplier", "unknown", "supplierOffers")]);
+  if (items.length !== uniqueExistingItemIds.length)
+    throw conflict([resource("suppliedItem", "unknown", "supplierOffers")]);
+  if (units.length !== new Set(unitIds).size)
+    throw conflict([resource("measurementUnit", "unknown", "supplierOffers")]);
+  if (sourceOffers.length !== sourceOfferIds.length)
+    throw conflict([resource("supplierOffer", "unknown", "supplierOffers")]);
   const machineMap = new Map(machines.map((item) => [item.id, item]));
   for (const allocation of command.initialMachineAllocations) {
     const machine = machineMap.get(allocation.machineId);
@@ -224,6 +271,79 @@ async function validateResources(
       );
   }
   return employmentMap;
+}
+
+async function createInlineSupplier(
+  tx: HandlerContext,
+  scope: ProjectScope,
+  projectId: string,
+  supplier: NonNullable<ProjectCommand["projectSupplierOffers"][number]["supplier"]>,
+) {
+  const protectedDocumentResult = protectSensitiveDocument({
+    document: supplier.document,
+    registryType: "FUEL_SUPPLIER",
+  });
+  if (
+    (supplier.entityType === "individual" &&
+      protectedDocumentResult.documentType !== "CPF") ||
+    (supplier.entityType === "legal_entity" &&
+      protectedDocumentResult.documentType !== "CNPJ")
+  )
+    throw new AppError({
+      code: "VALIDATION_ERROR",
+      statusCode: 400,
+      message: "Supplier document type does not match entity type",
+    });
+  const displayName =
+    supplier.entityType === "individual" ? supplier.fullName : supplier.legalName;
+  if (!displayName)
+    throw new AppError({
+      code: "VALIDATION_ERROR",
+      statusCode: 400,
+      message: "Supplier name is required",
+    });
+  const row = await tx.prisma.fuelSupplier.create({
+    data: {
+      corporationId: scope.corporationId,
+      companyId: scope.companyId,
+      ...protectedDocumentResult,
+      displayName,
+      entityType: mapEntityType(supplier.entityType),
+      fullName: supplier.fullName,
+      legalName: supplier.legalName,
+      tradeName: supplier.tradeName,
+      phone: supplier.phone,
+      email: supplier.email,
+      addressLine: supplier.addressLine,
+      city: supplier.city,
+      state: supplier.state,
+      postalCode: supplier.postalCode,
+      isGlobal: supplier.saveGlobally,
+      projectId: supplier.saveGlobally ? null : projectId,
+    },
+    select: { id: true },
+  });
+  return row.id;
+}
+
+async function createInlineItem(
+  tx: HandlerContext,
+  scope: ProjectScope,
+  projectId: string,
+  item: NonNullable<ProjectCommand["projectSupplierOffers"][number]["item"]>,
+) {
+  const row = await tx.prisma.suppliedItem.create({
+    data: {
+      corporationId: scope.corporationId,
+      companyId: scope.companyId,
+      projectId: item.saveGlobally ? null : projectId,
+      name: item.name,
+      baseUnitId: item.baseUnitId,
+      isGlobal: item.saveGlobally,
+    },
+    select: { id: true },
+  });
+  return row.id;
 }
 
 async function runSerializable<T>(
@@ -420,25 +540,36 @@ export class ProjectsHandler {
             },
           });
         }
-        for (const agreement of command.projectFuelAgreements) {
-          const row = await tx.prisma.projectFuelAgreement.create({
+        for (const offer of command.projectSupplierOffers) {
+          const supplierId =
+            offer.supplierId ??
+            (await createInlineSupplier(tx, scope, project.id, offer.supplier!));
+          const itemId =
+            offer.itemId ??
+            (await createInlineItem(tx, scope, project.id, offer.item!));
+          const row = await tx.prisma.projectSupplierOffer.create({
             data: {
               corporationId: scope.corporationId,
               companyId: scope.companyId,
               projectId: project.id,
-              fuelSupplierId: agreement.fuelSupplierId,
+              supplierId,
+              itemId,
+              sourceOfferId: offer.sourceOfferId ?? null,
+              purchaseUnitId: offer.purchaseUnitId,
+              conversionToBase: offer.conversionToBase,
+              price: offer.price,
               effectiveFrom: now,
             },
+            select: { id: true },
           });
-          await tx.prisma.projectFuelPrice.createMany({
-            data: agreement.fuelTypes.map((fuel) => ({
+          await tx.prisma.projectSupplierOfferPrice.create({
+            data: {
               corporationId: scope.corporationId,
               companyId: scope.companyId,
-              agreementId: row.id,
-              fuelTypeId: fuel.fuelTypeId,
-              pricePerLiter: fuel.pricePerLiter,
+              projectOfferId: row.id,
+              price: offer.price,
               effectiveFrom: now,
-            })),
+            },
           });
         }
         await tx.prisma.idempotencyRecord.create({

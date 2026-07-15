@@ -1,5 +1,6 @@
 import {
   createClientAction,
+  lookupRegistryAddressByCepAction,
   removeClientAction,
 } from "@/features/commercial-registry/commercial-registry.actions";
 import { getInitialRegistryActionState } from "@/features/commercial-registry/commercial-registry-action-state";
@@ -30,6 +31,7 @@ export async function ClientsPage({
         searchPlaceholder: "Buscar por nome, contato ou telefone",
       }}
       initialState={getInitialRegistryActionState()}
+      lookupAddressByCep={lookupRegistryAddressByCepAction}
       pageInfo={page.pageInfo}
       query={query}
       removeAction={removeClientAction}

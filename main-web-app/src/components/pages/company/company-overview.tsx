@@ -119,8 +119,8 @@ const resourceLinks = [
   },
   {
     href: "/home/fornecedores",
-    label: "Combustível",
-    detail: "Fornecedores elegíveis para abastecimento",
+    label: "Fornecedores",
+    detail: "Ofertas, unidades e preços por obra",
     icon: Fuel,
   },
 ];
