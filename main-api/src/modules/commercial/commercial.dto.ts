@@ -209,6 +209,7 @@ export const updateSuppliedItemSchema = z
     categoryId: uuid.nullable().optional(),
     valueUnitQuantity: decimal(6, 12, true).optional(),
     basePrice: decimal(4, 14).optional(),
+    propagateMirrorToExistingOffers: z.boolean().default(false),
   })
   .strict();
 
@@ -219,7 +220,6 @@ export const addSupplierToSuppliedItemSchema = z
     supplierId: uuid,
     price: decimal(4, 14, true),
     conversionToBase: decimal(6, 12, true),
-    propagateToExistingOffers: z.boolean().default(false),
   })
   .strict();
 
@@ -292,3 +292,14 @@ export const selectorQuerySchema = z
   .strict();
 
 export type SelectorQuery = z.infer<typeof selectorQuerySchema>;
+
+export const listSuppliedItemOffersQuerySchema = z
+  .object({
+    limit: z.coerce.number().int().min(1).max(100).default(30),
+    cursor: z.string().trim().min(1).max(2048).optional(),
+  })
+  .strict();
+
+export type ListSuppliedItemOffersQuery = z.infer<
+  typeof listSuppliedItemOffersQuerySchema
+>;

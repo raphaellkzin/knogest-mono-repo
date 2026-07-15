@@ -13,6 +13,7 @@ import { createPortal, useFormStatus } from "react-dom";
 import {
   ChevronDown,
   ChevronRight,
+  Eye,
   FolderPlus,
   MoreHorizontal,
   PackagePlus,
@@ -30,12 +31,15 @@ import { Input } from "@/components/ui/input";
 import { OperationsModal } from "@/components/ui/operations-modal";
 import {
   canonicalDecimalToBrazilian,
+  decimalInputToCanonicalFixed,
   formatBrazilianDecimalInput,
 } from "@/lib/brazilian-input-mask";
 import type { RegistryActionState } from "../commercial-registry-action-state";
 import type {
   MeasurementUnitOption,
   SupplierSelectorOption,
+  SuppliedItemOfferDetail,
+  SuppliedItemOffersPage,
   SuppliedItemCatalogItem,
   SuppliedItemCategory,
   SuppliedItemOption,
@@ -49,6 +53,13 @@ type RegistryAction = (
 type SupplierLookupAction = (
   search: string,
 ) => Promise<SupplierSelectorOption[]>;
+
+type ItemOffersLookupAction = (input: {
+  cursor?: string | null;
+  itemId: string;
+}) => Promise<SuppliedItemOffersPage>;
+
+type ItemOfferSupplierIdsLookupAction = (itemId: string) => Promise<string[]>;
 
 type CatalogOptions = {
   units: MeasurementUnitOption[];
@@ -74,13 +85,22 @@ type CategoryDraft = {
 };
 
 type ItemSupplierDraft = {
+  excludedSupplierIds: string[];
   item: SuppliedItemCatalogItem | null;
   search: string;
   suppliers: SupplierSelectorOption[];
   selectedSupplier: SupplierSelectorOption | null;
   price: string;
   conversionToBase: string;
-  propagateToExistingOffers: boolean;
+  useConversion: boolean;
+};
+
+type ItemOfferDraft = {
+  conversionToBase: string;
+  offerId: string;
+  price: string;
+  supplierId: string;
+  useConversion: boolean;
 };
 
 type FormAction = NonNullable<React.ComponentProps<"form">["action"]>;
@@ -102,13 +122,22 @@ const emptyCategoryDraft: CategoryDraft = {
 };
 
 const emptyItemSupplierDraft: ItemSupplierDraft = {
+  excludedSupplierIds: [],
   item: null,
   search: "",
   suppliers: [],
   selectedSupplier: null,
   price: "",
   conversionToBase: "1,00000",
-  propagateToExistingOffers: false,
+  useConversion: false,
+};
+
+const emptyItemOfferDraft: ItemOfferDraft = {
+  conversionToBase: "1,00000",
+  offerId: "",
+  price: "",
+  supplierId: "",
+  useConversion: false,
 };
 
 const noopAction: RegistryAction = async (state) => state;
@@ -118,8 +147,11 @@ export function SuppliedItemsCatalog({
   catalog,
   initialState,
   lookupFuelSupplierOptionsAction,
+  lookupSuppliedItemOfferSupplierIdsAction,
+  lookupSuppliedItemOffersAction,
   removeSuppliedItemAction,
   removeSuppliedItemCategoryAction,
+  saveSupplierOfferAction,
   saveSuppliedItemAction,
   saveSuppliedItemCategoryAction,
 }: {
@@ -127,8 +159,11 @@ export function SuppliedItemsCatalog({
   catalog: CatalogOptions;
   initialState: RegistryActionState;
   lookupFuelSupplierOptionsAction: SupplierLookupAction;
+  lookupSuppliedItemOfferSupplierIdsAction: ItemOfferSupplierIdsLookupAction;
+  lookupSuppliedItemOffersAction: ItemOffersLookupAction;
   removeSuppliedItemAction: RegistryAction;
   removeSuppliedItemCategoryAction: RegistryAction;
+  saveSupplierOfferAction: RegistryAction;
   saveSuppliedItemAction: RegistryAction;
   saveSuppliedItemCategoryAction: RegistryAction;
 }) {
@@ -157,6 +192,7 @@ export function SuppliedItemsCatalog({
   const [isItemModalOpen, setIsItemModalOpen] = useState(false);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [isItemSupplierModalOpen, setIsItemSupplierModalOpen] = useState(false);
+  const [isItemOffersModalOpen, setIsItemOffersModalOpen] = useState(false);
   const [openCategoryIds, setOpenCategoryIds] = useState<Set<string>>(
     () => new Set(),
   );
@@ -171,12 +207,34 @@ export function SuppliedItemsCatalog({
   const [itemSupplierDraft, setItemSupplierDraft] = useState<ItemSupplierDraft>(
     emptyItemSupplierDraft,
   );
+  const [itemOffersTarget, setItemOffersTarget] =
+    useState<SuppliedItemCatalogItem | null>(null);
+  const [itemOffers, setItemOffers] = useState<SuppliedItemOfferDetail[]>([]);
+  const [itemOffersPageInfo, setItemOffersPageInfo] = useState<{
+    hasNextPage: boolean;
+    nextCursor: string | null;
+  } | null>(null);
+  const [itemOfferDraft, setItemOfferDraft] =
+    useState<ItemOfferDraft>(emptyItemOfferDraft);
+  const [isPropagationModalOpen, setIsPropagationModalOpen] = useState(false);
+  const [pendingItemFields, setPendingItemFields] = useState<
+    [string, string][]
+  >([]);
+  const [otherOfferCount, setOtherOfferCount] = useState(0);
+  const [isSupplierEligibilityPending, setIsSupplierEligibilityPending] =
+    useState(false);
   const [isSupplierSearchPending, startSupplierSearch] = React.useTransition();
+  const [isOffersPending, startOffersTransition] = React.useTransition();
 
   const handleSaveItemAction = useCallback<RegistryAction>(
     async (state, formData) => {
       const result = await saveSuppliedItemAction(state, formData);
-      if (result.ok && result.message) setIsItemModalOpen(false);
+      if (result.ok && result.message) {
+        setIsItemModalOpen(false);
+        setIsPropagationModalOpen(false);
+        setPendingItemFields([]);
+        setOtherOfferCount(0);
+      }
       return result;
     },
     [saveSuppliedItemAction],
@@ -200,6 +258,30 @@ export function SuppliedItemsCatalog({
     },
     [addSupplierToSuppliedItemAction],
   );
+  const loadItemOffers = useCallback(
+    async (itemId: string, cursor?: string | null) => {
+      const page = await lookupSuppliedItemOffersAction({ cursor, itemId });
+      setItemOffers((current) =>
+        cursor ? [...current, ...page.data] : page.data,
+      );
+      setItemOffersPageInfo(page.pageInfo);
+    },
+    [lookupSuppliedItemOffersAction],
+  );
+  const handleSaveItemOfferAction = useCallback<RegistryAction>(
+    async (state, formData) => {
+      const result = await saveSupplierOfferAction(state, formData);
+      if (result.ok && result.message) {
+        toast.success(result.message);
+        setItemOfferDraft(emptyItemOfferDraft);
+        if (itemOffersTarget) await loadItemOffers(itemOffersTarget.id);
+      } else if (result.message) {
+        toast.error(result.message);
+      }
+      return result;
+    },
+    [itemOffersTarget, loadItemOffers, saveSupplierOfferAction],
+  );
   const [saveItemState, saveItemFormAction] = useActionState(
     handleSaveItemAction,
     initialState,
@@ -220,15 +302,27 @@ export function SuppliedItemsCatalog({
     handleAddSupplierAction,
     initialState,
   );
+  const [saveItemOfferState, saveItemOfferFormAction] = useActionState(
+    handleSaveItemOfferAction,
+    initialState,
+  );
   useActionToast(removeItemState);
   useActionToast(removeCategoryState);
   useActionToast(addSupplierState);
 
   const searchSuppliers = useCallback(
-    (search: string) => {
+    (search: string, excludedSupplierIds?: string[]) => {
       startSupplierSearch(() => {
         void lookupFuelSupplierOptionsAction(search).then((suppliers) => {
-          setItemSupplierDraft((current) => ({ ...current, suppliers }));
+          setItemSupplierDraft((current) => ({
+            ...current,
+            suppliers: suppliers.filter(
+              (supplier) =>
+                !(excludedSupplierIds ?? current.excludedSupplierIds).includes(
+                  supplier.id,
+                ),
+            ),
+          }));
         });
       });
     },
@@ -293,12 +387,122 @@ export function SuppliedItemsCatalog({
           item.valueUnitQuantity,
           5,
         ),
+        useConversion: false,
       });
       setIsItemSupplierModalOpen(true);
-      searchSuppliers("");
+      setIsSupplierEligibilityPending(true);
+      void lookupSuppliedItemOfferSupplierIdsAction(item.id)
+        .then((excludedSupplierIds) => {
+          setItemSupplierDraft((current) => {
+            if (current.item?.id !== item.id) return current;
+            return {
+              ...current,
+              excludedSupplierIds,
+              suppliers: current.suppliers.filter(
+                (supplier) => !excludedSupplierIds.includes(supplier.id),
+              ),
+            };
+          });
+          searchSuppliers("", excludedSupplierIds);
+        })
+        .catch(() => {
+          toast.error(
+            "Não foi possível verificar fornecedores já vinculados ao item.",
+          );
+          searchSuppliers("");
+        })
+        .finally(() => {
+          setIsSupplierEligibilityPending(false);
+        });
     },
-    [searchSuppliers],
+    [lookupSuppliedItemOfferSupplierIdsAction, searchSuppliers],
   );
+
+  const openItemOffersModal = useCallback(
+    (item: SuppliedItemCatalogItem) => {
+      setItemActionId(null);
+      setItemOffersTarget(item);
+      setItemOffers([]);
+      setItemOffersPageInfo(null);
+      setItemOfferDraft(emptyItemOfferDraft);
+      setIsItemOffersModalOpen(true);
+      startOffersTransition(() => {
+        void loadItemOffers(item.id).catch(() => {
+          toast.error("Não foi possível carregar as ofertas deste item.");
+        });
+      });
+    },
+    [loadItemOffers],
+  );
+
+  const editItemOffer = (offer: SuppliedItemOfferDetail) => {
+    setItemOfferDraft({
+      conversionToBase: canonicalDecimalToBrazilian(offer.conversionToBase, 5),
+      offerId: offer.id,
+      price: offer.currentPrice
+        ? canonicalDecimalToBrazilian(offer.currentPrice.price, 4)
+        : "",
+      supplierId: offer.supplier.id,
+      useConversion: offer.conversionToBase !== "1.000000",
+    });
+  };
+
+  const stringFieldsFromForm = (formData: FormData): [string, string][] => {
+    return Array.from(formData.entries())
+      .filter(
+        (entry): entry is [string, string] => typeof entry[1] === "string",
+      )
+      .map(([key, value]) => [key, value]);
+  };
+
+  const hasChangedItemMirrorValues = (item: SuppliedItemCatalogItem) => {
+    const nextBasePrice = decimalInputToCanonicalFixed(
+      itemDraft.basePrice,
+      4,
+      4,
+    );
+    const nextValueUnitQuantity = itemDraft.useValueUnit
+      ? decimalInputToCanonicalFixed(itemDraft.valueUnitQuantity, 6, 6)
+      : "1.000000";
+    if (!nextBasePrice || !nextValueUnitQuantity) return false;
+    return (
+      nextBasePrice !== item.basePrice ||
+      nextValueUnitQuantity !== item.valueUnitQuantity
+    );
+  };
+
+  const handleItemSubmit: React.FormEventHandler<HTMLFormElement> = (
+    event,
+  ) => {
+    const item = catalogItems.find(
+      (catalogItem) => catalogItem.id === itemDraft.id,
+    );
+    if (
+      !item ||
+      item.activeSupplierCount === 0 ||
+      !hasChangedItemMirrorValues(item)
+    ) {
+      return;
+    }
+    event.preventDefault();
+    setOtherOfferCount(item.activeSupplierCount);
+    setPendingItemFields(
+      stringFieldsFromForm(new FormData(event.currentTarget)),
+    );
+    setIsPropagationModalOpen(true);
+  };
+
+  const loadMoreItemOffers = () => {
+    if (!itemOffersTarget || !itemOffersPageInfo?.nextCursor) return;
+    startOffersTransition(() => {
+      void loadItemOffers(
+        itemOffersTarget.id,
+        itemOffersPageInfo.nextCursor,
+      ).catch(() => {
+        toast.error("Não foi possível carregar mais ofertas deste item.");
+      });
+    });
+  };
 
   useEffect(() => {
     if (!isItemSupplierModalOpen) {
@@ -319,6 +523,11 @@ export function SuppliedItemsCatalog({
       return next;
     });
   };
+
+  const isEditingItemOffer = Boolean(itemOfferDraft.offerId);
+  const visibleItemOffers = isEditingItemOffer
+    ? itemOffers.filter((offer) => offer.id === itemOfferDraft.offerId)
+    : itemOffers;
 
   return (
     <section className="rounded-lg border border-border bg-card">
@@ -370,6 +579,7 @@ export function SuppliedItemsCatalog({
             onItemActionChange={setItemActionId}
             onRemoveCategory={removeCategoryFormAction}
             onRemoveItem={removeItemFormAction}
+            onViewOffers={openItemOffersModal}
             onToggleCategory={toggleCategory}
             openCategoryIds={openCategoryIds}
           />
@@ -410,6 +620,7 @@ export function SuppliedItemsCatalog({
         <form
           id="supplied-item-form"
           action={saveItemFormAction}
+          onSubmit={handleItemSubmit}
           className="grid gap-4"
         >
           {itemDraft.id && (
@@ -641,7 +852,7 @@ export function SuppliedItemsCatalog({
                   {itemSupplierDraft.selectedSupplier.name}
                 </p>
               </div>
-              <div className="grid gap-3 md:grid-cols-2">
+              <div className="grid gap-3">
                 <label className="grid gap-1.5 text-sm font-semibold">
                   <span>Preço vigente</span>
                   <Input
@@ -661,42 +872,49 @@ export function SuppliedItemsCatalog({
                     className="min-h-11"
                   />
                 </label>
-                <label className="grid gap-1.5 text-sm font-semibold">
-                  <span>Conversão</span>
-                  <Input
-                    name="conversionToBase"
-                    value={itemSupplierDraft.conversionToBase}
-                    inputMode="numeric"
+                <label className="flex min-h-11 items-center gap-3 rounded-md border border-border bg-background px-3 text-sm font-semibold">
+                  <input
+                    type="checkbox"
+                    checked={itemSupplierDraft.useConversion}
                     onChange={(event) =>
                       setItemSupplierDraft((current) => ({
                         ...current,
-                        conversionToBase: formatBrazilianDecimalInput(
-                          event.target.value,
-                          5,
-                        ),
+                        useConversion: event.target.checked,
                       }))
                     }
-                    placeholder="1,00000"
-                    className="min-h-11"
+                    className="size-4 accent-primary"
                   />
+                  Informar conversão
                 </label>
+                {!itemSupplierDraft.useConversion && (
+                  <input
+                    type="hidden"
+                    name="conversionToBase"
+                    value={itemSupplierDraft.conversionToBase}
+                  />
+                )}
+                {itemSupplierDraft.useConversion && (
+                  <label className="grid gap-1.5 text-sm font-semibold">
+                    <span>Conversão</span>
+                    <Input
+                      name="conversionToBase"
+                      value={itemSupplierDraft.conversionToBase}
+                      inputMode="numeric"
+                      onChange={(event) =>
+                        setItemSupplierDraft((current) => ({
+                          ...current,
+                          conversionToBase: formatBrazilianDecimalInput(
+                            event.target.value,
+                            5,
+                          ),
+                        }))
+                      }
+                      placeholder="1,00000"
+                      className="min-h-11"
+                    />
+                  </label>
+                )}
               </div>
-              <label className="flex min-h-11 items-start gap-3 rounded-md border border-border bg-background px-3 py-3 text-sm font-semibold">
-                <input
-                  type="checkbox"
-                  name="propagateToExistingOffers"
-                  checked={itemSupplierDraft.propagateToExistingOffers}
-                  onChange={(event) =>
-                    setItemSupplierDraft((current) => ({
-                      ...current,
-                      propagateToExistingOffers: event.target.checked,
-                    }))
-                  }
-                  className="mt-0.5 size-4 accent-primary"
-                />
-                Propagar preço e conversão para ofertas ativas existentes deste
-                item
-              </label>
             </FormSection>
 
             {!addSupplierState.ok && addSupplierState.message && (
@@ -734,11 +952,15 @@ export function SuppliedItemsCatalog({
                   type="button"
                   variant="outline"
                   className="self-end"
-                  disabled={isSupplierSearchPending}
+                  disabled={
+                    isSupplierEligibilityPending || isSupplierSearchPending
+                  }
                   onClick={() => searchSuppliers(itemSupplierDraft.search)}
                 >
                   <Search className="size-4" />
-                  {isSupplierSearchPending ? "Buscando" : "Buscar"}
+                  {isSupplierEligibilityPending || isSupplierSearchPending
+                    ? "Buscando"
+                    : "Buscar"}
                 </Button>
               </div>
               <div className="grid gap-2">
@@ -766,7 +988,7 @@ export function SuppliedItemsCatalog({
                 ))}
                 {itemSupplierDraft.suppliers.length === 0 && (
                   <p className="rounded-md border border-dashed border-border px-3 py-4 text-sm font-semibold text-muted-foreground">
-                    {isSupplierSearchPending
+                    {isSupplierEligibilityPending || isSupplierSearchPending
                       ? "Buscando fornecedores..."
                       : "Nenhum fornecedor ativo encontrado."}
                   </p>
@@ -775,6 +997,277 @@ export function SuppliedItemsCatalog({
             </FormSection>
           </div>
         )}
+      </OperationsModal>
+
+      <OperationsModal
+        icon={Eye}
+        open={isItemOffersModalOpen}
+        onOpenChange={setIsItemOffersModalOpen}
+        size="xl"
+        title="Ofertas do item"
+        description={
+          itemOffersTarget
+            ? `Fornecedores ativos que oferecem ${itemOffersTarget.name}.`
+            : "Fornecedores ativos vinculados ao item."
+        }
+        footer={
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setIsItemOffersModalOpen(false)}
+          >
+            Fechar
+          </Button>
+        }
+      >
+        <div className="grid gap-3">
+          {isOffersPending && !itemOffersPageInfo ? (
+            <div className="rounded-md border border-dashed border-border px-4 py-8 text-center text-sm font-semibold text-muted-foreground">
+              Carregando ofertas...
+            </div>
+          ) : itemOffers.length === 0 ? (
+            <div className="rounded-md border border-dashed border-border px-4 py-8 text-center">
+              <PackagePlus className="mx-auto size-8 text-primary" />
+              <p className="mt-3 text-sm font-bold">
+                Nenhuma oferta ativa para este item
+              </p>
+              <p className="mt-1 text-sm font-medium text-muted-foreground">
+                Use Adicionar fornecedor para criar a primeira oferta.
+              </p>
+            </div>
+          ) : (
+            <div className="grid gap-2">
+              {visibleItemOffers.map((offer) => {
+                const isEditing = itemOfferDraft.offerId === offer.id;
+                return (
+                  <div
+                    key={offer.id}
+                    className="rounded-md border border-border bg-background"
+                  >
+                    <div className="grid gap-3 px-3 py-3 md:grid-cols-[minmax(0,1.4fr)_repeat(3,minmax(8rem,0.7fr))_auto] md:items-center">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-bold">
+                          {offer.supplier.name}
+                        </p>
+                        <p className="mt-1 truncate text-xs font-semibold text-muted-foreground">
+                          {offer.supplier.tradeName
+                            ? `${offer.supplier.tradeName} · `
+                            : ""}
+                          {offer.supplier.document.documentType}{" "}
+                          {offer.supplier.document.maskedDocument}
+                        </p>
+                      </div>
+                      <Metric
+                        label="Unidade"
+                        value={
+                          offer.baseUnit
+                            ? `${offer.baseUnit.code} - ${offer.baseUnit.name}`
+                            : "Não informada"
+                        }
+                      />
+                      <Metric
+                        label="Conversão"
+                        value={canonicalDecimalToBrazilian(
+                          offer.conversionToBase,
+                          5,
+                        )}
+                      />
+                      <Metric
+                        label="Preço vigente"
+                        value={
+                          offer.currentPrice
+                            ? formatCurrency(offer.currentPrice.price)
+                            : "Sem preço"
+                        }
+                      />
+                      {isEditing ? (
+                        <span className="text-right text-xs font-bold text-muted-foreground">
+                          Em edição
+                        </span>
+                      ) : (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => editItemOffer(offer)}
+                        >
+                          <Pencil className="size-4" />
+                          Editar
+                        </Button>
+                      )}
+                    </div>
+                    {isEditing && (
+                      <form
+                        action={saveItemOfferFormAction}
+                        className="grid gap-3 border-t border-border bg-secondary/30 px-3 py-3"
+                      >
+                        <input
+                          type="hidden"
+                          name="supplierId"
+                          value={itemOfferDraft.supplierId}
+                        />
+                        <input
+                          type="hidden"
+                          name="offerId"
+                          value={itemOfferDraft.offerId}
+                        />
+                        <div className="grid gap-3 md:grid-cols-[1fr_auto_auto] md:items-end">
+                          <label className="grid gap-1.5 text-sm font-semibold">
+                            <span>Preço vigente</span>
+                            <Input
+                              name="price"
+                              value={itemOfferDraft.price}
+                              inputMode="numeric"
+                              onChange={(event) =>
+                                setItemOfferDraft((current) => ({
+                                  ...current,
+                                  price: formatBrazilianDecimalInput(
+                                    event.target.value,
+                                    4,
+                                  ),
+                                }))
+                              }
+                              placeholder="0,0000"
+                              className="min-h-11"
+                            />
+                          </label>
+                          <Button type="submit">
+                            <PackagePlus className="size-4" />
+                            Salvar
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() =>
+                              setItemOfferDraft(emptyItemOfferDraft)
+                            }
+                          >
+                            Cancelar
+                          </Button>
+                        </div>
+                        <label className="flex min-h-11 items-center gap-3 rounded-md border border-border bg-background px-3 text-sm font-semibold">
+                          <input
+                            type="checkbox"
+                            checked={itemOfferDraft.useConversion}
+                            onChange={(event) =>
+                              setItemOfferDraft((current) => ({
+                                ...current,
+                                useConversion: event.target.checked,
+                                conversionToBase: event.target.checked
+                                  ? current.conversionToBase
+                                  : "1,00000",
+                              }))
+                            }
+                            className="size-4 accent-primary"
+                          />
+                          Informar conversão
+                        </label>
+                        {!itemOfferDraft.useConversion && (
+                          <input
+                            type="hidden"
+                            name="conversionToBase"
+                            value="1,00000"
+                          />
+                        )}
+                        {itemOfferDraft.useConversion && (
+                          <label className="grid gap-1.5 text-sm font-semibold">
+                            <span>Conversão</span>
+                            <Input
+                              name="conversionToBase"
+                              value={itemOfferDraft.conversionToBase}
+                              inputMode="numeric"
+                              onChange={(event) =>
+                                setItemOfferDraft((current) => ({
+                                  ...current,
+                                  conversionToBase: formatBrazilianDecimalInput(
+                                    event.target.value,
+                                    5,
+                                  ),
+                                }))
+                              }
+                              placeholder="1,00000"
+                              className="min-h-11"
+                            />
+                          </label>
+                        )}
+                        {!saveItemOfferState.ok &&
+                          saveItemOfferState.message && (
+                            <FormErrorDeclaration
+                              title="Não foi possível salvar a oferta."
+                              description="Revise preço e conversão antes de tentar novamente."
+                              issues={[
+                                {
+                                  location: "API",
+                                  message: saveItemOfferState.message,
+                                },
+                              ]}
+                            />
+                          )}
+                      </form>
+                    )}
+                  </div>
+                );
+              })}
+              {!isEditingItemOffer && itemOffersPageInfo?.nextCursor && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={isOffersPending}
+                  onClick={loadMoreItemOffers}
+                >
+                  {isOffersPending ? "Carregando" : "Carregar mais ofertas"}
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
+      </OperationsModal>
+
+      <OperationsModal
+        icon={PackagePlus}
+        open={isPropagationModalOpen}
+        onOpenChange={setIsPropagationModalOpen}
+        size="md"
+        title="Propagar valores do item?"
+        description={`Este item possui ${otherOfferCount} oferta${otherOfferCount === 1 ? "" : "s"} ativa${otherOfferCount === 1 ? "" : "s"}.`}
+        footer={
+          <>
+            <form action={saveItemFormAction}>
+              {pendingItemFields.map(([key, value], index) => (
+                <input
+                  key={`${key}-${index}`}
+                  type="hidden"
+                  name={key}
+                  value={value}
+                />
+              ))}
+              <Button type="submit" variant="outline">
+                Salvar só o item
+              </Button>
+            </form>
+            <form action={saveItemFormAction}>
+              {pendingItemFields.map(([key, value], index) => (
+                <input
+                  key={`${key}-${index}`}
+                  type="hidden"
+                  name={key}
+                  value={value}
+                />
+              ))}
+              <input
+                type="hidden"
+                name="propagateMirrorToExistingOffers"
+                value="on"
+              />
+              <Button type="submit">Propagar para ofertas</Button>
+            </form>
+          </>
+        }
+      >
+        <p className="text-sm font-medium text-muted-foreground">
+          Escolha se preço base e unidade de valor devem atualizar também as
+          ofertas ativas deste item, ou apenas os valores espelho do item.
+        </p>
       </OperationsModal>
     </section>
   );
@@ -794,6 +1287,7 @@ function CatalogTree({
   onRemoveCategory,
   onRemoveItem,
   onToggleCategory,
+  onViewOffers,
   openCategoryIds,
 }: {
   activeCategoryId: string | null;
@@ -809,6 +1303,7 @@ function CatalogTree({
   onRemoveCategory: FormAction;
   onRemoveItem: FormAction;
   onToggleCategory: (categoryId: string) => void;
+  onViewOffers: (item: SuppliedItemCatalogItem) => void;
   openCategoryIds: Set<string>;
 }) {
   return (
@@ -828,6 +1323,7 @@ function CatalogTree({
         onRemoveCategory={onRemoveCategory}
         onRemoveItem={onRemoveItem}
         onToggleCategory={onToggleCategory}
+        onViewOffers={onViewOffers}
         openCategoryIds={openCategoryIds}
         parentId={null}
       />
@@ -850,6 +1346,7 @@ function CatalogLevel({
   onRemoveCategory,
   onRemoveItem,
   onToggleCategory,
+  onViewOffers,
   openCategoryIds,
   parentId,
 }: {
@@ -867,6 +1364,7 @@ function CatalogLevel({
   onRemoveCategory: FormAction;
   onRemoveItem: FormAction;
   onToggleCategory: (categoryId: string) => void;
+  onViewOffers: (item: SuppliedItemCatalogItem) => void;
   openCategoryIds: Set<string>;
   parentId: string | null;
 }) {
@@ -955,6 +1453,7 @@ function CatalogLevel({
                   onRemoveCategory={onRemoveCategory}
                   onRemoveItem={onRemoveItem}
                   onToggleCategory={onToggleCategory}
+                  onViewOffers={onViewOffers}
                   openCategoryIds={openCategoryIds}
                   parentId={category.id}
                 />
@@ -973,6 +1472,7 @@ function CatalogLevel({
           onAddSupplier={onAddSupplier}
           onEditItem={onEditItem}
           onRemoveItem={onRemoveItem}
+          onViewOffers={onViewOffers}
         />
       ))}
 
@@ -992,6 +1492,7 @@ function CatalogItemRow({
   onAddSupplier,
   onEditItem,
   onRemoveItem,
+  onViewOffers,
 }: {
   isActionOpen: boolean;
   item: SuppliedItemCatalogItem;
@@ -999,6 +1500,7 @@ function CatalogItemRow({
   onAddSupplier: (item: SuppliedItemCatalogItem) => void;
   onEditItem: (item: SuppliedItemCatalogItem) => void;
   onRemoveItem: FormAction;
+  onViewOffers: (item: SuppliedItemCatalogItem) => void;
 }) {
   const actionButtonRef = useRef<HTMLButtonElement | null>(null);
   return (
@@ -1048,6 +1550,7 @@ function CatalogItemRow({
           onClose={() => onActionChange(null)}
           onEditItem={onEditItem}
           onRemoveItem={onRemoveItem}
+          onViewOffers={onViewOffers}
         />
       )}
     </div>
@@ -1061,6 +1564,7 @@ function FloatingItemActionMenu({
   onClose,
   onEditItem,
   onRemoveItem,
+  onViewOffers,
 }: {
   anchorRef: React.RefObject<HTMLButtonElement | null>;
   item: SuppliedItemCatalogItem;
@@ -1068,6 +1572,7 @@ function FloatingItemActionMenu({
   onClose: () => void;
   onEditItem: (item: SuppliedItemCatalogItem) => void;
   onRemoveItem: FormAction;
+  onViewOffers: (item: SuppliedItemCatalogItem) => void;
 }) {
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [position, setPosition] = useState<{
@@ -1081,7 +1586,7 @@ function FloatingItemActionMenu({
     if (!anchor) return;
     const rect = anchor.getBoundingClientRect();
     const menuWidth = 224;
-    const estimatedMenuHeight = 156;
+    const estimatedMenuHeight = 196;
     const gutter = 12;
     const belowTop = rect.bottom + 8;
     const opensAbove =
@@ -1146,6 +1651,18 @@ function FloatingItemActionMenu({
           position.placement === "above" ? "translateY(-100%)" : undefined,
       }}
     >
+      <button
+        type="button"
+        role="menuitem"
+        className="flex min-h-9 w-full items-center gap-2 rounded-md px-2.5 text-left text-sm font-semibold outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/30"
+        onClick={() => {
+          onClose();
+          onViewOffers(item);
+        }}
+      >
+        <Eye className="size-4 text-primary" />
+        Ver ofertas
+      </button>
       <button
         type="button"
         role="menuitem"

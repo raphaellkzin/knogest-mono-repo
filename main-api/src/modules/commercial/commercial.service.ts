@@ -2,6 +2,7 @@ import { AppError } from "../../lib/utils/appError";
 import {
   buildCursorPage,
   parseBoundCursor,
+  type CursorBoundary,
 } from "../../lib/utils/cursor-pagination";
 import type { HandlerContext } from "../../lib/utils/handler.dto";
 import {
@@ -18,6 +19,7 @@ import type {
   CreateSuppliedItemInput,
   CreateSupplierInput,
   ListCommercialRegistryQuery,
+  ListSuppliedItemOffersQuery,
   SelectorQuery,
   UpdateSuppliedItemCategoryInput,
   UpdateSuppliedItemInput,
@@ -51,6 +53,11 @@ interface AuthenticatedCommercialActorScope extends AuthenticatedCompanyScope {
   actorUserId: string;
 }
 
+type ProtectedDocumentSource = Pick<
+  CommercialRegistryRecord,
+  "authTag" | "ciphertext" | "documentType" | "encryptionKeyVersion" | "iv"
+>;
+
 const maxItemCategoryDepth = 3;
 
 function mapEntityType(
@@ -79,7 +86,7 @@ function assertDocumentMatchesEntity(
   }
 }
 
-function protectedDocument(record: CommercialRegistryRecord) {
+function protectedDocument(record: ProtectedDocumentSource) {
   return {
     authTag: record.authTag,
     ciphertext: record.ciphertext,
@@ -287,6 +294,167 @@ async function supplierOffersDto(
   });
 }
 
+async function suppliedItemOffersDto(
+  context: HandlerContext,
+  scope: AuthenticatedCompanyScope,
+  itemId: string,
+  query: ListSuppliedItemOffersQuery,
+) {
+  const store = commercialRegistryStore(context);
+  const item = await store.suppliedItem.findFirst({
+    where: {
+      id: itemId,
+      corporationId: scope.corporationId,
+      companyId: scope.companyId,
+      isGlobal: true,
+      isActive: true,
+    },
+    select: { id: true },
+  });
+  if (!item) {
+    throw new AppError({
+      code: "SUPPLIED_ITEM_NOT_FOUND",
+      message: "Supplied item not found",
+      statusCode: 404,
+    });
+  }
+
+  const normalizedQuery = suppliedItemOffersQueryForCursor(itemId);
+  const boundary = parseBoundCursor({
+    cursor: query.cursor,
+    query: normalizedQuery,
+    resource: "supplied-item-offers",
+    scope: scopeForCursor(scope),
+    sortBy: "updatedAt",
+    sortDirection: "desc",
+  });
+  const offers = await store.supplierOffer.findMany({
+    where: {
+      corporationId: scope.corporationId,
+      companyId: scope.companyId,
+      itemId,
+      isActive: true,
+      ...suppliedItemOffersBoundaryWhere(boundary),
+    },
+    orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
+    take: query.limit + 1,
+    select: {
+      id: true,
+      conversionToBase: true,
+      supplierId: true,
+      purchaseUnitId: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
+  const page = buildCursorPage({
+    items: offers,
+    limit: query.limit,
+    query: normalizedQuery,
+    resource: "supplied-item-offers",
+    scope: scopeForCursor(scope),
+    sortBy: "updatedAt",
+    sortDirection: "desc",
+    getLast: (offer) => ({
+      id: offer.id,
+      value: offer.updatedAt.toISOString(),
+    }),
+  });
+  const pageOffers = page.data;
+  const [suppliers, units, prices] = await Promise.all([
+    store.fuelSupplier.findMany({
+      where: {
+        id: { in: pageOffers.map((offer) => offer.supplierId) },
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        isActive: true,
+      },
+      select: {
+        id: true,
+        displayName: true,
+        tradeName: true,
+        entityType: true,
+        documentType: true,
+        ciphertext: true,
+        iv: true,
+        authTag: true,
+        encryptionKeyVersion: true,
+      },
+    }),
+    store.measurementUnit.findMany({
+      where: { id: { in: pageOffers.map((offer) => offer.purchaseUnitId) } },
+      select: { id: true, code: true, name: true },
+    }),
+    store.supplierOfferPrice.findMany({
+      where: {
+        offerId: { in: pageOffers.map((offer) => offer.id) },
+        effectiveTo: null,
+      },
+      orderBy: [{ effectiveFrom: "desc" }, { id: "desc" }],
+      select: {
+        id: true,
+        offerId: true,
+        price: true,
+        effectiveFrom: true,
+        effectiveTo: true,
+      },
+    }),
+  ]);
+  const supplierById = new Map(
+    suppliers.map((supplier) => [supplier.id, supplier]),
+  );
+  const unitById = new Map(units.map((unit) => [unit.id, unit]));
+  const pricesByOfferId = new Map<string, typeof prices>();
+  for (const price of prices) {
+    const current = pricesByOfferId.get(price.offerId) ?? [];
+    current.push(price);
+    pricesByOfferId.set(price.offerId, current);
+  }
+
+  const data = pageOffers
+    .map((offer) => {
+      const supplier = supplierById.get(offer.supplierId);
+      if (!supplier) return null;
+      const purchaseUnit = unitById.get(offer.purchaseUnitId);
+      const priceHistory = pricesByOfferId.get(offer.id) ?? [];
+      const currentPrice = priceHistory.find((price) => !price.effectiveTo);
+      return {
+        id: offer.id,
+        supplier: {
+          id: supplier.id,
+          name: supplier.displayName,
+          tradeName: supplier.tradeName,
+          document: toMaskedDocumentDto(protectedDocument(supplier)),
+        },
+        baseUnit: purchaseUnit
+          ? {
+              id: purchaseUnit.id,
+              code: purchaseUnit.code,
+              name: purchaseUnit.name,
+            }
+          : null,
+        conversionToBase: offer.conversionToBase.toFixed(6),
+        currentPrice: currentPrice
+          ? {
+              id: currentPrice.id,
+              price: currentPrice.price.toFixed(4),
+              effectiveFrom: currentPrice.effectiveFrom.toISOString(),
+            }
+          : null,
+        priceHistory: priceHistory.map((price) => ({
+          id: price.id,
+          price: price.price.toFixed(4),
+          effectiveFrom: price.effectiveFrom.toISOString(),
+          effectiveTo: price.effectiveTo?.toISOString() ?? null,
+        })),
+        createdAt: offer.createdAt.toISOString(),
+        updatedAt: offer.updatedAt.toISOString(),
+      };
+    })
+    .filter((offer): offer is NonNullable<typeof offer> => Boolean(offer));
+  return { data, pageInfo: page.pageInfo };
+}
+
 function normalizedQueryForCursor(query: ListCommercialRegistryQuery) {
   return {
     entityType: query.entityType ?? null,
@@ -300,6 +468,29 @@ function scopeForCursor(scope: AuthenticatedCompanyScope) {
   return {
     corporationId: scope.corporationId,
     companyId: scope.companyId,
+  };
+}
+
+function suppliedItemOffersQueryForCursor(itemId: string) {
+  return { itemId };
+}
+
+type SuppliedItemOfferBoundaryWhere = {
+  OR: Array<
+    { updatedAt: { lt: Date } } | { updatedAt: Date; id: { gt: string } }
+  >;
+};
+
+function suppliedItemOffersBoundaryWhere(
+  boundary: CursorBoundary | null,
+): SuppliedItemOfferBoundaryWhere | undefined {
+  if (!boundary) return undefined;
+  const updatedAt = new Date(String(boundary.value));
+  return {
+    OR: [
+      { updatedAt: { lt: updatedAt } },
+      { updatedAt, id: { gt: boundary.id } },
+    ],
   };
 }
 
@@ -1052,6 +1243,48 @@ export class CommercialService {
     };
   }
 
+  async listSuppliedItemOffers(
+    scope: AuthenticatedCompanyScope,
+    itemId: string,
+    query: ListSuppliedItemOffersQuery,
+  ) {
+    return suppliedItemOffersDto(this.context, scope, itemId, query);
+  }
+
+  async listSuppliedItemOfferSupplierIds(
+    scope: AuthenticatedCompanyScope,
+    itemId: string,
+  ) {
+    const store = commercialRegistryStore(this.context);
+    const item = await store.suppliedItem.findFirst({
+      where: {
+        id: itemId,
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        isGlobal: true,
+        isActive: true,
+      },
+      select: { id: true },
+    });
+    if (!item) {
+      throw new AppError({
+        code: "SUPPLIED_ITEM_NOT_FOUND",
+        message: "Supplied item not found",
+        statusCode: 404,
+      });
+    }
+    const offers = await store.supplierOffer.findMany({
+      where: {
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        itemId,
+        isActive: true,
+      },
+      select: { supplierId: true },
+    });
+    return [...new Set(offers.map((offer) => offer.supplierId))];
+  }
+
   private async assertSuppliedItemReferences(
     scope: AuthenticatedCompanyScope,
     input: { baseUnitId?: string; categoryId?: string | null },
@@ -1125,53 +1358,98 @@ export class CommercialService {
     input: UpdateSuppliedItemInput,
   ) {
     await this.assertSuppliedItemReferences(scope, input);
-    const store = commercialRegistryStore(this.context);
-    const updated = await store.suppliedItem.updateMany({
-      where: {
-        id: itemId,
-        corporationId: scope.corporationId,
-        companyId: scope.companyId,
-        isGlobal: true,
-        isActive: true,
-      },
-      data: {
-        name: input.name,
-        baseUnitId: input.baseUnitId,
-        categoryId: input.categoryId,
-        valueUnitQuantity: input.valueUnitQuantity,
-        basePrice: input.basePrice,
-      },
-    });
-    if (updated.count === 0) {
-      throw new AppError({
-        code: "SUPPLIED_ITEM_NOT_FOUND",
-        message: "Supplied item not found",
-        statusCode: 404,
+    const now = new Date();
+    return this.context.transaction(async (transactionContext) => {
+      const store = commercialRegistryStore(transactionContext);
+      const updated = await store.suppliedItem.updateMany({
+        where: {
+          id: itemId,
+          corporationId: scope.corporationId,
+          companyId: scope.companyId,
+          isGlobal: true,
+          isActive: true,
+        },
+        data: {
+          name: input.name,
+          baseUnitId: input.baseUnitId,
+          categoryId: input.categoryId,
+          valueUnitQuantity: input.valueUnitQuantity,
+          basePrice: input.basePrice,
+        },
       });
-    }
-    const item = await store.suppliedItem.findFirstOrThrow({
-      where: {
-        id: itemId,
-        corporationId: scope.corporationId,
-        companyId: scope.companyId,
-      },
-      select: {
-        id: true,
-        name: true,
-        baseUnitId: true,
-        categoryId: true,
-        valueUnitQuantity: true,
-        basePrice: true,
-      },
+      if (updated.count === 0) {
+        throw new AppError({
+          code: "SUPPLIED_ITEM_NOT_FOUND",
+          message: "Supplied item not found",
+          statusCode: 404,
+        });
+      }
+      const item = await store.suppliedItem.findFirstOrThrow({
+        where: {
+          id: itemId,
+          corporationId: scope.corporationId,
+          companyId: scope.companyId,
+        },
+        select: {
+          id: true,
+          name: true,
+          baseUnitId: true,
+          categoryId: true,
+          valueUnitQuantity: true,
+          basePrice: true,
+        },
+      });
+
+      if (input.propagateMirrorToExistingOffers) {
+        const activeOffers = await store.supplierOffer.findMany({
+          where: {
+            corporationId: scope.corporationId,
+            companyId: scope.companyId,
+            itemId,
+            isActive: true,
+          },
+          select: { id: true },
+        });
+        const activeOfferIds = activeOffers.map((offer) => offer.id);
+        if (activeOfferIds.length > 0) {
+          await store.supplierOffer.updateMany({
+            where: {
+              corporationId: scope.corporationId,
+              companyId: scope.companyId,
+              id: { in: activeOfferIds },
+            },
+            data: { conversionToBase: item.valueUnitQuantity },
+          });
+          await store.supplierOfferPrice.updateMany({
+            where: {
+              corporationId: scope.corporationId,
+              companyId: scope.companyId,
+              offerId: { in: activeOfferIds },
+              effectiveTo: null,
+            },
+            data: { effectiveTo: now },
+          });
+          await store.supplierOfferPrice.createMany({
+            data: activeOfferIds.map((offerId) => ({
+              corporationId: scope.corporationId,
+              companyId: scope.companyId,
+              offerId,
+              price: item.basePrice,
+              effectiveFrom: now,
+            })),
+          });
+        }
+      }
+
+      return {
+        id: item.id,
+        name: item.name,
+        baseUnitId: item.baseUnitId,
+        categoryId: item.categoryId,
+        valueUnitQuantity: item.valueUnitQuantity.toFixed(6),
+        basePrice: item.basePrice.toFixed(4),
+      };
     });
-    return {
-      id: item.id,
-      name: item.name,
-      baseUnitId: item.baseUnitId,
-      categoryId: item.categoryId,
-      valueUnitQuantity: item.valueUnitQuantity.toFixed(6),
-      basePrice: item.basePrice.toFixed(4),
-    };
   }
 
   async addSupplierToSuppliedItem(
@@ -1257,48 +1535,6 @@ export class CommercialService {
           effectiveFrom: now,
         },
       });
-
-      if (input.propagateToExistingOffers) {
-        const existingOffers = await store.supplierOffer.findMany({
-          where: {
-            corporationId: scope.corporationId,
-            companyId: scope.companyId,
-            itemId,
-            isActive: true,
-            id: { not: created.id },
-          },
-          select: { id: true },
-        });
-        const existingOfferIds = existingOffers.map((offer) => offer.id);
-        if (existingOfferIds.length > 0) {
-          await store.supplierOffer.updateMany({
-            where: {
-              corporationId: scope.corporationId,
-              companyId: scope.companyId,
-              id: { in: existingOfferIds },
-            },
-            data: { conversionToBase: input.conversionToBase },
-          });
-          await store.supplierOfferPrice.updateMany({
-            where: {
-              corporationId: scope.corporationId,
-              companyId: scope.companyId,
-              offerId: { in: existingOfferIds },
-              effectiveTo: null,
-            },
-            data: { effectiveTo: now },
-          });
-          await store.supplierOfferPrice.createMany({
-            data: existingOfferIds.map((offerId) => ({
-              corporationId: scope.corporationId,
-              companyId: scope.companyId,
-              offerId,
-              price: input.price,
-              effectiveFrom: now,
-            })),
-          });
-        }
-      }
 
       const dto = (
         await supplierOffersDto(transactionContext, scope, input.supplierId)

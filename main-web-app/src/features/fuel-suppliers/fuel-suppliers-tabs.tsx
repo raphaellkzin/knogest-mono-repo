@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { OperationTabs } from "@/components/ui/operation-tabs";
 import type { RegistryActionState } from "@/features/commercial-registry/commercial-registry-action-state";
@@ -8,6 +9,7 @@ import type {
   RegistryListItem,
   RegistryListQuery,
   SupplierSelectorOption,
+  SuppliedItemOffersPage,
 } from "@/features/commercial-registry/commercial-registry.server";
 import { RegistryPage } from "@/features/commercial-registry/components/registry-page";
 import { SuppliedItemsCatalog } from "@/features/commercial-registry/components/supplied-items-catalog";
@@ -48,12 +50,15 @@ export function FuelSuppliersTabs({
   initialTab,
   lookupAddressByCep,
   lookupFuelSupplierOptionsAction,
+  lookupSuppliedItemOfferSupplierIdsAction,
+  lookupSuppliedItemOffersAction,
   pageInfo,
   query,
   removeSuppliedItemAction,
   removeSuppliedItemCategoryAction,
   removeSupplierAction,
   rows,
+  saveSupplierOfferAction,
   saveSuppliedItemAction,
   saveSuppliedItemCategoryAction,
   supplierCatalog,
@@ -66,12 +71,20 @@ export function FuelSuppliersTabs({
   lookupFuelSupplierOptionsAction: (
     search: string,
   ) => Promise<SupplierSelectorOption[]>;
+  lookupSuppliedItemOfferSupplierIdsAction: (
+    itemId: string,
+  ) => Promise<string[]>;
+  lookupSuppliedItemOffersAction: (input: {
+    cursor?: string | null;
+    itemId: string;
+  }) => Promise<SuppliedItemOffersPage>;
   pageInfo: { hasNextPage: boolean; nextCursor: string | null };
   query: RegistryListQuery;
   removeSuppliedItemAction: RegistryAction;
   removeSuppliedItemCategoryAction: RegistryAction;
   removeSupplierAction: RegistryAction;
   rows: RegistryListItem[];
+  saveSupplierOfferAction: RegistryAction;
   saveSuppliedItemAction: RegistryAction;
   saveSuppliedItemCategoryAction: RegistryAction;
   supplierCatalog: {
@@ -81,14 +94,30 @@ export function FuelSuppliersTabs({
     catalogItems?: SuppliedItemCatalogItem[];
   };
 }) {
+  const router = useRouter();
   const [tab, setTab] = useState<SupplierTab>(initialTab);
+  const handleTabChange = (nextTab: SupplierTab) => {
+    setTab(nextTab);
+    const params = new URLSearchParams();
+    if (nextTab === "suppliers") {
+      params.set("tab", "suppliers");
+      if (query.search) params.set("search", query.search);
+      if (query.entityType) params.set("entityType", query.entityType);
+      if (query.sortBy) params.set("sortBy", query.sortBy);
+      if (query.sortDirection) params.set("sortDirection", query.sortDirection);
+    }
+    const search = params.toString();
+    router.replace(
+      search ? `/home/fornecedores?${search}` : "/home/fornecedores",
+    );
+  };
 
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
         <OperationTabs<SupplierTab>
           value={tab}
-          onValueChange={setTab}
+          onValueChange={handleTabChange}
           tabs={[
             { value: "items", label: "Itens fornecidos" },
             { value: "suppliers", label: "Fornecedores" },
@@ -102,8 +131,13 @@ export function FuelSuppliersTabs({
           catalog={supplierCatalog}
           initialState={initialState}
           lookupFuelSupplierOptionsAction={lookupFuelSupplierOptionsAction}
+          lookupSuppliedItemOfferSupplierIdsAction={
+            lookupSuppliedItemOfferSupplierIdsAction
+          }
+          lookupSuppliedItemOffersAction={lookupSuppliedItemOffersAction}
           removeSuppliedItemAction={removeSuppliedItemAction}
           removeSuppliedItemCategoryAction={removeSuppliedItemCategoryAction}
+          saveSupplierOfferAction={saveSupplierOfferAction}
           saveSuppliedItemAction={saveSuppliedItemAction}
           saveSuppliedItemCategoryAction={saveSuppliedItemCategoryAction}
         />
@@ -120,6 +154,7 @@ export function FuelSuppliersTabs({
             removeLabel: "Remover",
             searchPlaceholder: "Buscar por razão social, nome ou contato",
           }}
+          persistentParams={{ tab: "suppliers" }}
           initialState={initialState}
           lookupAddressByCep={lookupAddressByCep}
           pageInfo={pageInfo}

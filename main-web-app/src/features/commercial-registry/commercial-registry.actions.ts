@@ -8,7 +8,10 @@ import type { PostApiV1ClientsMutationRequest } from "@/generated/models/PostApi
 import client, { ApiClientError } from "@/lib/api/server-client";
 import { decimalInputToCanonicalFixed } from "@/lib/brazilian-input-mask";
 import type { RegistryActionState } from "./commercial-registry-action-state";
-import type { SupplierSelectorOption } from "./commercial-registry.server";
+import type {
+  SupplierSelectorOption,
+  SuppliedItemOffersPage,
+} from "./commercial-registry.server";
 import { supplierOfferPayload } from "./commercial-registry-offer-payload";
 import { z } from "zod";
 
@@ -108,6 +111,15 @@ function suppliedItemPayload(formData: FormData) {
   };
 }
 
+function suppliedItemUpdatePayload(formData: FormData) {
+  return {
+    ...suppliedItemPayload(formData),
+    propagateMirrorToExistingOffers: Boolean(
+      optionalString(formData, "propagateMirrorToExistingOffers"),
+    ),
+  };
+}
+
 function suppliedItemCategoryPayload(formData: FormData) {
   return {
     name: optionalString(formData, "name") ?? "",
@@ -124,16 +136,10 @@ function itemSupplierOfferPayload(formData: FormData) {
       4,
     ),
     conversionToBase: decimalInputToCanonicalFixed(
-      optionalString(formData, "conversionToBase") ?? "",
+      optionalString(formData, "conversionToBase") ?? "1,00000",
       5,
       6,
     ),
-    propagateToExistingOffers: optionalString(
-      formData,
-      "propagateToExistingOffers",
-    )
-      ? true
-      : false,
   };
 }
 
@@ -257,6 +263,7 @@ export async function saveSupplierOfferAction(
       data: supplierOfferPayload(formData),
     });
     revalidatePath(`/home/fornecedores/${supplierId}`);
+    revalidatePath("/home/fornecedores");
     return {
       ok: true,
       message: offerId ? "Oferta atualizada." : "Oferta cadastrada.",
@@ -296,7 +303,9 @@ export async function saveSuppliedItemAction(
         ? `/api/v1/supplied-items/${itemId}`
         : "/api/v1/supplied-items",
       method: itemId ? "PATCH" : "POST",
-      data: suppliedItemPayload(formData),
+      data: itemId
+        ? suppliedItemUpdatePayload(formData)
+        : suppliedItemPayload(formData),
     });
     revalidatePath("/home/fornecedores");
     if (supplierId) revalidatePath(`/home/fornecedores/${supplierId}`);
@@ -400,6 +409,37 @@ export async function lookupFuelSupplierOptionsAction(
     url: "/api/v1/fuel-suppliers/selectors/active",
     method: "GET",
     params: { search, limit: 25 },
+  });
+  return response.data.data;
+}
+
+export async function lookupSuppliedItemOffersAction({
+  cursor,
+  itemId,
+}: {
+  cursor?: string | null;
+  itemId: string;
+}): Promise<SuppliedItemOffersPage> {
+  const response = await client<{
+    success: true;
+    data: SuppliedItemOffersPage;
+  }>({
+    url: `/api/v1/supplied-items/${itemId}/offers`,
+    method: "GET",
+    params: { limit: 30, cursor: cursor ?? undefined },
+  });
+  return response.data.data;
+}
+
+export async function lookupSuppliedItemOfferSupplierIdsAction(
+  itemId: string,
+): Promise<string[]> {
+  const response = await client<{
+    success: true;
+    data: string[];
+  }>({
+    url: `/api/v1/supplied-items/${itemId}/offer-supplier-ids`,
+    method: "GET",
   });
   return response.data.data;
 }

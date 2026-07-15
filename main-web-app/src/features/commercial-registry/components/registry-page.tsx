@@ -186,6 +186,7 @@ export function RegistryPage({
   initialState,
   lookupAddressByCep,
   pageInfo,
+  persistentParams = {},
   query,
   removeAction,
   rows,
@@ -195,6 +196,7 @@ export function RegistryPage({
   initialState: RegistryActionState;
   lookupAddressByCep?: RegistryCepLookupAction;
   pageInfo: { hasNextPage: boolean; nextCursor: string | null };
+  persistentParams?: Record<string, string>;
   query: RegistryListQuery;
   removeAction: RemoveAction;
   rows: RegistryListItem[];
@@ -225,11 +227,16 @@ export function RegistryPage({
   );
   const hasFilters = Boolean(query.search || query.entityType);
   const nextParams = new URLSearchParams();
+  for (const [key, value] of Object.entries(persistentParams)) {
+    nextParams.set(key, value);
+  }
   if (query.search) nextParams.set("search", query.search);
   if (query.entityType) nextParams.set("entityType", query.entityType);
   if (query.sortBy) nextParams.set("sortBy", query.sortBy);
   if (query.sortDirection) nextParams.set("sortDirection", query.sortDirection);
   if (pageInfo.nextCursor) nextParams.set("cursor", pageInfo.nextCursor);
+  const detailQuery = new URLSearchParams(persistentParams).toString();
+  const detailSuffix = detailQuery ? `?${detailQuery}` : "";
 
   const setIndividual = (key: keyof IndividualDraft, value: string) =>
     setIndividualDraft((draft) => ({ ...draft, [key]: value }));
@@ -352,6 +359,9 @@ export function RegistryPage({
               action={copy.basePath}
               className="grid gap-2 md:grid-cols-[minmax(220px,360px)_150px_150px_auto]"
             >
+              {Object.entries(persistentParams).map(([key, value]) => (
+                <input key={key} type="hidden" name={key} value={value} />
+              ))}
               <label className="relative block">
                 <span className="sr-only">{copy.searchPlaceholder}</span>
                 <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -697,7 +707,9 @@ export function RegistryPage({
                   className="flex min-h-16 items-center gap-3 rounded-md border border-border bg-background px-4 py-3 text-left text-sm transition-colors hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
                   onClick={() => {
                     if (!createdSupplierId) return;
-                    router.push(`${copy.detailBasePath}/${createdSupplierId}`);
+                    router.push(
+                      `${copy.detailBasePath}/${createdSupplierId}${detailSuffix}`,
+                    );
                   }}
                 >
                   <Eye className="size-5 text-primary" />
@@ -716,7 +728,7 @@ export function RegistryPage({
                   onClick={() => {
                     if (!createdSupplierId) return;
                     router.push(
-                      `${copy.detailBasePath}/${createdSupplierId}?catalog=new`,
+                      `${copy.detailBasePath}/${createdSupplierId}?catalog=new${detailQuery ? `&${detailQuery}` : ""}`,
                     );
                   }}
                 >
@@ -782,7 +794,7 @@ export function RegistryPage({
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-2">
                         <Link
-                          href={`${copy.detailBasePath}/${row.id}`}
+                          href={`${copy.detailBasePath}/${row.id}${detailSuffix}`}
                           className={buttonVariants({
                             size: "sm",
                             variant: "outline",

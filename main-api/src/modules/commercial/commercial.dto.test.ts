@@ -4,6 +4,8 @@ import {
   addSupplierToSuppliedItemSchema,
   createSuppliedItemCategorySchema,
   createSuppliedItemSchema,
+  listSuppliedItemOffersQuerySchema,
+  updateSuppliedItemSchema,
   updateSupplierSchema,
 } from "./commercial.dto";
 
@@ -79,34 +81,58 @@ describe("Commercial DTOs", () => {
     });
   });
 
-  it("accepts adding a supplier to an item with explicit propagation", () => {
+  it("accepts supplied item mirror propagation only on item updates", () => {
+    expect(
+      updateSuppliedItemSchema.parse({
+        name: "Diesel S10",
+        baseUnitId: "00000000-0000-4000-8000-00000000a001",
+        valueUnitQuantity: "1.234560",
+        basePrice: "7.5000",
+        propagateMirrorToExistingOffers: true,
+      }),
+    ).toEqual({
+      name: "Diesel S10",
+      baseUnitId: "00000000-0000-4000-8000-00000000a001",
+      valueUnitQuantity: "1.234560",
+      basePrice: "7.5000",
+      propagateMirrorToExistingOffers: true,
+    });
+  });
+
+  it("accepts adding a supplier to an item without propagation", () => {
     expect(
       addSupplierToSuppliedItemSchema.parse({
+        supplierId: "00000000-0000-4000-8000-000000000701",
+        price: "7.5000",
+        conversionToBase: "1.234560",
+      }),
+    ).toEqual({
+      supplierId: "00000000-0000-4000-8000-000000000701",
+      price: "7.5000",
+      conversionToBase: "1.234560",
+    });
+  });
+
+  it("rejects supplier item propagation from offer creation", () => {
+    expect(
+      addSupplierToSuppliedItemSchema.safeParse({
         supplierId: "00000000-0000-4000-8000-000000000701",
         price: "7.5000",
         conversionToBase: "1.234560",
         propagateToExistingOffers: true,
-      }),
-    ).toEqual({
-      supplierId: "00000000-0000-4000-8000-000000000701",
-      price: "7.5000",
-      conversionToBase: "1.234560",
-      propagateToExistingOffers: true,
-    });
+      }).success,
+    ).toBe(false);
   });
 
-  it("defaults supplier item propagation to false", () => {
-    expect(
-      addSupplierToSuppliedItemSchema.parse({
-        supplierId: "00000000-0000-4000-8000-000000000701",
-        price: "7.5000",
-        conversionToBase: "1.234560",
-      }),
-    ).toEqual({
-      supplierId: "00000000-0000-4000-8000-000000000701",
-      price: "7.5000",
-      conversionToBase: "1.234560",
-      propagateToExistingOffers: false,
+  it("defaults supplied item offers pagination to 30", () => {
+    expect(listSuppliedItemOffersQuerySchema.parse({})).toEqual({
+      limit: 30,
     });
+    expect(
+      listSuppliedItemOffersQuerySchema.parse({
+        cursor: "abc",
+        limit: "30",
+      }),
+    ).toEqual({ cursor: "abc", limit: 30 });
   });
 });

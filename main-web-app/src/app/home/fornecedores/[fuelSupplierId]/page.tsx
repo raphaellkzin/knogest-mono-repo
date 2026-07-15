@@ -29,6 +29,13 @@ export default async function Page({
     getRegistryDetail("suppliers", fuelSupplierId),
     getSupplierCatalogOptions(),
   ]);
+  const requestedTab = Array.isArray(resolvedSearchParams.tab)
+    ? resolvedSearchParams.tab[0]
+    : resolvedSearchParams.tab;
+  const backHref =
+    requestedTab === "suppliers"
+      ? "/home/fornecedores?tab=suppliers"
+      : "/home/fornecedores";
 
   return (
     <AppShell
@@ -38,7 +45,7 @@ export default async function Page({
       currentArea="suppliers"
     >
       <RegistryDetailPage
-        backHref="/home/fornecedores"
+        backHref={backHref}
         catalog={catalog}
         initialOfferState={getInitialRegistryActionState()}
         openCatalogOnLoad={resolvedSearchParams.catalog === "new"}

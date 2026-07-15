@@ -14,16 +14,15 @@ export function supplierOfferPayload(formData: FormData) {
   const itemId = optionalString(formData, "itemId");
   const itemName = optionalString(formData, "itemName");
   const baseUnitId = optionalString(formData, "baseUnitId");
-  const conversionToBase = optionalString(formData, "conversionToBase");
+  const conversionToBase =
+    optionalString(formData, "conversionToBase") ?? "1,00000";
   const price = optionalString(formData, "price");
   return {
     itemId,
     itemName,
     baseUnitId,
     purchaseUnitId: baseUnitId,
-    conversionToBase: conversionToBase
-      ? decimalInputToCanonicalFixed(conversionToBase, 5, 6)
-      : undefined,
+    conversionToBase: decimalInputToCanonicalFixed(conversionToBase, 5, 6),
     price: price ? decimalInputToCanonical(price, 4) : undefined,
   };
 }

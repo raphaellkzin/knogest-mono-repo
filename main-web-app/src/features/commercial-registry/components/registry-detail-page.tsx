@@ -66,6 +66,7 @@ type OfferDraft = {
   baseUnitId: string;
   conversionToBase: string;
   price: string;
+  useConversion: boolean;
 };
 
 type SupplierEditDraft = {
@@ -96,6 +97,7 @@ const emptyOfferDraft: OfferDraft = {
   baseUnitId: "",
   conversionToBase: "1,00000",
   price: "",
+  useConversion: false,
 };
 
 export function RegistryDetailPage({
@@ -174,7 +176,9 @@ export function RegistryDetailPage({
   const handleSaveOfferAction = useCallback<RegistryAction>(
     async (state, formData) => {
       const result = await (saveOfferAction ?? noopAction)(state, formData);
-      if (result.ok && result.message) setIsOfferModalOpen(false);
+      if (result.ok && result.message) {
+        setIsOfferModalOpen(false);
+      }
       return result;
     },
     [saveOfferAction],
@@ -326,6 +330,7 @@ export function RegistryDetailPage({
             offer.conversionToBase,
             5,
           ),
+          useConversion: offer.conversionToBase !== "1.000000",
           price: offer.currentPrice
             ? canonicalDecimalToBrazilian(offer.currentPrice.price, 4)
             : "",
@@ -345,7 +350,6 @@ export function RegistryDetailPage({
     },
     [canManageCatalog, catalogOptions.items, catalogOptions.units],
   );
-
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -883,7 +887,7 @@ export function RegistryDetailPage({
             </FormSection>
 
             <FormSection title="Unidades e preço">
-              <div className="grid gap-3 md:grid-cols-3">
+              <div className="grid gap-3 md:grid-cols-2">
                 {draft.itemMode === "existing" && currentItem && (
                   <input
                     type="hidden"
@@ -927,6 +931,28 @@ export function RegistryDetailPage({
                     className="min-h-11"
                   />
                 </label>
+              </div>
+              <label className="flex min-h-11 items-center gap-3 rounded-md border border-border bg-background px-3 text-sm font-semibold">
+                <input
+                  type="checkbox"
+                  checked={draft.useConversion}
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      useConversion: event.target.checked,
+                      conversionToBase: event.target.checked
+                        ? current.conversionToBase
+                        : "1,00000",
+                    }))
+                  }
+                  className="size-4 accent-primary"
+                />
+                Informar conversão
+              </label>
+              {!draft.useConversion && (
+                <input type="hidden" name="conversionToBase" value="1,00000" />
+              )}
+              {draft.useConversion && (
                 <label className="grid gap-1.5 text-sm font-semibold">
                   <span>Conversão</span>
                   <Input
@@ -943,7 +969,7 @@ export function RegistryDetailPage({
                     className="min-h-11"
                   />
                 </label>
-              </div>
+              )}
             </FormSection>
 
             {!saveState.ok && saveState.message && (
@@ -956,6 +982,7 @@ export function RegistryDetailPage({
           </form>
         </OperationsModal>
       )}
+
     </div>
   );
 }

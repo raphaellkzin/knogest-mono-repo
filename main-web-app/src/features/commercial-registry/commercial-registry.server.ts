@@ -46,6 +46,22 @@ export type SupplierOfferDetail = {
   updatedAt: string;
 };
 
+export type SuppliedItemOfferDetail = Omit<
+  SupplierOfferDetail,
+  "item" | "purchaseUnit"
+> & {
+  supplier: {
+    id: string;
+    name: string;
+    tradeName: string | null;
+    document: { documentType: string; maskedDocument: string };
+  };
+};
+export type SuppliedItemOffersPage = {
+  data: SuppliedItemOfferDetail[];
+  pageInfo: { hasNextPage: boolean; nextCursor: string | null };
+};
+
 export type MeasurementUnitOption = { id: string; code: string; name: string };
 export type SuppliedItemOption = {
   id: string;

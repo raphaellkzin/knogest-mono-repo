@@ -118,7 +118,7 @@ describe("RegistryDetailPage supplier editing", () => {
     expect(screen.queryByLabelText("CNPJ")).toBeNull();
   });
 
-  it("shows measurement unit and editable conversion in the Supplier offer modal", async () => {
+  it("shows measurement unit and reveals editable conversion in the Supplier offer modal", async () => {
     const user = userEvent.setup();
     render(
       <RegistryDetailPage
@@ -142,6 +142,8 @@ describe("RegistryDetailPage supplier editing", () => {
     await user.click(screen.getByRole("button", { name: "Nova oferta" }));
 
     expect(screen.getByLabelText("Unidade de medida")).toBeTruthy();
+    expect(screen.queryByLabelText("Conversão")).toBeNull();
+    await user.click(screen.getByLabelText("Informar conversão"));
     expect((screen.getByLabelText("Conversão") as HTMLInputElement).value).toBe(
       "1,00000",
     );

@@ -20,6 +20,7 @@ import {
   createSupplierSchema,
   supplierOfferSchema as createSupplierOfferBodySchema,
   listCommercialRegistryQuerySchema,
+  listSuppliedItemOffersQuerySchema,
   selectorQuerySchema,
   updateSuppliedItemCategorySchema,
   updateSuppliedItemSchema,
@@ -119,7 +120,6 @@ const addSupplierToSuppliedItemBodySchema = {
     supplierId: { type: "string", format: "uuid" },
     price: { type: "string", pattern: "^\\d{1,14}\\.\\d{4}$" },
     conversionToBase: { type: "string", pattern: "^\\d{1,12}\\.\\d{6}$" },
-    propagateToExistingOffers: { type: "boolean", default: false },
   },
 } as const;
 
@@ -146,6 +146,15 @@ const selectorOpenApiQuerySchema = {
   properties: {
     search: { type: "string", maxLength: 120 },
     limit: { type: "integer", minimum: 1, maximum: 100, default: 25 },
+  },
+} as const;
+
+const suppliedItemOffersOpenApiQuerySchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    limit: { type: "integer", minimum: 1, maximum: 100, default: 30 },
+    cursor: { type: "string", minLength: 1, maxLength: 2048 },
   },
 } as const;
 
@@ -302,6 +311,97 @@ const supplierOfferSchema = {
     updatedAt: { type: "string", format: "date-time" },
   },
   additionalProperties: false,
+} as const;
+
+const suppliedItemOfferSchema = {
+  type: "object",
+  required: [
+    "id",
+    "supplier",
+    "baseUnit",
+    "conversionToBase",
+    "currentPrice",
+    "priceHistory",
+    "createdAt",
+    "updatedAt",
+  ],
+  properties: {
+    id: { type: "string", format: "uuid" },
+    supplier: {
+      type: "object",
+      required: ["id", "name", "tradeName", "document"],
+      properties: {
+        id: { type: "string", format: "uuid" },
+        name: { type: "string" },
+        tradeName: { type: "string", nullable: true },
+        document: maskedSensitiveDocumentSchema,
+      },
+      additionalProperties: false,
+    },
+    baseUnit: {
+      type: "object",
+      nullable: true,
+      required: ["id", "code", "name"],
+      properties: {
+        id: { type: "string", format: "uuid" },
+        code: { type: "string" },
+        name: { type: "string" },
+      },
+      additionalProperties: false,
+    },
+    conversionToBase: { type: "string" },
+    currentPrice: {
+      type: "object",
+      nullable: true,
+      required: ["id", "price", "effectiveFrom"],
+      properties: {
+        id: { type: "string", format: "uuid" },
+        price: { type: "string" },
+        effectiveFrom: { type: "string", format: "date-time" },
+      },
+      additionalProperties: false,
+    },
+    priceHistory: supplierOfferSchema.properties.priceHistory,
+    createdAt: { type: "string", format: "date-time" },
+    updatedAt: { type: "string", format: "date-time" },
+  },
+  additionalProperties: false,
+} as const;
+
+const suppliedItemOffersResponseSchema = {
+  type: "object",
+  required: ["success", "message", "data"],
+  properties: {
+    success: { type: "boolean", const: true },
+    message: { type: "string" },
+    data: {
+      type: "object",
+      required: ["data", "pageInfo"],
+      properties: {
+        data: { type: "array", items: suppliedItemOfferSchema },
+        pageInfo: {
+          type: "object",
+          required: ["hasNextPage", "nextCursor"],
+          properties: {
+            hasNextPage: { type: "boolean" },
+            nextCursor: { type: "string", nullable: true },
+          },
+          additionalProperties: false,
+        },
+      },
+      additionalProperties: false,
+    },
+  },
+} as const;
+
+const suppliedItemOfferSupplierIdsResponseSchema = {
+  type: "object",
+  required: ["success", "message", "data"],
+  properties: {
+    success: { type: "boolean", const: true },
+    message: { type: "string" },
+    data: { type: "array", items: { type: "string", format: "uuid" } },
+  },
 } as const;
 
 const supplierDetailSchema = {
@@ -1269,6 +1369,10 @@ export const v1CommercialController = async (app: FastifyInstance) => {
               pattern: "^\\d{1,12}\\.\\d{6}$",
             },
             basePrice: { type: "string", pattern: "^\\d{1,14}\\.\\d{4}$" },
+            propagateMirrorToExistingOffers: {
+              type: "boolean",
+              default: false,
+            },
           },
         },
         response: {
@@ -1407,6 +1511,85 @@ export const v1CommercialController = async (app: FastifyInstance) => {
         request.body as z.infer<typeof addSupplierToSuppliedItemSchema>,
       );
       return jsonResponse.success({ reply, data, statusCode: 201 });
+    },
+  );
+
+  app.get(
+    "/supplied-items/:itemId/offer-supplier-ids",
+    {
+      preHandler: [
+        app.requireCompanyScope,
+        validateParams(suppliedItemParamsSchema),
+      ],
+      schema: {
+        tags: ["Commercial"],
+        summary: "List Supplier ids with active offers for a global Supplied Item",
+        security: [{ bearerAuth: [] }],
+        params: {
+          type: "object",
+          additionalProperties: false,
+          required: ["itemId"],
+          properties: { itemId: { type: "string", format: "uuid" } },
+        },
+        response: {
+          200: suppliedItemOfferSupplierIdsResponseSchema,
+          400: errorSchema,
+          401: errorSchema,
+          403: errorSchema,
+          404: errorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { itemId } = request.params as z.infer<
+        typeof suppliedItemParamsSchema
+      >;
+      const data = await commercialService.listSuppliedItemOfferSupplierIds(
+        scopeFromRequest(request),
+        itemId,
+      );
+      return jsonResponse.success({ reply, data });
+    },
+  );
+
+  app.get(
+    "/supplied-items/:itemId/offers",
+    {
+      preHandler: [
+        app.requireCompanyScope,
+        validateParams(suppliedItemParamsSchema),
+        validateQuery(listSuppliedItemOffersQuerySchema),
+      ],
+      schema: {
+        tags: ["Commercial"],
+        summary: "List active Supplier Offers for a global Supplied Item",
+        security: [{ bearerAuth: [] }],
+        params: {
+          type: "object",
+          additionalProperties: false,
+          required: ["itemId"],
+          properties: { itemId: { type: "string", format: "uuid" } },
+        },
+        querystring: suppliedItemOffersOpenApiQuerySchema,
+        response: {
+          200: suppliedItemOffersResponseSchema,
+          400: errorSchema,
+          401: errorSchema,
+          403: errorSchema,
+          404: errorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { itemId } = request.params as z.infer<
+        typeof suppliedItemParamsSchema
+      >;
+      const data = await commercialService.listSuppliedItemOffers(
+        scopeFromRequest(request),
+        itemId,
+        request.query as z.infer<typeof listSuppliedItemOffersQuerySchema>,
+      );
+      return jsonResponse.success({ reply, data });
     },
   );
 

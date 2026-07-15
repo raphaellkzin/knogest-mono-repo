@@ -2,10 +2,13 @@ import {
   addSupplierToSuppliedItemAction,
   createFuelSupplierAction,
   lookupFuelSupplierOptionsAction,
+  lookupSuppliedItemOfferSupplierIdsAction,
   lookupRegistryAddressByCepAction,
+  lookupSuppliedItemOffersAction,
   removeFuelSupplierAction,
   removeSuppliedItemAction,
   removeSuppliedItemCategoryAction,
+  saveSupplierOfferAction,
   saveSuppliedItemAction,
   saveSuppliedItemCategoryAction,
 } from "@/features/commercial-registry/commercial-registry.actions";
@@ -27,8 +30,16 @@ export async function FuelSuppliersPage({
     getRegistryList("suppliers", query),
     getSupplierCatalogOptions(),
   ]);
-  const initialTab =
-    query.cursor || query.entityType || query.search ? "suppliers" : "items";
+  const requestedTab = Array.isArray(searchParams.tab)
+    ? searchParams.tab[0]
+    : searchParams.tab;
+  const initialTab: "items" | "suppliers" =
+    requestedTab === "suppliers" ||
+    query.cursor ||
+    query.entityType ||
+    query.search
+      ? "suppliers"
+      : "items";
   return (
     <FuelSuppliersTabs
       addSupplierToSuppliedItemAction={addSupplierToSuppliedItemAction}
@@ -37,12 +48,17 @@ export async function FuelSuppliersPage({
       initialTab={initialTab}
       lookupAddressByCep={lookupRegistryAddressByCepAction}
       lookupFuelSupplierOptionsAction={lookupFuelSupplierOptionsAction}
+      lookupSuppliedItemOfferSupplierIdsAction={
+        lookupSuppliedItemOfferSupplierIdsAction
+      }
+      lookupSuppliedItemOffersAction={lookupSuppliedItemOffersAction}
       pageInfo={page.pageInfo}
       query={query}
       removeSuppliedItemAction={removeSuppliedItemAction}
       removeSuppliedItemCategoryAction={removeSuppliedItemCategoryAction}
       removeSupplierAction={removeFuelSupplierAction}
       rows={page.data}
+      saveSupplierOfferAction={saveSupplierOfferAction}
       saveSuppliedItemAction={saveSuppliedItemAction}
       saveSuppliedItemCategoryAction={saveSuppliedItemCategoryAction}
       supplierCatalog={supplierCatalog}
