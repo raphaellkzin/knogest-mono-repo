@@ -28,6 +28,7 @@ import {
   ProjectWizardIdentity,
   ProjectWizardReview,
   ProjectWizardSubmissionNotice,
+  SupplierOffers,
   type ProjectWizardOptions,
 } from "./project-wizard";
 import { emptyProjectCommand, type ProjectCommand } from "../projects-schema";
@@ -54,9 +55,25 @@ const options: ProjectWizardOptions = {
       readingId: "reading-2",
     },
   ],
-  suppliers: [],
-  suppliedItems: [],
-  units: [{ id: "unit-1", label: "L", detail: "Litro" }],
+  suppliers: [
+    {
+      id: "supplier-1",
+      label: "Fornecedor Sul",
+      detail: "11.222.333/0001-81",
+    },
+  ],
+  suppliedItems: [
+    {
+      id: "item-1",
+      label: "Diesel S10",
+      detail: "unit-1",
+      baseUnitId: "unit-1",
+    },
+  ],
+  units: [
+    { id: "unit-1", label: "L", detail: "Litro" },
+    { id: "unit-2", label: "m³", detail: "Metro cúbico" },
+  ],
   jobRoles: [{ id: "job-role-1", label: "Engenheira" }],
 };
 
@@ -214,6 +231,23 @@ function EmployeeHarness() {
         Nova sessão
       </button>
       <output>{JSON.stringify(employeeAllocations)}</output>
+    </>
+  );
+}
+
+function SupplierOffersHarness() {
+  const form = useForm<ProjectCommand>({
+    defaultValues: structuredClone(emptyProjectCommand),
+  });
+  const supplierOffers = useWatch({
+    control: form.control,
+    name: "projectSupplierOffers",
+  });
+
+  return (
+    <>
+      <SupplierOffers form={form} options={options} />
+      <output>{JSON.stringify(supplierOffers)}</output>
     </>
   );
 }
@@ -457,16 +491,86 @@ describe("Project wizard polish", () => {
     ).toBeNull();
   });
 
+  it("guides project supplier offers with an existing item and one measurement unit", async () => {
+    const user = userEvent.setup();
+    render(<SupplierOffersHarness />);
+
+    await user.click(
+      screen.getByRole("button", { name: "Adicionar fornecimento" }),
+    );
+
+    expect(screen.getByLabelText("Fornecedor")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Item existente" })).toBeNull();
+
+    await user.selectOptions(screen.getByLabelText("Fornecedor"), "supplier-1");
+
+    expect(screen.getByRole("button", { name: "Item existente" })).toBeTruthy();
+    expect(
+      (screen.getByLabelText("Unidade de medida") as HTMLSelectElement)
+        .disabled,
+    ).toBe(true);
+    expect(screen.queryByText("Unidade-base")).toBeNull();
+    expect(screen.queryByText("Unidade de compra")).toBeNull();
+    expect(screen.getByLabelText("Conversão")).toBeTruthy();
+
+    await user.clear(screen.getByLabelText("Conversão"));
+    await user.type(screen.getByLabelText("Conversão"), "250000");
+
+    await user.click(
+      screen.getByRole("button", { name: "Confirmar fornecimento" }),
+    );
+
+    const output = screen.getByRole("status").textContent;
+    expect(output).toContain('"supplierId":"supplier-1"');
+    expect(output).toContain('"itemId":"item-1"');
+    expect(output).toContain('"purchaseUnitId":"unit-1"');
+    expect(output).toContain('"conversionToBase":"2.500000"');
+
+    await user.click(
+      screen.getByRole("button", { name: "Remover fornecimento 1" }),
+    );
+    expect(screen.getByRole("status").textContent).toBe("[]");
+  });
+
+  it("guides project supplier offers with a new item and measurement unit", async () => {
+    const user = userEvent.setup();
+    render(<SupplierOffersHarness />);
+
+    await user.click(
+      screen.getByRole("button", { name: "Adicionar fornecimento" }),
+    );
+    await user.selectOptions(screen.getByLabelText("Fornecedor"), "supplier-1");
+    await user.click(screen.getByRole("button", { name: "Novo item" }));
+
+    await user.type(screen.getByLabelText("Novo item"), "Brita graduada");
+    await user.selectOptions(
+      screen.getByLabelText("Unidade de medida"),
+      "unit-2",
+    );
+    await user.clear(screen.getByLabelText("Conversão"));
+    await user.type(screen.getByLabelText("Conversão"), "375000");
+    await user.click(
+      screen.getByRole("button", { name: "Confirmar fornecimento" }),
+    );
+
+    const output = screen.getByRole("status").textContent;
+    expect(output).toContain('"name":"Brita graduada"');
+    expect(output).toContain('"baseUnitId":"unit-2"');
+    expect(output).toContain('"purchaseUnitId":"unit-2"');
+    expect(output).toContain('"conversionToBase":"3.750000"');
+  });
+
   it("keeps project-only job roles temporary inside the current wizard session", async () => {
     const user = userEvent.setup();
     render(<EmployeeHarness />);
 
     await user.click(screen.getByLabelText(/Ana Silva/));
     expect(screen.queryByLabelText("Nova função")).toBeNull();
-    await user.click(
-      screen.getByRole("button", { name: "Criar nova função" }),
+    await user.click(screen.getByRole("button", { name: "Criar nova função" }));
+    await user.type(
+      screen.getByLabelText(/Aplicado somente nesta obra/),
+      "Apontador",
     );
-    await user.type(screen.getByLabelText(/Aplicado somente nesta obra/), "Apontador");
     await user.click(screen.getByRole("button", { name: "Salvar" }));
 
     expect(screen.getByText(/Apontador — somente nesta obra/)).toBeTruthy();

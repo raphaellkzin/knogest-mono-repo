@@ -64,7 +64,6 @@ type OfferDraft = {
   itemId: string;
   itemName: string;
   baseUnitId: string;
-  purchaseUnitId: string;
   conversionToBase: string;
   price: string;
 };
@@ -95,8 +94,7 @@ const emptyOfferDraft: OfferDraft = {
   itemId: "",
   itemName: "",
   baseUnitId: "",
-  purchaseUnitId: "",
-  conversionToBase: "",
+  conversionToBase: "1,00000",
   price: "",
 };
 
@@ -169,8 +167,6 @@ export function RegistryDetailPage({
     itemId: catalogOptions.items[0]?.id ?? "",
     baseUnitId:
       catalogOptions.items[0]?.baseUnitId ?? catalogOptions.units[0]?.id ?? "",
-    purchaseUnitId: catalogOptions.units[0]?.id ?? "",
-    conversionToBase: formatBrazilianDecimalInput("1000000", 6),
   });
   const handleSaveOfferAction = useCallback<RegistryAction>(
     async (state, formData) => {
@@ -323,11 +319,9 @@ export function RegistryDetailPage({
             catalogOptions.items[0]?.baseUnitId ??
             catalogOptions.units[0]?.id ??
             "",
-          purchaseUnitId:
-            offer.purchaseUnit?.id ?? catalogOptions.units[0]?.id ?? "",
           conversionToBase: canonicalDecimalToBrazilian(
             offer.conversionToBase,
-            6,
+            5,
           ),
           price: offer.currentPrice
             ? canonicalDecimalToBrazilian(offer.currentPrice.price, 4)
@@ -342,8 +336,6 @@ export function RegistryDetailPage({
             catalogOptions.items[0]?.baseUnitId ??
             catalogOptions.units[0]?.id ??
             "",
-          purchaseUnitId: catalogOptions.units[0]?.id ?? "",
-          conversionToBase: formatBrazilianDecimalInput("1000000", 6),
         });
       }
       setIsOfferModalOpen(true);
@@ -653,7 +645,7 @@ export function RegistryDetailPage({
             <div>
               <h2 className="text-lg font-bold">Catálogo do fornecedor</h2>
               <p className="mt-1 text-sm font-medium text-muted-foreground">
-                Itens, unidades, conversões e preço vigente para cálculos
+                Itens, unidade de medida e preço vigente para cálculos
                 financeiros.
               </p>
             </div>
@@ -665,12 +657,11 @@ export function RegistryDetailPage({
 
           {record.offers && record.offers.length > 0 ? (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[860px] text-left text-sm">
+              <table className="w-full min-w-[720px] text-left text-sm">
                 <thead>
                   <tr className="border-b border-border">
                     <TableHead label="Item" />
-                    <TableHead label="Unidade-base" />
-                    <TableHead label="Compra" />
+                    <TableHead label="Unidade de medida" />
                     <TableHead label="Conversão" />
                     <TableHead label="Preço vigente" />
                     <TableHead label="Atualização" />
@@ -691,12 +682,7 @@ export function RegistryDetailPage({
                           : "Não informado"}
                       </td>
                       <td className="px-4 py-3 font-semibold text-muted-foreground">
-                        {offer.purchaseUnit
-                          ? `${offer.purchaseUnit.code} - ${offer.purchaseUnit.name}`
-                          : "Não informado"}
-                      </td>
-                      <td className="px-4 py-3 font-semibold">
-                        {canonicalDecimalToBrazilian(offer.conversionToBase, 6)}
+                        {canonicalDecimalToBrazilian(offer.conversionToBase, 5)}
                       </td>
                       <td className="px-4 py-3 font-bold">
                         {offer.currentPrice
@@ -746,8 +732,8 @@ export function RegistryDetailPage({
                 Nenhuma oferta cadastrada
               </p>
               <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
-                Cadastre o primeiro item fornecido com unidade de compra,
-                conversão para unidade-base e preço vigente.
+                Cadastre o primeiro item fornecido com unidade de medida e preço
+                vigente.
               </p>
               <Button
                 type="button"
@@ -782,7 +768,7 @@ export function RegistryDetailPage({
           onOpenChange={setIsOfferModalOpen}
           size="lg"
           title={editingOffer ? "Editar oferta" : "Nova oferta"}
-          description="Defina o item, a unidade de compra, a conversão e o preço vigente para este fornecedor."
+          description="Defina o item, a unidade de medida, a conversão e o preço vigente para este fornecedor."
           footer={
             <>
               <Button
@@ -894,16 +880,16 @@ export function RegistryDetailPage({
             </FormSection>
 
             <FormSection title="Unidades e preço">
-              <div className="grid gap-3 md:grid-cols-2">
+              <div className="grid gap-3 md:grid-cols-3">
+                {draft.itemMode === "existing" && currentItem && (
+                  <input
+                    type="hidden"
+                    name="baseUnitId"
+                    value={currentItem.baseUnitId}
+                  />
+                )}
                 <label className="grid gap-1.5 text-sm font-semibold">
-                  <span>Unidade-base</span>
-                  {draft.itemMode === "existing" && currentItem && (
-                    <input
-                      type="hidden"
-                      name="baseUnitId"
-                      value={currentItem.baseUnitId}
-                    />
-                  )}
+                  <span>Unidade de medida</span>
                   <select
                     name="baseUnitId"
                     value={currentItem?.baseUnitId ?? draft.baseUnitId}
@@ -923,40 +909,6 @@ export function RegistryDetailPage({
                   </select>
                 </label>
                 <label className="grid gap-1.5 text-sm font-semibold">
-                  <span>Unidade de compra</span>
-                  <select
-                    name="purchaseUnitId"
-                    value={draft.purchaseUnitId}
-                    required
-                    onChange={(event) =>
-                      setDraftValue("purchaseUnitId", event.target.value)
-                    }
-                    className="min-h-11 rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
-                  >
-                    {catalogOptions.units.map((unit) => (
-                      <option key={unit.id} value={unit.id}>
-                        {unit.code} - {unit.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="grid gap-1.5 text-sm font-semibold">
-                  <span>Conversão para unidade-base</span>
-                  <Input
-                    name="conversionToBase"
-                    value={draft.conversionToBase}
-                    required
-                    inputMode="numeric"
-                    onChange={(event) =>
-                      setDraftValue(
-                        "conversionToBase",
-                        formatBrazilianDecimalInput(event.target.value, 6),
-                      )
-                    }
-                    className="min-h-11"
-                  />
-                </label>
-                <label className="grid gap-1.5 text-sm font-semibold">
                   <span>Preço vigente</span>
                   <Input
                     name="price"
@@ -972,13 +924,29 @@ export function RegistryDetailPage({
                     className="min-h-11"
                   />
                 </label>
+                <label className="grid gap-1.5 text-sm font-semibold">
+                  <span>Conversão</span>
+                  <Input
+                    name="conversionToBase"
+                    value={draft.conversionToBase}
+                    inputMode="numeric"
+                    onChange={(event) =>
+                      setDraftValue(
+                        "conversionToBase",
+                        formatBrazilianDecimalInput(event.target.value, 5),
+                      )
+                    }
+                    placeholder="1,00000"
+                    className="min-h-11"
+                  />
+                </label>
               </div>
             </FormSection>
 
             {!saveState.ok && saveState.message && (
               <FormErrorDeclaration
                 title="Não foi possível salvar a oferta."
-                description="Revise item, unidades, conversão e preço antes de tentar novamente."
+                description="Revise item, unidade de medida e preço antes de tentar novamente."
                 issues={[{ location: "API", message: saveState.message }]}
               />
             )}

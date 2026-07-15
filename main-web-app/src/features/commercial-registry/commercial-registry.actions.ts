@@ -5,9 +5,9 @@ import { revalidatePath } from "next/cache";
 import { deleteApiV1ClientsClientid } from "@/generated/clients/deleteApiV1ClientsClientid";
 import { postApiV1Clients } from "@/generated/clients/postApiV1Clients";
 import type { PostApiV1ClientsMutationRequest } from "@/generated/models/PostApiV1Clients";
-import { decimalInputToCanonical } from "@/lib/brazilian-input-mask";
 import client, { ApiClientError } from "@/lib/api/server-client";
 import type { RegistryActionState } from "./commercial-registry-action-state";
+import { supplierOfferPayload } from "./commercial-registry-offer-payload";
 import { z } from "zod";
 
 const viaCepSchema = z
@@ -171,25 +171,6 @@ export async function updateFuelSupplierAction(
   } catch (error) {
     return { ok: false, message: failureMessage(error) };
   }
-}
-
-function supplierOfferPayload(formData: FormData) {
-  const itemId = optionalString(formData, "itemId");
-  const itemName = optionalString(formData, "itemName");
-  const baseUnitId = optionalString(formData, "baseUnitId");
-  const purchaseUnitId = optionalString(formData, "purchaseUnitId");
-  const conversionToBase = optionalString(formData, "conversionToBase");
-  const price = optionalString(formData, "price");
-  return {
-    itemId,
-    itemName,
-    baseUnitId,
-    purchaseUnitId,
-    conversionToBase: conversionToBase
-      ? decimalInputToCanonical(conversionToBase, 6)
-      : conversionToBase,
-    price: price ? decimalInputToCanonical(price, 4) : undefined,
-  };
 }
 
 export async function saveSupplierOfferAction(

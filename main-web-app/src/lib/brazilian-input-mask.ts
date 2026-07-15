@@ -51,10 +51,7 @@ export function onlyDigits(value: string, limit?: number) {
   return typeof limit === "number" ? valueDigits.slice(0, limit) : valueDigits;
 }
 
-export function formatBrazilianDecimalInput(
-  value: string,
-  fractionDigits = 2,
-) {
+export function formatBrazilianDecimalInput(value: string, fractionDigits = 2) {
   const valueDigits = onlyDigits(value, 18 + fractionDigits);
   if (!valueDigits) return "";
   const padded = valueDigits.padStart(fractionDigits + 1, "0");
@@ -63,10 +60,7 @@ export function formatBrazilianDecimalInput(
   return `${formatThousands(whole || "0")},${fraction}`;
 }
 
-export function decimalInputToCanonical(
-  value: string,
-  fractionDigits = 2,
-) {
+export function decimalInputToCanonical(value: string, fractionDigits = 2) {
   const valueDigits = onlyDigits(value, 18 + fractionDigits);
   if (!valueDigits) return "";
   const padded = valueDigits.padStart(fractionDigits + 1, "0");
@@ -75,10 +69,18 @@ export function decimalInputToCanonical(
   return `${whole || "0"}.${fraction}`;
 }
 
-export function canonicalDecimalToBrazilian(
+export function decimalInputToCanonicalFixed(
   value: string,
-  fractionDigits = 2,
+  inputFractionDigits = 2,
+  outputFractionDigits = inputFractionDigits,
 ) {
+  const canonical = decimalInputToCanonical(value, inputFractionDigits);
+  if (!canonical) return "";
+  const [whole, fraction = ""] = canonical.split(".");
+  return `${whole}.${fraction.padEnd(outputFractionDigits, "0").slice(0, outputFractionDigits)}`;
+}
+
+export function canonicalDecimalToBrazilian(value: string, fractionDigits = 2) {
   if (!/^\d+(?:\.\d+)?$/u.test(value)) return value;
   const [whole, fraction = ""] = value.split(".");
   return `${formatThousands(whole.replace(/^0+(?=\d)/u, "") || "0")},${fraction.padEnd(fractionDigits, "0").slice(0, fractionDigits)}`;

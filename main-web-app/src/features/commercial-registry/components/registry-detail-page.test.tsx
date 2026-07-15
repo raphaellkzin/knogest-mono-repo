@@ -37,6 +37,32 @@ const supplier = {
   offers: [],
 } satisfies RegistryDetail;
 
+const catalog = {
+  units: [{ id: "unit-1", code: "L", name: "Litro" }],
+  items: [{ id: "item-1", name: "Diesel S10", baseUnitId: "unit-1" }],
+};
+
+const supplierWithOffer = {
+  ...supplier,
+  offers: [
+    {
+      id: "offer-1",
+      item: { id: "item-1", name: "Diesel S10", baseUnitId: "unit-1" },
+      baseUnit: { id: "unit-1", code: "L", name: "Litro" },
+      purchaseUnit: { id: "unit-1", code: "L", name: "Litro" },
+      conversionToBase: "1.000000",
+      currentPrice: {
+        id: "price-1",
+        price: "7.5000",
+        effectiveFrom: "2026-07-14T12:00:00.000Z",
+      },
+      priceHistory: [],
+      createdAt: "2026-07-14T12:00:00.000Z",
+      updatedAt: "2026-07-14T12:00:00.000Z",
+    },
+  ],
+} satisfies RegistryDetail;
+
 describe("RegistryDetailPage supplier editing", () => {
   it("opens the Supplier edit modal filled without editable document fields", async () => {
     const user = userEvent.setup();
@@ -66,5 +92,35 @@ describe("RegistryDetailPage supplier editing", () => {
       "60170-000",
     );
     expect(screen.queryByLabelText("CNPJ")).toBeNull();
+  });
+
+  it("shows measurement unit and editable conversion in the Supplier offer modal", async () => {
+    const user = userEvent.setup();
+    render(
+      <RegistryDetailPage
+        backHref="/home/fornecedores"
+        catalog={catalog}
+        initialOfferState={initialState}
+        record={supplierWithOffer}
+        removeOfferAction={async () => initialState}
+        saveOfferAction={async () => initialState}
+        title="Detalhe do fornecedor"
+      />,
+    );
+
+    expect(screen.getByText("Unidade de medida")).toBeTruthy();
+    expect(screen.getByText("Conversão")).toBeTruthy();
+    expect(screen.getByText("1,00000")).toBeTruthy();
+    expect(screen.queryByText("Unidade-base")).toBeNull();
+    expect(screen.queryByText("Compra")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Nova oferta" }));
+
+    expect(screen.getByLabelText("Unidade de medida")).toBeTruthy();
+    expect((screen.getByLabelText("Conversão") as HTMLInputElement).value).toBe(
+      "1,00000",
+    );
+    expect(screen.queryByText("Unidade de compra")).toBeNull();
+    expect(screen.queryByText("Conversão para unidade-base")).toBeNull();
   });
 });

@@ -284,7 +284,7 @@ const supplierInlineSchema = z
 
 const suppliedItemInlineSchema = z.object({
   name: text(160, false, "Informe o item fornecido."),
-  baseUnitId: z.string().uuid("Selecione a unidade-base."),
+  baseUnitId: z.string().uuid("Selecione a unidade de medida."),
   saveGlobally: z.boolean().default(false),
 });
 
@@ -295,7 +295,7 @@ const projectSupplierOfferSchema = z
     itemId: z.string().uuid().optional(),
     item: suppliedItemInlineSchema.optional(),
     sourceOfferId: z.string().uuid().nullable().optional(),
-    purchaseUnitId: z.string().uuid("Selecione a unidade de compra."),
+    purchaseUnitId: z.string().uuid("Selecione a unidade de medida."),
     conversionToBase: decimal(6, 12, true),
     price: decimal(4, 14, true),
   })

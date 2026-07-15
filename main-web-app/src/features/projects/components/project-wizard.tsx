@@ -25,6 +25,7 @@ import { FormSection } from "@/components/ui/form-section";
 import { Input } from "@/components/ui/input";
 import {
   canonicalDecimalToBrazilian,
+  decimalInputToCanonicalFixed,
   decimalInputToCanonical,
   formatBrazilianDecimalInput,
   formatCep,
@@ -71,6 +72,11 @@ const controlClass =
   "min-h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-medium text-foreground shadow-xs outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50";
 const fieldGridClass = "grid gap-3 md:grid-cols-2";
 const temporaryJobRolePrefix = "__project_job_role__:";
+const formatProjectCurrency = (value: string) =>
+  new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(Number(value || 0));
 const projectFieldLabels: Partial<Record<Path<ProjectCommand>, string>> = {
   name: "Nome da obra",
   contractNumber: "Número do contrato",
@@ -951,8 +957,7 @@ export function EmployeeMobilization({
     }
     const existing = jobRoles.find(
       (role) =>
-        role.label.localeCompare(name, "pt-BR", { sensitivity: "base" }) ===
-        0,
+        role.label.localeCompare(name, "pt-BR", { sensitivity: "base" }) === 0,
     );
     const role =
       existing ??
@@ -1005,78 +1010,78 @@ export function EmployeeMobilization({
                   className="grid gap-1.5"
                   htmlFor="project-temporary-job-role"
                 >
-                    <span>
-                      Aplicado somente nesta obra. O vínculo oficial do
-                      funcionário não será alterado.
-                    </span>
-                    <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center">
-                      <Input
-                        id="project-temporary-job-role"
-                        className="h-11"
-                        value={newJobRoleName}
-                        maxLength={120}
-                        placeholder="Ex.: Encarregado de campo"
-                        onChange={(event) =>
-                          setNewJobRoleName(event.target.value)
-                        }
-                      />
-                      <Button
-                        type="button"
-                        className="min-h-11"
-                        disabled={!newJobRoleName.trim()}
-                        onClick={createTemporaryJobRole}
-                      >
-                        <Check className="size-4" />
-                        Salvar
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="min-h-11"
-                        onClick={() => {
-                          setNewJobRoleName("");
-                          setIsAddingJobRole(false);
-                          setJobRoleMessage("");
-                        }}
-                      >
-                        <X className="size-4" />
-                        Cancelar
-                      </Button>
-                    </div>
+                  <span>
+                    Aplicado somente nesta obra. O vínculo oficial do
+                    funcionário não será alterado.
+                  </span>
+                  <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center">
+                    <Input
+                      id="project-temporary-job-role"
+                      className="h-11"
+                      value={newJobRoleName}
+                      maxLength={120}
+                      placeholder="Ex.: Encarregado de campo"
+                      onChange={(event) =>
+                        setNewJobRoleName(event.target.value)
+                      }
+                    />
+                    <Button
+                      type="button"
+                      className="min-h-11"
+                      disabled={!newJobRoleName.trim()}
+                      onClick={createTemporaryJobRole}
+                    >
+                      <Check className="size-4" />
+                      Salvar
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="min-h-11"
+                      onClick={() => {
+                        setNewJobRoleName("");
+                        setIsAddingJobRole(false);
+                        setJobRoleMessage("");
+                      }}
+                    >
+                      <X className="size-4" />
+                      Cancelar
+                    </Button>
+                  </div>
                 </label>
               ) : (
                 <label className="grid gap-1.5" htmlFor="project-job-role">
-                    <span>Cargo na obra</span>
-                    <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-                      <select
-                        id="project-job-role"
-                        className={controlClass}
-                        value={draft.confirmedJobRoleId}
-                        onChange={(event) =>
-                          updateDraft({ confirmedJobRoleId: event.target.value })
-                        }
-                      >
-                        <option value="">Selecione o cargo</option>
-                        {jobRoles.map((role) => (
-                          <option key={role.id} value={role.id}>
-                            {role.label}
-                          </option>
-                        ))}
-                      </select>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="min-h-11"
-                        onClick={() => {
-                          setIsAddingJobRole(true);
-                          setNewJobRoleName("");
-                          setJobRoleMessage("");
-                        }}
-                      >
-                        <Plus className="size-4" />
-                        Criar nova função
-                      </Button>
-                    </div>
+                  <span>Cargo na obra</span>
+                  <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                    <select
+                      id="project-job-role"
+                      className={controlClass}
+                      value={draft.confirmedJobRoleId}
+                      onChange={(event) =>
+                        updateDraft({ confirmedJobRoleId: event.target.value })
+                      }
+                    >
+                      <option value="">Selecione o cargo</option>
+                      {jobRoles.map((role) => (
+                        <option key={role.id} value={role.id}>
+                          {role.label}
+                        </option>
+                      ))}
+                    </select>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="min-h-11"
+                      onClick={() => {
+                        setIsAddingJobRole(true);
+                        setNewJobRoleName("");
+                        setJobRoleMessage("");
+                      }}
+                    >
+                      <Plus className="size-4" />
+                      Criar nova função
+                    </Button>
+                  </div>
                 </label>
               )}
             </div>
@@ -1143,48 +1148,48 @@ export function EmployeeMobilization({
             <div className="grid gap-1.5 text-sm font-semibold">
               <label htmlFor="project-overtime-rate">Valor da hora extra</label>
               <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-              <Input
-                id="project-overtime-rate"
-                className="h-11"
-                inputMode="decimal"
-                value={
-                  draft.overtimeRate.includes(".")
-                    ? canonicalDecimalToBrazilian(draft.overtimeRate)
-                    : draft.overtimeRate
-                }
-                onChange={(event) =>
-                  updateDraft(
-                    {
-                      overtimeRate: formatBrazilianDecimalInput(
-                        event.target.value,
-                      ),
-                    },
-                    true,
-                  )
-                }
-              />
-              <Button
-                type="button"
-                variant="outline"
-                className="min-h-11 justify-center px-3 text-sm"
-                onClick={() =>
-                  setDraft((current) =>
-                    current
-                      ? {
-                          ...current,
-                          overtimeRate: calculateHourlyRate(
-                            current.compensationValue,
-                            current.compensationMode,
-                            current.dailyHours,
-                          ),
-                          overtimeIsManual: false,
-                        }
-                      : current,
-	                  )
-	                }
-	              >
-	                Recalcular pelo valor-hora
-	              </Button>
+                <Input
+                  id="project-overtime-rate"
+                  className="h-11"
+                  inputMode="decimal"
+                  value={
+                    draft.overtimeRate.includes(".")
+                      ? canonicalDecimalToBrazilian(draft.overtimeRate)
+                      : draft.overtimeRate
+                  }
+                  onChange={(event) =>
+                    updateDraft(
+                      {
+                        overtimeRate: formatBrazilianDecimalInput(
+                          event.target.value,
+                        ),
+                      },
+                      true,
+                    )
+                  }
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="min-h-11 justify-center px-3 text-sm"
+                  onClick={() =>
+                    setDraft((current) =>
+                      current
+                        ? {
+                            ...current,
+                            overtimeRate: calculateHourlyRate(
+                              current.compensationValue,
+                              current.compensationMode,
+                              current.dailyHours,
+                            ),
+                            overtimeIsManual: false,
+                          }
+                        : current,
+                    )
+                  }
+                >
+                  Recalcular pelo valor-hora
+                </Button>
               </div>
             </div>
           </div>
@@ -1250,8 +1255,8 @@ export function EmployeeMobilization({
                       {allocation.confirmedJobRoleName ||
                         role?.label ||
                         option.detail ||
-                        "Cargo não informado"} ·{" "}
-                      {formatHours(allocation.expectedDailyWorkloadMinutes)}{" "}
+                        "Cargo não informado"}{" "}
+                      · {formatHours(allocation.expectedDailyWorkloadMinutes)}{" "}
                       h/dia · {formatCompensation(allocation.compensationValue)}{" "}
                       {allocation.compensationMode === "monthly"
                         ? "mensal"
@@ -1586,7 +1591,44 @@ export function MachineMobilization({
   );
 }
 
-function SupplierOffers({
+type SupplierOfferDraft = {
+  supplierId: string;
+  supplier?: NonNullable<
+    ProjectCommand["projectSupplierOffers"][number]["supplier"]
+  >;
+  itemMode: "existing" | "new";
+  itemId: string;
+  item?: NonNullable<ProjectCommand["projectSupplierOffers"][number]["item"]>;
+  conversionToBase: string;
+  price: string;
+};
+
+const inlineSupplier = (): NonNullable<
+  ProjectCommand["projectSupplierOffers"][number]["supplier"]
+> => ({
+  entityType: "legal_entity",
+  document: "",
+  fullName: null,
+  legalName: "",
+  tradeName: null,
+  phone: null,
+  email: null,
+  addressLine: null,
+  city: null,
+  state: null,
+  postalCode: null,
+  saveGlobally: false,
+});
+
+const inlineSuppliedItem = (
+  baseUnitId: string,
+): NonNullable<ProjectCommand["projectSupplierOffers"][number]["item"]> => ({
+  name: "",
+  baseUnitId,
+  saveGlobally: false,
+});
+
+export function SupplierOffers({
   form,
   options,
 }: {
@@ -1594,332 +1636,447 @@ function SupplierOffers({
   options: ProjectWizardOptions;
 }) {
   const offers = form.watch("projectSupplierOffers");
-  const addOffer = () =>
+  const [draft, setDraft] = React.useState<SupplierOfferDraft | null>(null);
+  const [offerMessage, setOfferMessage] = React.useState("");
+  const firstUnitId = options.units[0]?.id ?? "";
+  const firstItem = options.suppliedItems[0];
+  const beginOffer = () => {
+    setDraft({
+      supplierId: "",
+      itemMode: firstItem ? "existing" : "new",
+      itemId: firstItem?.id ?? "",
+      item: firstItem ? undefined : inlineSuppliedItem(firstUnitId),
+      conversionToBase: "1,00000",
+      price: "1,0000",
+    });
+    setOfferMessage("");
+  };
+  const cancelOffer = () => {
+    setDraft(null);
+    setOfferMessage("");
+  };
+  const updateDraft = (patch: Partial<SupplierOfferDraft>) =>
+    setDraft((current) => (current ? { ...current, ...patch } : current));
+  const addOffer = () => {
+    if (!draft) return;
+    const selectedItem = options.suppliedItems.find(
+      (option) => option.id === draft.itemId,
+    );
+    const baseUnitId =
+      draft.itemMode === "existing"
+        ? selectedItem?.baseUnitId
+        : draft.item?.baseUnitId;
+    if (!draft.supplierId && !draft.supplier) {
+      setOfferMessage("Selecione ou crie o fornecedor.");
+      return;
+    }
+    if (draft.itemMode === "existing" && !selectedItem) {
+      setOfferMessage("Selecione o item fornecido.");
+      return;
+    }
+    if (draft.itemMode === "new" && !draft.item?.name.trim()) {
+      setOfferMessage("Informe o nome do item.");
+      return;
+    }
+    if (!baseUnitId) {
+      setOfferMessage("Selecione a unidade de medida.");
+      return;
+    }
+    const conversionToBase = decimalInputToCanonicalFixed(
+      draft.conversionToBase,
+      5,
+      6,
+    );
+    if (!conversionToBase) {
+      setOfferMessage("Informe a conversão.");
+      return;
+    }
+    const price = decimalInputToCanonical(draft.price, 4);
+    if (!price) {
+      setOfferMessage("Informe o preço vigente.");
+      return;
+    }
     form.setValue(
       "projectSupplierOffers",
       [
         ...offers,
         {
-          supplierId: options.suppliers[0]?.id,
-          supplier:
-            options.suppliers.length > 0
-              ? undefined
-              : {
-                  entityType: "legal_entity",
-                  document: "",
-                  fullName: null,
-                  legalName: "",
-                  tradeName: null,
-                  phone: null,
-                  email: null,
-                  addressLine: null,
-                  city: null,
-                  state: null,
-                  postalCode: null,
-                  saveGlobally: false,
-                },
-          itemId: options.suppliedItems[0]?.id,
+          supplierId: draft.supplierId || undefined,
+          supplier: draft.supplier,
+          itemId: draft.itemMode === "existing" ? draft.itemId : undefined,
           item:
-            options.suppliedItems.length > 0
-              ? undefined
-              : {
-                  name: "",
-                  baseUnitId: options.units[0]?.id ?? "",
-                  saveGlobally: false,
-                },
+            draft.itemMode === "new" && draft.item
+              ? {
+                  ...draft.item,
+                  name: draft.item.name.trim(),
+                  baseUnitId,
+                }
+              : undefined,
           sourceOfferId: null,
-          purchaseUnitId: options.units[0]?.id ?? "",
-          conversionToBase: "1.000000",
-          price: "1.0000",
+          purchaseUnitId: baseUnitId,
+          conversionToBase,
+          price,
         },
       ],
       { shouldDirty: true, shouldValidate: true },
     );
-  const updateOffer = (
-    index: number,
-    value: ProjectCommand["projectSupplierOffers"][number],
-  ) => {
-    const next = [...offers];
-    next[index] = value;
-    form.setValue("projectSupplierOffers", next, {
-      shouldDirty: true,
-      shouldValidate: true,
-    });
+    cancelOffer();
   };
   return (
     <FormSection
       title="Fornecimentos da obra"
-      description="Obrigatório. Configure itens, unidades, conversão e preço específico desta obra."
+      description="Obrigatório. Selecione o fornecedor, confirme o item e informe o preço vigente desta obra."
     >
       <p className="text-sm font-semibold text-muted-foreground">
         {offers.length}/50 fornecimento(s) configurado(s)
       </p>
       <div className="grid gap-3">
         {offers.map((offer, index) => {
-          const item = offer.itemId
+          const existingItem = offer.itemId
             ? options.suppliedItems.find((option) => option.id === offer.itemId)
-            : null;
-          const baseUnit = options.units.find(
-            (option) =>
-              option.id === (item?.baseUnitId ?? offer.item?.baseUnitId),
+            : undefined;
+          const existingSupplier = offer.supplierId
+            ? options.suppliers.find((option) => option.id === offer.supplierId)
+            : undefined;
+          const itemLabel =
+            offer.item?.name ?? existingItem?.label ?? "Item da obra";
+          const supplierLabel =
+            offer.supplier?.legalName ??
+            offer.supplier?.fullName ??
+            existingSupplier?.label ??
+            "Fornecedor da obra";
+          const unit = options.units.find(
+            (option) => option.id === offer.purchaseUnitId,
           );
           return (
             <div
               key={index}
-              className="grid gap-3 rounded-lg border border-border bg-background p-3"
+              className="flex min-h-11 flex-wrap items-center gap-2 rounded-md border border-primary/35 bg-primary/[0.035] px-3 py-2"
             >
-              <div className="grid gap-3 md:grid-cols-2">
-                <label className="grid gap-1.5 text-sm font-semibold">
-                  <span>Fornecedor</span>
-                  <select
-                    className={controlClass}
-                    value={offer.supplierId ?? "__new"}
-                    onChange={(event) => {
-                      const value = event.target.value;
-                      updateOffer(index, {
-                        ...offer,
-                        supplierId: value === "__new" ? undefined : value,
-                        supplier:
-                          value === "__new"
-                            ? {
-                                entityType: "legal_entity",
-                                document: "",
-                                fullName: null,
-                                legalName: "",
-                                tradeName: null,
-                                phone: null,
-                                email: null,
-                                addressLine: null,
-                                city: null,
-                                state: null,
-                                postalCode: null,
-                                saveGlobally: false,
-                              }
-                            : undefined,
-                      });
-                    }}
-                  >
-                    {options.suppliers.map((option) => (
-                      <option key={option.id} value={option.id}>
-                        {option.label}
-                      </option>
-                    ))}
-                    <option value="__new">Novo fornecedor desta obra</option>
-                  </select>
-                </label>
-                <label className="grid gap-1.5 text-sm font-semibold">
-                  <span>Item fornecido</span>
-                  <select
-                    className={controlClass}
-                    value={offer.itemId ?? "__new"}
-                    onChange={(event) => {
-                      const value = event.target.value;
-                      const selected = options.suppliedItems.find(
-                        (option) => option.id === value,
-                      );
-                      updateOffer(index, {
-                        ...offer,
-                        itemId: value === "__new" ? undefined : value,
-                        item:
-                          value === "__new"
-                            ? {
-                                name: "",
-                                baseUnitId: options.units[0]?.id ?? "",
-                                saveGlobally: false,
-                              }
-                            : undefined,
-                        purchaseUnitId:
-                          selected?.baseUnitId ??
-                          offer.purchaseUnitId ??
-                          options.units[0]?.id ??
-                          "",
-                      });
-                    }}
-                  >
-                    {options.suppliedItems.map((option) => (
-                      <option key={option.id} value={option.id}>
-                        {option.label}
-                      </option>
-                    ))}
-                    <option value="__new">Novo item desta obra</option>
-                  </select>
-                </label>
-              </div>
-
-              {offer.supplier && (
-                <div className="grid gap-3 md:grid-cols-3">
-                  <label className="grid gap-1.5 text-sm font-semibold">
-                    <span>Documento</span>
-                    <Input
-                      className="h-11"
-                      value={offer.supplier.document}
-                      onChange={(event) =>
-                        updateOffer(index, {
-                          ...offer,
-                          supplier: {
-                            ...offer.supplier!,
-                            document: event.target.value,
-                          },
-                        })
-                      }
-                    />
-                  </label>
-                  <label className="grid gap-1.5 text-sm font-semibold md:col-span-2">
-                    <span>Razão social ou nome</span>
-                    <Input
-                      className="h-11"
-                      value={
-                        offer.supplier.legalName ??
-                        offer.supplier.fullName ??
-                        ""
-                      }
-                      onChange={(event) =>
-                        updateOffer(index, {
-                          ...offer,
-                          supplier: {
-                            ...offer.supplier!,
-                            legalName: event.target.value,
-                            fullName: event.target.value,
-                          },
-                        })
-                      }
-                    />
-                  </label>
-                  <label className="flex items-center gap-2 text-sm font-semibold md:col-span-3">
-                    <input
-                      type="checkbox"
-                      checked={offer.supplier.saveGlobally}
-                      onChange={(event) =>
-                        updateOffer(index, {
-                          ...offer,
-                          supplier: {
-                            ...offer.supplier!,
-                            saveGlobally: event.target.checked,
-                          },
-                        })
-                      }
-                    />
-                    Salvar fornecedor no cadastro global
-                  </label>
-                </div>
-              )}
-
-              {offer.item && (
-                <div className="grid gap-3 md:grid-cols-3">
-                  <label className="grid gap-1.5 text-sm font-semibold md:col-span-2">
-                    <span>Nome do item</span>
-                    <Input
-                      className="h-11"
-                      value={offer.item.name}
-                      onChange={(event) =>
-                        updateOffer(index, {
-                          ...offer,
-                          item: { ...offer.item!, name: event.target.value },
-                        })
-                      }
-                    />
-                  </label>
-                  <label className="grid gap-1.5 text-sm font-semibold">
-                    <span>Unidade-base</span>
-                    <select
-                      className={controlClass}
-                      value={offer.item.baseUnitId}
-                      onChange={(event) =>
-                        updateOffer(index, {
-                          ...offer,
-                          item: {
-                            ...offer.item!,
-                            baseUnitId: event.target.value,
-                          },
-                        })
-                      }
-                    >
-                      {options.units.map((option) => (
-                        <option key={option.id} value={option.id}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="flex items-center gap-2 text-sm font-semibold md:col-span-3">
-                    <input
-                      type="checkbox"
-                      checked={offer.item.saveGlobally}
-                      onChange={(event) =>
-                        updateOffer(index, {
-                          ...offer,
-                          item: {
-                            ...offer.item!,
-                            saveGlobally: event.target.checked,
-                          },
-                        })
-                      }
-                    />
-                    Salvar item no catálogo global
-                  </label>
-                </div>
-              )}
-
-              <div className="grid gap-3 md:grid-cols-[1fr_1fr_1fr_auto] md:items-end">
-                <label className="grid gap-1.5 text-sm font-semibold">
-                  <span>Unidade de compra</span>
-                  <select
-                    className={controlClass}
-                    value={offer.purchaseUnitId}
-                    onChange={(event) =>
-                      updateOffer(index, {
-                        ...offer,
-                        purchaseUnitId: event.target.value,
-                      })
-                    }
-                  >
-                    {options.units.map((option) => (
-                      <option key={option.id} value={option.id}>
-                        {option.label} — {option.detail}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <MoneyField
-                  fractionDigits={6}
-                  form={form}
-                  label={`Conversão para ${baseUnit?.label ?? "unidade-base"}`}
-                  name={
-                    `projectSupplierOffers.${index}.conversionToBase` as Path<ProjectCommand>
-                  }
-                />
-                <MoneyField
-                  fractionDigits={4}
-                  form={form}
-                  label="Preço da obra"
-                  name={
-                    `projectSupplierOffers.${index}.price` as Path<ProjectCommand>
-                  }
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() =>
-                    form.setValue(
-                      "projectSupplierOffers",
-                      offers.filter(
-                        (_, currentIndex) => currentIndex !== index,
-                      ),
-                      { shouldDirty: true, shouldValidate: true },
-                    )
-                  }
-                >
-                  <Trash2 className="size-4" />
-                  Remover
-                </Button>
-              </div>
+              <Check
+                className="size-4 shrink-0 text-primary"
+                aria-hidden="true"
+              />
+              <p className="min-w-0 flex-1 text-sm font-semibold">
+                {supplierLabel} · {itemLabel}
+              </p>
+              <span className="min-h-7 rounded-md bg-background px-2 py-1 text-xs font-semibold text-muted-foreground">
+                {unit
+                  ? `${unit.label} - ${unit.detail}`
+                  : "Unidade não informada"}{" "}
+                · Conversão{" "}
+                {canonicalDecimalToBrazilian(offer.conversionToBase, 5)}
+                {" · "}
+                {formatProjectCurrency(offer.price)}
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-lg"
+                aria-label={`Remover fornecimento ${index + 1}`}
+                onClick={() =>
+                  form.setValue(
+                    "projectSupplierOffers",
+                    offers.filter((_, currentIndex) => currentIndex !== index),
+                    { shouldDirty: true, shouldValidate: true },
+                  )
+                }
+              >
+                <Trash2 className="size-4" />
+              </Button>
             </div>
           );
         })}
-        <Button type="button" variant="outline" onClick={addOffer}>
-          <Plus className="size-4" />
-          Adicionar fornecimento
-        </Button>
+        {draft && (
+          <div className="grid gap-5 rounded-lg border border-primary/35 bg-primary/[0.035] p-4 sm:p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border pb-4">
+              <div className="min-w-0">
+                <p className="text-base font-bold">Novo fornecimento</p>
+                <p className="mt-1 text-sm font-medium text-muted-foreground">
+                  Selecione fornecedor, item e preço vigente desta obra.
+                </p>
+              </div>
+              <span className="inline-flex min-h-8 items-center rounded-md bg-primary px-2.5 text-sm font-bold text-primary-foreground">
+                Em configuração
+              </span>
+            </div>
+
+            <label className="grid gap-1.5 text-sm font-semibold">
+              <span>Fornecedor</span>
+              <select
+                className={controlClass}
+                value={draft.supplier ? "__new" : draft.supplierId}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  updateDraft({
+                    supplierId: value === "__new" ? "" : value,
+                    supplier: value === "__new" ? inlineSupplier() : undefined,
+                  });
+                  setOfferMessage("");
+                }}
+              >
+                <option value="">Selecione o fornecedor</option>
+                {options.suppliers.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+                <option value="__new">Novo fornecedor desta obra</option>
+              </select>
+            </label>
+
+            {draft.supplier && (
+              <div className="grid gap-3 md:grid-cols-3">
+                <label className="grid gap-1.5 text-sm font-semibold">
+                  <span>Documento</span>
+                  <Input
+                    className="h-11"
+                    value={draft.supplier.document}
+                    onChange={(event) =>
+                      updateDraft({
+                        supplier: {
+                          ...draft.supplier!,
+                          document: event.target.value,
+                        },
+                      })
+                    }
+                  />
+                </label>
+                <label className="grid gap-1.5 text-sm font-semibold md:col-span-2">
+                  <span>Razão social ou nome</span>
+                  <Input
+                    className="h-11"
+                    value={
+                      draft.supplier.legalName ?? draft.supplier.fullName ?? ""
+                    }
+                    onChange={(event) =>
+                      updateDraft({
+                        supplier: {
+                          ...draft.supplier!,
+                          legalName: event.target.value,
+                          fullName: event.target.value,
+                        },
+                      })
+                    }
+                  />
+                </label>
+                <label className="flex items-center gap-2 text-sm font-semibold md:col-span-3">
+                  <input
+                    type="checkbox"
+                    checked={draft.supplier.saveGlobally}
+                    onChange={(event) =>
+                      updateDraft({
+                        supplier: {
+                          ...draft.supplier!,
+                          saveGlobally: event.target.checked,
+                        },
+                      })
+                    }
+                  />
+                  Salvar fornecedor no cadastro global
+                </label>
+              </div>
+            )}
+
+            {(draft.supplierId || draft.supplier) && (
+              <div className="grid gap-4">
+                <div className="grid grid-cols-2 gap-2 rounded-md bg-muted p-1">
+                  <Button
+                    type="button"
+                    variant={
+                      draft.itemMode === "existing" ? "default" : "outline"
+                    }
+                    className="min-h-11"
+                    disabled={options.suppliedItems.length === 0}
+                    onClick={() => {
+                      const item = options.suppliedItems[0];
+                      updateDraft({
+                        itemMode: "existing",
+                        itemId: item?.id ?? "",
+                        item: undefined,
+                      });
+                    }}
+                  >
+                    Item existente
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={draft.itemMode === "new" ? "default" : "outline"}
+                    className="min-h-11"
+                    onClick={() =>
+                      updateDraft({
+                        itemMode: "new",
+                        itemId: "",
+                        item: inlineSuppliedItem(firstUnitId),
+                      })
+                    }
+                  >
+                    Novo item
+                  </Button>
+                </div>
+
+                {draft.itemMode === "existing" ? (
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <label className="grid gap-1.5 text-sm font-semibold">
+                      <span>Item</span>
+                      <select
+                        className={controlClass}
+                        value={draft.itemId}
+                        onChange={(event) =>
+                          updateDraft({ itemId: event.target.value })
+                        }
+                      >
+                        <option value="">Selecione o item</option>
+                        {options.suppliedItems.map((option) => (
+                          <option key={option.id} value={option.id}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="grid gap-1.5 text-sm font-semibold">
+                      <span>Unidade de medida</span>
+                      <select
+                        className={controlClass}
+                        value={
+                          options.suppliedItems.find(
+                            (option) => option.id === draft.itemId,
+                          )?.baseUnitId ?? ""
+                        }
+                        disabled
+                      >
+                        {options.units.map((option) => (
+                          <option key={option.id} value={option.id}>
+                            {option.label} - {option.detail}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                ) : (
+                  <div className="grid gap-3 md:grid-cols-3">
+                    <label className="grid gap-1.5 text-sm font-semibold md:col-span-2">
+                      <span>Novo item</span>
+                      <Input
+                        className="h-11"
+                        value={draft.item?.name ?? ""}
+                        onChange={(event) =>
+                          updateDraft({
+                            item: {
+                              ...(draft.item ??
+                                inlineSuppliedItem(firstUnitId)),
+                              name: event.target.value,
+                            },
+                          })
+                        }
+                      />
+                    </label>
+                    <label className="grid gap-1.5 text-sm font-semibold">
+                      <span>Unidade de medida</span>
+                      <select
+                        className={controlClass}
+                        value={draft.item?.baseUnitId ?? firstUnitId}
+                        onChange={(event) =>
+                          updateDraft({
+                            item: {
+                              ...(draft.item ??
+                                inlineSuppliedItem(firstUnitId)),
+                              baseUnitId: event.target.value,
+                            },
+                          })
+                        }
+                      >
+                        {options.units.map((option) => (
+                          <option key={option.id} value={option.id}>
+                            {option.label} - {option.detail}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="flex items-center gap-2 text-sm font-semibold md:col-span-3">
+                      <input
+                        type="checkbox"
+                        checked={draft.item?.saveGlobally ?? false}
+                        onChange={(event) =>
+                          updateDraft({
+                            item: {
+                              ...(draft.item ??
+                                inlineSuppliedItem(firstUnitId)),
+                              saveGlobally: event.target.checked,
+                            },
+                          })
+                        }
+                      />
+                      Salvar item no catálogo global
+                    </label>
+                  </div>
+                )}
+
+                <div className="grid gap-3 md:grid-cols-2">
+                  <label className="grid gap-1.5 text-sm font-semibold">
+                    <span>Conversão</span>
+                    <Input
+                      className="h-11"
+                      inputMode="numeric"
+                      value={draft.conversionToBase}
+                      onChange={(event) =>
+                        updateDraft({
+                          conversionToBase: formatBrazilianDecimalInput(
+                            event.target.value,
+                            5,
+                          ),
+                        })
+                      }
+                      placeholder="1,00000"
+                    />
+                  </label>
+                  <label className="grid gap-1.5 text-sm font-semibold">
+                    <span>Preço vigente</span>
+                    <Input
+                      className="h-11"
+                      inputMode="numeric"
+                      value={draft.price}
+                      onChange={(event) =>
+                        updateDraft({
+                          price: formatBrazilianDecimalInput(
+                            event.target.value,
+                            4,
+                          ),
+                        })
+                      }
+                      placeholder="0,0000"
+                    />
+                  </label>
+                </div>
+              </div>
+            )}
+
+            {offerMessage && (
+              <p
+                role="status"
+                className="text-sm font-semibold text-muted-foreground"
+              >
+                {offerMessage}
+              </p>
+            )}
+            <div className="flex flex-wrap justify-end gap-2 border-t border-border pt-4">
+              <Button type="button" variant="outline" onClick={cancelOffer}>
+                <X className="size-4" />
+                Cancelar
+              </Button>
+              <Button type="button" onClick={addOffer}>
+                <Check className="size-4" />
+                Confirmar fornecimento
+              </Button>
+            </div>
+          </div>
+        )}
+        {!draft && (
+          <Button type="button" variant="outline" onClick={beginOffer}>
+            <Plus className="size-4" />
+            Adicionar fornecimento
+          </Button>
+        )}
       </div>
     </FormSection>
   );
@@ -2205,7 +2362,11 @@ export function ProjectWizard({
         fields: ["initialEmployeeAllocations"],
         fieldLabels: projectFieldLabels,
         component: (form) => (
-          <EmployeeMobilization form={form} options={options} sessionKey={key} />
+          <EmployeeMobilization
+            form={form}
+            options={options}
+            sessionKey={key}
+          />
         ),
       },
       {
