@@ -194,10 +194,47 @@ export const createSuppliedItemSchema = z
   .object({
     name: z.string().trim().min(1).max(160),
     baseUnitId: uuid,
+    categoryId: uuid.nullable().optional(),
+    valueUnitQuantity: decimal(6, 12, true).optional(),
+    basePrice: decimal(4, 14).optional(),
   })
   .strict();
 
 export type CreateSuppliedItemInput = z.infer<typeof createSuppliedItemSchema>;
+
+export const updateSuppliedItemSchema = z
+  .object({
+    name: z.string().trim().min(1).max(160).optional(),
+    baseUnitId: uuid.optional(),
+    categoryId: uuid.nullable().optional(),
+    valueUnitQuantity: decimal(6, 12, true).optional(),
+    basePrice: decimal(4, 14).optional(),
+  })
+  .strict();
+
+export type UpdateSuppliedItemInput = z.infer<typeof updateSuppliedItemSchema>;
+
+export const createSuppliedItemCategorySchema = z
+  .object({
+    name: z.string().trim().min(1).max(120),
+    parentId: uuid.nullable().optional(),
+  })
+  .strict();
+
+export type CreateSuppliedItemCategoryInput = z.infer<
+  typeof createSuppliedItemCategorySchema
+>;
+
+export const updateSuppliedItemCategorySchema = z
+  .object({
+    name: z.string().trim().min(1).max(120).optional(),
+    parentId: uuid.nullable().optional(),
+  })
+  .strict();
+
+export type UpdateSuppliedItemCategoryInput = z.infer<
+  typeof updateSuppliedItemCategorySchema
+>;
 
 export const commercialRegistryParamsSchema = z
   .object({

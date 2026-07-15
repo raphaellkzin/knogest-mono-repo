@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
@@ -40,6 +40,30 @@ const supplier = {
 const catalog = {
   units: [{ id: "unit-1", code: "L", name: "Litro" }],
   items: [{ id: "item-1", name: "Diesel S10", baseUnitId: "unit-1" }],
+  categories: [
+    {
+      id: "category-1",
+      name: "Combustíveis",
+      parentId: null,
+      createdAt: "2026-07-14T12:00:00.000Z",
+      updatedAt: "2026-07-14T12:00:00.000Z",
+    },
+  ],
+  catalogItems: [
+    {
+      id: "item-1",
+      name: "Diesel S10",
+      categoryId: "category-1",
+      baseUnitId: "unit-1",
+      baseUnit: { id: "unit-1", code: "L", name: "Litro" },
+      valueUnitQuantity: "1.000000",
+      basePrice: "7.5000",
+      activeSupplierCount: 1,
+      spentQuantity: null,
+      lastSpentAt: null,
+      updatedAt: "2026-07-14T12:00:00.000Z",
+    },
+  ],
 };
 
 const supplierWithOffer = {
@@ -108,6 +132,10 @@ describe("RegistryDetailPage supplier editing", () => {
       />,
     );
 
+    await user.click(
+      screen.getByRole("tab", { name: "Ofertas do fornecedor" }),
+    );
+
     expect(screen.getByText("Unidade de medida")).toBeTruthy();
     expect(screen.getByText("Conversão")).toBeTruthy();
     expect(screen.getByText("1,00000")).toBeTruthy();
@@ -122,5 +150,51 @@ describe("RegistryDetailPage supplier editing", () => {
     );
     expect(screen.queryByText("Unidade de compra")).toBeNull();
     expect(screen.queryByText("Conversão para unidade-base")).toBeNull();
+  });
+
+  it("shows the supplied items tab and opens the guided item modal", async () => {
+    const user = userEvent.setup();
+    render(
+      <RegistryDetailPage
+        backHref="/home/fornecedores"
+        catalog={catalog}
+        initialOfferState={initialState}
+        record={supplierWithOffer}
+        removeOfferAction={async () => initialState}
+        removeSuppliedItemAction={async () => initialState}
+        removeSuppliedItemCategoryAction={async () => initialState}
+        saveOfferAction={async () => initialState}
+        saveSuppliedItemAction={async () => initialState}
+        saveSuppliedItemCategoryAction={async () => initialState}
+        title="Detalhe do fornecedor"
+      />,
+    );
+
+    expect(
+      screen
+        .getByRole("tab", { name: "Itens fornecidos" })
+        .getAttribute("aria-selected"),
+    ).toBe("true");
+    expect(screen.getByText("Combustíveis")).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Combustíveis" }));
+
+    expect(
+      screen.getByRole("button", { name: "Ações de Diesel S10" }),
+    ).toBeTruthy();
+    expect(screen.getByText("Fornecedores ativos")).toBeTruthy();
+    expect(screen.getByText("Sem consumo")).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Adicionar item" }));
+
+    const dialog = within(screen.getByRole("dialog"));
+    expect(dialog.getByLabelText("Nome")).toBeTruthy();
+    expect(dialog.getByLabelText("Unidade de medida")).toBeTruthy();
+    expect(dialog.getByLabelText("Preço base")).toBeTruthy();
+    expect(dialog.queryByLabelText("Unidade de valor")).toBeNull();
+
+    await user.click(dialog.getByLabelText("Informar unidade de valor"));
+
+    expect(dialog.getByLabelText("Unidade de valor")).toBeTruthy();
   });
 });

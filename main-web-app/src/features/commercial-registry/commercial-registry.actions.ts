@@ -6,6 +6,7 @@ import { deleteApiV1ClientsClientid } from "@/generated/clients/deleteApiV1Clien
 import { postApiV1Clients } from "@/generated/clients/postApiV1Clients";
 import type { PostApiV1ClientsMutationRequest } from "@/generated/models/PostApiV1Clients";
 import client, { ApiClientError } from "@/lib/api/server-client";
+import { decimalInputToCanonicalFixed } from "@/lib/brazilian-input-mask";
 import type { RegistryActionState } from "./commercial-registry-action-state";
 import { supplierOfferPayload } from "./commercial-registry-offer-payload";
 import { z } from "zod";
@@ -80,6 +81,39 @@ function updateSupplierPayload(formData: FormData) {
   };
 }
 
+function suppliedItemPayload(formData: FormData) {
+  const valueUnitQuantity =
+    optionalString(formData, "useValueUnit") &&
+    optionalString(formData, "valueUnitQuantity")
+      ? decimalInputToCanonicalFixed(
+          optionalString(formData, "valueUnitQuantity") ?? "",
+          6,
+          6,
+        )
+      : "1.000000";
+  const basePrice = optionalString(formData, "basePrice")
+    ? decimalInputToCanonicalFixed(
+        optionalString(formData, "basePrice") ?? "",
+        4,
+        4,
+      )
+    : "0.0000";
+  return {
+    name: optionalString(formData, "name") ?? "",
+    baseUnitId: optionalString(formData, "baseUnitId") ?? "",
+    categoryId: optionalString(formData, "categoryId") ?? null,
+    valueUnitQuantity,
+    basePrice,
+  };
+}
+
+function suppliedItemCategoryPayload(formData: FormData) {
+  return {
+    name: optionalString(formData, "name") ?? "",
+    parentId: optionalString(formData, "parentId") ?? null,
+  };
+}
+
 function failureMessage(error: unknown) {
   if (error instanceof ApiClientError) {
     if (error.code === "DOCUMENT_ALREADY_EXISTS") {
@@ -108,6 +142,15 @@ function failureMessage(error: unknown) {
     }
     if (error.code === "MEASUREMENT_UNIT_NOT_FOUND") {
       return "Unidade de medida não encontrada ou indisponível.";
+    }
+    if (error.code === "SUPPLIED_ITEM_CATEGORY_NOT_FOUND") {
+      return "Categoria não encontrada ou indisponível.";
+    }
+    if (error.code === "SUPPLIED_ITEM_CATEGORY_DEPTH_EXCEEDED") {
+      return "O limite de profundidade de subcategorias é de 3 níveis.";
+    }
+    if (error.code === "SUPPLIED_ITEM_CATEGORY_INVALID_TREE") {
+      return "A hierarquia da categoria selecionada não é válida.";
     }
     if (error.status === 401 || error.status === 403) {
       return "Sua sessão não tem permissão para concluir esta operação.";
@@ -210,6 +253,94 @@ export async function removeSupplierOfferAction(
     });
     revalidatePath(`/home/fornecedores/${supplierId}`);
     return { ok: true, message: "Oferta removida do catálogo ativo." };
+  } catch (error) {
+    return { ok: false, message: failureMessage(error) };
+  }
+}
+
+export async function saveSuppliedItemAction(
+  _state: RegistryActionState,
+  formData: FormData,
+): Promise<RegistryActionState> {
+  const supplierId = optionalString(formData, "supplierId") ?? "";
+  const itemId = optionalString(formData, "itemId");
+  try {
+    await client({
+      url: itemId
+        ? `/api/v1/supplied-items/${itemId}`
+        : "/api/v1/supplied-items",
+      method: itemId ? "PATCH" : "POST",
+      data: suppliedItemPayload(formData),
+    });
+    revalidatePath("/home/fornecedores");
+    if (supplierId) revalidatePath(`/home/fornecedores/${supplierId}`);
+    return {
+      ok: true,
+      message: itemId ? "Item atualizado." : "Item cadastrado.",
+    };
+  } catch (error) {
+    return { ok: false, message: failureMessage(error) };
+  }
+}
+
+export async function removeSuppliedItemAction(
+  _state: RegistryActionState,
+  formData: FormData,
+): Promise<RegistryActionState> {
+  const supplierId = optionalString(formData, "supplierId") ?? "";
+  const itemId = optionalString(formData, "itemId") ?? "";
+  try {
+    await client({
+      url: `/api/v1/supplied-items/${itemId}`,
+      method: "DELETE",
+    });
+    revalidatePath("/home/fornecedores");
+    if (supplierId) revalidatePath(`/home/fornecedores/${supplierId}`);
+    return { ok: true, message: "Item desativado." };
+  } catch (error) {
+    return { ok: false, message: failureMessage(error) };
+  }
+}
+
+export async function saveSuppliedItemCategoryAction(
+  _state: RegistryActionState,
+  formData: FormData,
+): Promise<RegistryActionState> {
+  const supplierId = optionalString(formData, "supplierId") ?? "";
+  const categoryId = optionalString(formData, "categoryId");
+  try {
+    await client({
+      url: categoryId
+        ? `/api/v1/supplied-item-categories/${categoryId}`
+        : "/api/v1/supplied-item-categories",
+      method: categoryId ? "PATCH" : "POST",
+      data: suppliedItemCategoryPayload(formData),
+    });
+    revalidatePath("/home/fornecedores");
+    if (supplierId) revalidatePath(`/home/fornecedores/${supplierId}`);
+    return {
+      ok: true,
+      message: categoryId ? "Categoria atualizada." : "Categoria cadastrada.",
+    };
+  } catch (error) {
+    return { ok: false, message: failureMessage(error) };
+  }
+}
+
+export async function removeSuppliedItemCategoryAction(
+  _state: RegistryActionState,
+  formData: FormData,
+): Promise<RegistryActionState> {
+  const supplierId = optionalString(formData, "supplierId") ?? "";
+  const categoryId = optionalString(formData, "categoryId") ?? "";
+  try {
+    await client({
+      url: `/api/v1/supplied-item-categories/${categoryId}`,
+      method: "DELETE",
+    });
+    revalidatePath("/home/fornecedores");
+    if (supplierId) revalidatePath(`/home/fornecedores/${supplierId}`);
+    return { ok: true, message: "Categoria desativada." };
   } catch (error) {
     return { ok: false, message: failureMessage(error) };
   }

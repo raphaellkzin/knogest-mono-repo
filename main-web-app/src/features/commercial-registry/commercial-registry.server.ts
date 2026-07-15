@@ -47,7 +47,34 @@ export type SupplierOfferDetail = {
 };
 
 export type MeasurementUnitOption = { id: string; code: string; name: string };
-export type SuppliedItemOption = { id: string; name: string; baseUnitId: string };
+export type SuppliedItemOption = {
+  id: string;
+  name: string;
+  baseUnitId: string;
+  categoryId?: string | null;
+  valueUnitQuantity?: string;
+  basePrice?: string;
+};
+export type SuppliedItemCategory = {
+  id: string;
+  name: string;
+  parentId: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+export type SuppliedItemCatalogItem = {
+  id: string;
+  name: string;
+  categoryId: string | null;
+  baseUnitId: string;
+  baseUnit: MeasurementUnitOption | null;
+  valueUnitQuantity: string;
+  basePrice: string;
+  activeSupplierCount: number;
+  spentQuantity: string | null;
+  lastSpentAt: string | null;
+  updatedAt: string;
+};
 
 const pageSize = 10;
 
@@ -92,12 +119,12 @@ export async function getRegistryList(
   query: RegistryListQuery,
 ) {
   const params: GetApiV1ClientsQueryParams = {
-      limit: pageSize,
-      cursor: query.cursor,
-      search: query.search,
-      entityType: query.entityType,
-      sortBy: query.sortBy ?? "createdAt",
-      sortDirection: query.sortDirection ?? "desc",
+    limit: pageSize,
+    cursor: query.cursor,
+    search: query.search,
+    entityType: query.entityType,
+    sortBy: query.sortBy ?? "createdAt",
+    sortDirection: query.sortDirection ?? "desc",
   };
 
   if (kind === "clients") {
@@ -137,7 +164,7 @@ export async function getRegistryDetail(kind: RegistryKind, id: string) {
 }
 
 export async function getSupplierCatalogOptions() {
-  const [units, items] = await Promise.all([
+  const [units, items, catalog] = await Promise.all([
     client<{ success: true; data: MeasurementUnitOption[] }>({
       url: "/api/v1/measurement-units",
       method: "GET",
@@ -146,6 +173,21 @@ export async function getSupplierCatalogOptions() {
       url: "/api/v1/supplied-items",
       method: "GET",
     }),
+    client<{
+      success: true;
+      data: {
+        categories: SuppliedItemCategory[];
+        items: SuppliedItemCatalogItem[];
+      };
+    }>({
+      url: "/api/v1/supplied-items/catalog",
+      method: "GET",
+    }),
   ]);
-  return { units: units.data.data, items: items.data.data };
+  return {
+    units: units.data.data,
+    items: items.data.data,
+    categories: catalog.data.data.categories,
+    catalogItems: catalog.data.data.items,
+  };
 }

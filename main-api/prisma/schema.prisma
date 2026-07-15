@@ -145,24 +145,24 @@ model Company {
 }
 
 model User {
-  id                             String                          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  corporationId                  String                          @map("corporation_id") @db.Uuid
-  email                          String                          @db.VarChar(254)
-  passwordHash                   String                          @map("password_hash")
-  role                           UserRole                        @default(MASTER_ADMIN)
-  isActive                       Boolean                         @default(true) @map("is_active")
-  createdAt                      DateTime                        @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt                      DateTime                        @updatedAt @map("updated_at") @db.Timestamptz(3)
-  corporation                    Corporation                     @relation(fields: [corporationId], references: [id], onDelete: Restrict)
-  sessions                       Session[]
-  removedClients                 Client[]                        @relation("ClientRemovedBy")
-  removedFuelSuppliers           FuelSupplier[]                  @relation("FuelSupplierRemovedBy")
-  machineMeterReadings           MachineMeterReading[]           @relation("MachineMeterReadingActor")
-  machineMeterReadingCorrections MachineMeterReadingCorrection[] @relation("MachineMeterReadingCorrectionActor")
-  createdProjectEmployeeAllocations ProjectEmployeeAllocation[] @relation("ProjectEmployeeAllocationCreatedBy")
-  endedProjectEmployeeAllocations   ProjectEmployeeAllocation[] @relation("ProjectEmployeeAllocationEndedBy")
-  endedEmploymentPeriods            EmploymentPeriod[]          @relation("EmploymentPeriodEndedBy")
-  endedEmploymentJobRolePeriods     EmploymentJobRolePeriod[]   @relation("EmploymentJobRolePeriodEndedBy")
+  id                                    String                           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId                         String                           @map("corporation_id") @db.Uuid
+  email                                 String                           @db.VarChar(254)
+  passwordHash                          String                           @map("password_hash")
+  role                                  UserRole                         @default(MASTER_ADMIN)
+  isActive                              Boolean                          @default(true) @map("is_active")
+  createdAt                             DateTime                         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                             DateTime                         @updatedAt @map("updated_at") @db.Timestamptz(3)
+  corporation                           Corporation                      @relation(fields: [corporationId], references: [id], onDelete: Restrict)
+  sessions                              Session[]
+  removedClients                        Client[]                         @relation("ClientRemovedBy")
+  removedFuelSuppliers                  FuelSupplier[]                   @relation("FuelSupplierRemovedBy")
+  machineMeterReadings                  MachineMeterReading[]            @relation("MachineMeterReadingActor")
+  machineMeterReadingCorrections        MachineMeterReadingCorrection[]  @relation("MachineMeterReadingCorrectionActor")
+  createdProjectEmployeeAllocations     ProjectEmployeeAllocation[]      @relation("ProjectEmployeeAllocationCreatedBy")
+  endedProjectEmployeeAllocations       ProjectEmployeeAllocation[]      @relation("ProjectEmployeeAllocationEndedBy")
+  endedEmploymentPeriods                EmploymentPeriod[]               @relation("EmploymentPeriodEndedBy")
+  endedEmploymentJobRolePeriods         EmploymentJobRolePeriod[]        @relation("EmploymentJobRolePeriodEndedBy")
   endedProjectTechnicalResponsibilities ProjectTechnicalResponsibility[] @relation("ProjectTechnicalResponsibilityEndedBy")
 
   @@unique([corporationId, id])
@@ -338,33 +338,52 @@ model MeasurementUnit {
 }
 
 model SuppliedItem {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId     String   @map("corporation_id") @db.Uuid
+  companyId         String   @map("company_id") @db.Uuid
+  projectId         String?  @map("project_id") @db.Uuid
+  categoryId        String?  @map("category_id") @db.Uuid
+  name              String   @db.VarChar(160)
+  baseUnitId        String   @map("base_unit_id") @db.Uuid
+  valueUnitQuantity Decimal  @default(1.000000) @map("value_unit_quantity") @db.Decimal(18, 6)
+  basePrice         Decimal  @default(0.0000) @map("base_price") @db.Decimal(18, 4)
+  isGlobal          Boolean  @default(true) @map("is_global")
+  isActive          Boolean  @default(true) @map("is_active")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([corporationId, companyId, isGlobal, isActive])
+  @@index([corporationId, companyId, projectId])
+  @@index([corporationId, companyId, categoryId])
+  @@map("supplied_items")
+}
+
+model SuppliedItemCategory {
   id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   corporationId String   @map("corporation_id") @db.Uuid
   companyId     String   @map("company_id") @db.Uuid
-  projectId     String?  @map("project_id") @db.Uuid
-  name          String   @db.VarChar(160)
-  baseUnitId    String   @map("base_unit_id") @db.Uuid
-  isGlobal      Boolean  @default(true) @map("is_global")
+  parentId      String?  @map("parent_id") @db.Uuid
+  name          String   @db.VarChar(120)
   isActive      Boolean  @default(true) @map("is_active")
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  @@index([corporationId, companyId, isGlobal, isActive])
-  @@index([corporationId, companyId, projectId])
-  @@map("supplied_items")
+  @@index([corporationId, companyId, parentId])
+  @@index([corporationId, companyId, isActive])
+  @@map("supplied_item_categories")
 }
 
 model SupplierOffer {
-  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  corporationId      String   @map("corporation_id") @db.Uuid
-  companyId          String   @map("company_id") @db.Uuid
-  supplierId         String   @map("supplier_id") @db.Uuid
-  itemId             String   @map("item_id") @db.Uuid
-  purchaseUnitId     String   @map("purchase_unit_id") @db.Uuid
-  conversionToBase   Decimal  @map("conversion_to_base") @db.Decimal(18, 6)
-  isActive           Boolean  @default(true) @map("is_active")
-  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId    String   @map("corporation_id") @db.Uuid
+  companyId        String   @map("company_id") @db.Uuid
+  supplierId       String   @map("supplier_id") @db.Uuid
+  itemId           String   @map("item_id") @db.Uuid
+  purchaseUnitId   String   @map("purchase_unit_id") @db.Uuid
+  conversionToBase Decimal  @map("conversion_to_base") @db.Decimal(18, 6)
+  isActive         Boolean  @default(true) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@index([corporationId, companyId, supplierId])
   @@index([corporationId, companyId, itemId])
@@ -410,19 +429,19 @@ model Person {
 }
 
 model Employment {
-  id                        String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  corporationId             String             @map("corporation_id") @db.Uuid
-  companyId                 String             @map("company_id") @db.Uuid
-  personId                  String             @map("person_id") @db.Uuid
-  companyRegistrationNumber String             @map("company_registration_number") @db.VarChar(80)
-  state                     EmploymentState    @default(ACTIVE)
-  isActive                  Boolean            @default(true) @map("is_active")
-  terminatedAt              DateTime?          @map("terminated_at") @db.Timestamptz(3)
-  createdAt                 DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt                 DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
-  corporation               Corporation        @relation(fields: [corporationId], references: [id], onDelete: Restrict)
-  company                   Company            @relation(fields: [corporationId, companyId], references: [corporationId, id], onDelete: Restrict)
-  person                    Person             @relation(fields: [corporationId, personId], references: [corporationId, id], onDelete: Restrict)
+  id                        String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId             String                    @map("corporation_id") @db.Uuid
+  companyId                 String                    @map("company_id") @db.Uuid
+  personId                  String                    @map("person_id") @db.Uuid
+  companyRegistrationNumber String                    @map("company_registration_number") @db.VarChar(80)
+  state                     EmploymentState           @default(ACTIVE)
+  isActive                  Boolean                   @default(true) @map("is_active")
+  terminatedAt              DateTime?                 @map("terminated_at") @db.Timestamptz(3)
+  createdAt                 DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                 DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  corporation               Corporation               @relation(fields: [corporationId], references: [id], onDelete: Restrict)
+  company                   Company                   @relation(fields: [corporationId, companyId], references: [corporationId, id], onDelete: Restrict)
+  person                    Person                    @relation(fields: [corporationId, personId], references: [corporationId, id], onDelete: Restrict)
   periods                   EmploymentPeriod[]
   jobRolePeriods            EmploymentJobRolePeriod[]
 
@@ -435,16 +454,16 @@ model Employment {
 }
 
 model JobRole {
-  id              String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  corporationId   String                     @map("corporation_id") @db.Uuid
-  companyId       String                     @map("company_id") @db.Uuid
-  name            String                     @db.VarChar(120)
-  normalizedName  String                     @map("normalized_name") @db.VarChar(120)
-  isActive        Boolean                    @default(true) @map("is_active")
-  createdAt       DateTime                   @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt       DateTime                   @updatedAt @map("updated_at") @db.Timestamptz(3)
-  corporation     Corporation                @relation(fields: [corporationId], references: [id], onDelete: Restrict)
-  company         Company                    @relation(fields: [corporationId, companyId], references: [corporationId, id], onDelete: Restrict)
+  id                String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId     String                    @map("corporation_id") @db.Uuid
+  companyId         String                    @map("company_id") @db.Uuid
+  name              String                    @db.VarChar(120)
+  normalizedName    String                    @map("normalized_name") @db.VarChar(120)
+  isActive          Boolean                   @default(true) @map("is_active")
+  createdAt         DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  corporation       Corporation               @relation(fields: [corporationId], references: [id], onDelete: Restrict)
+  company           Company                   @relation(fields: [corporationId, companyId], references: [corporationId, id], onDelete: Restrict)
   employmentPeriods EmploymentJobRolePeriod[]
 
   @@unique([corporationId, companyId, normalizedName])
@@ -453,22 +472,22 @@ model JobRole {
 }
 
 model EmploymentJobRolePeriod {
-  id             String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  corporationId  String     @map("corporation_id") @db.Uuid
-  companyId      String     @map("company_id") @db.Uuid
-  employmentId   String     @map("employment_id") @db.Uuid
-  jobRoleId      String     @map("job_role_id") @db.Uuid
-  reason         String?    @db.VarChar(240)
-  endedByUserId  String?    @map("ended_by_user_id") @db.Uuid
-  endedReason    String?    @map("ended_reason") @db.VarChar(240)
-  effectiveFrom  DateTime   @map("effective_from") @db.Date
-  effectiveTo    DateTime?  @map("effective_to") @db.Date
-  createdAt      DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt      DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
-  employment     Employment @relation(fields: [corporationId, companyId, employmentId], references: [corporationId, companyId, id], onDelete: Restrict)
-  jobRole        JobRole    @relation(fields: [jobRoleId], references: [id], onDelete: Restrict)
-  endedBy        User?      @relation("EmploymentJobRolePeriodEndedBy", fields: [corporationId, endedByUserId], references: [corporationId, id], onDelete: Restrict)
-  allocations    ProjectEmployeeAllocation[]
+  id            String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId String                      @map("corporation_id") @db.Uuid
+  companyId     String                      @map("company_id") @db.Uuid
+  employmentId  String                      @map("employment_id") @db.Uuid
+  jobRoleId     String                      @map("job_role_id") @db.Uuid
+  reason        String?                     @db.VarChar(240)
+  endedByUserId String?                     @map("ended_by_user_id") @db.Uuid
+  endedReason   String?                     @map("ended_reason") @db.VarChar(240)
+  effectiveFrom DateTime                    @map("effective_from") @db.Date
+  effectiveTo   DateTime?                   @map("effective_to") @db.Date
+  createdAt     DateTime                    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(3)
+  employment    Employment                  @relation(fields: [corporationId, companyId, employmentId], references: [corporationId, companyId, id], onDelete: Restrict)
+  jobRole       JobRole                     @relation(fields: [jobRoleId], references: [id], onDelete: Restrict)
+  endedBy       User?                       @relation("EmploymentJobRolePeriodEndedBy", fields: [corporationId, endedByUserId], references: [corporationId, id], onDelete: Restrict)
+  allocations   ProjectEmployeeAllocation[]
 
   @@index([corporationId, companyId, employmentId, effectiveFrom, id])
   @@map("employment_job_role_periods")
@@ -747,26 +766,26 @@ model ProjectBreakTemplate {
 }
 
 model ProjectEmployeeAllocation {
-  id                           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  corporationId                String    @map("corporation_id") @db.Uuid
-  companyId                    String    @map("company_id") @db.Uuid
-  projectId                    String    @map("project_id") @db.Uuid
-  employmentId                 String    @map("employment_id") @db.Uuid
-  personId                     String    @map("person_id") @db.Uuid
-  jobRole                      String    @map("job_role") @db.VarChar(120)
-  employmentJobRolePeriodId    String?   @map("employment_job_role_period_id") @db.Uuid
-  expectedDailyWorkloadMinutes Int       @map("expected_daily_workload_minutes")
-  compensationMode             String    @map("compensation_mode") @db.VarChar(16)
-  compensationValue            Decimal   @map("compensation_value") @db.Decimal(18, 2)
-  overtimeRate                 Decimal   @map("overtime_rate") @db.Decimal(18, 2)
-  effectiveFrom                DateTime  @map("effective_from") @db.Timestamptz(3)
-  effectiveTo                  DateTime? @map("effective_to") @db.Timestamptz(3)
-  createdByUserId              String?   @map("created_by_user_id") @db.Uuid
-  endedByUserId                String?   @map("ended_by_user_id") @db.Uuid
-  endedReason                  String?   @map("ended_reason") @db.VarChar(500)
+  id                           String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId                String                   @map("corporation_id") @db.Uuid
+  companyId                    String                   @map("company_id") @db.Uuid
+  projectId                    String                   @map("project_id") @db.Uuid
+  employmentId                 String                   @map("employment_id") @db.Uuid
+  personId                     String                   @map("person_id") @db.Uuid
+  jobRole                      String                   @map("job_role") @db.VarChar(120)
+  employmentJobRolePeriodId    String?                  @map("employment_job_role_period_id") @db.Uuid
+  expectedDailyWorkloadMinutes Int                      @map("expected_daily_workload_minutes")
+  compensationMode             String                   @map("compensation_mode") @db.VarChar(16)
+  compensationValue            Decimal                  @map("compensation_value") @db.Decimal(18, 2)
+  overtimeRate                 Decimal                  @map("overtime_rate") @db.Decimal(18, 2)
+  effectiveFrom                DateTime                 @map("effective_from") @db.Timestamptz(3)
+  effectiveTo                  DateTime?                @map("effective_to") @db.Timestamptz(3)
+  createdByUserId              String?                  @map("created_by_user_id") @db.Uuid
+  endedByUserId                String?                  @map("ended_by_user_id") @db.Uuid
+  endedReason                  String?                  @map("ended_reason") @db.VarChar(500)
   employmentJobRolePeriod      EmploymentJobRolePeriod? @relation(fields: [employmentJobRolePeriodId], references: [id], onDelete: Restrict)
-  createdBy                    User?     @relation("ProjectEmployeeAllocationCreatedBy", fields: [corporationId, createdByUserId], references: [corporationId, id], onDelete: Restrict)
-  endedBy                      User?     @relation("ProjectEmployeeAllocationEndedBy", fields: [corporationId, endedByUserId], references: [corporationId, id], onDelete: Restrict)
+  createdBy                    User?                    @relation("ProjectEmployeeAllocationCreatedBy", fields: [corporationId, createdByUserId], references: [corporationId, id], onDelete: Restrict)
+  endedBy                      User?                    @relation("ProjectEmployeeAllocationEndedBy", fields: [corporationId, endedByUserId], references: [corporationId, id], onDelete: Restrict)
 
   @@index([corporationId, companyId, projectId])
   @@index([employmentJobRolePeriodId])
@@ -774,15 +793,15 @@ model ProjectEmployeeAllocation {
 }
 
 model ProjectMachineAllocation {
-  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  corporationId       String    @map("corporation_id") @db.Uuid
-  companyId           String    @map("company_id") @db.Uuid
-  projectId           String    @map("project_id") @db.Uuid
-  machineId           String    @map("machine_id") @db.Uuid
-  startMeterReadingId String    @map("start_meter_reading_id") @db.Uuid
-  operatorEmploymentId String   @map("operator_employment_id") @db.Uuid
-  effectiveFrom       DateTime  @map("effective_from") @db.Timestamptz(3)
-  effectiveTo         DateTime? @map("effective_to") @db.Timestamptz(3)
+  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId        String    @map("corporation_id") @db.Uuid
+  companyId            String    @map("company_id") @db.Uuid
+  projectId            String    @map("project_id") @db.Uuid
+  machineId            String    @map("machine_id") @db.Uuid
+  startMeterReadingId  String    @map("start_meter_reading_id") @db.Uuid
+  operatorEmploymentId String    @map("operator_employment_id") @db.Uuid
+  effectiveFrom        DateTime  @map("effective_from") @db.Timestamptz(3)
+  effectiveTo          DateTime? @map("effective_to") @db.Timestamptz(3)
 
   @@index([corporationId, companyId, projectId])
   @@index([corporationId, companyId, operatorEmploymentId])

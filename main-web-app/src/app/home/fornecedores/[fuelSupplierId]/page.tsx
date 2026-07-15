@@ -7,7 +7,11 @@ import {
 import {
   lookupRegistryAddressByCepAction,
   removeSupplierOfferAction,
+  removeSuppliedItemAction,
+  removeSuppliedItemCategoryAction,
   saveSupplierOfferAction,
+  saveSuppliedItemAction,
+  saveSuppliedItemCategoryAction,
   updateFuelSupplierAction,
 } from "@/features/commercial-registry/commercial-registry.actions";
 import { getInitialRegistryActionState } from "@/features/commercial-registry/commercial-registry-action-state";
@@ -45,7 +49,11 @@ export default async function Page({
         record={record}
         lookupAddressByCep={lookupRegistryAddressByCepAction}
         removeOfferAction={removeSupplierOfferAction}
+        removeSuppliedItemAction={removeSuppliedItemAction}
+        removeSuppliedItemCategoryAction={removeSuppliedItemCategoryAction}
         saveOfferAction={saveSupplierOfferAction}
+        saveSuppliedItemAction={saveSuppliedItemAction}
+        saveSuppliedItemCategoryAction={saveSuppliedItemCategoryAction}
         updateSupplierAction={updateFuelSupplierAction}
         title="Detalhe do fornecedor"
       />

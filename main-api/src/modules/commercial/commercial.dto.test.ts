@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { updateSupplierSchema } from "./commercial.dto";
+import {
+  createSuppliedItemCategorySchema,
+  createSuppliedItemSchema,
+  updateSupplierSchema,
+} from "./commercial.dto";
 
 describe("Commercial DTOs", () => {
   it("accepts editable Supplier registry fields and normalizes empty optional values", () => {
@@ -42,5 +46,35 @@ describe("Commercial DTOs", () => {
         corporationId: crypto.randomUUID(),
       }).success,
     ).toBe(false);
+  });
+
+  it("accepts supplied item catalog fields with defaults handled by the service", () => {
+    expect(
+      createSuppliedItemSchema.parse({
+        name: "Diesel S10",
+        baseUnitId: "00000000-0000-4000-8000-00000000a001",
+        categoryId: null,
+        valueUnitQuantity: "1.000000",
+        basePrice: "7.5000",
+      }),
+    ).toEqual({
+      name: "Diesel S10",
+      baseUnitId: "00000000-0000-4000-8000-00000000a001",
+      categoryId: null,
+      valueUnitQuantity: "1.000000",
+      basePrice: "7.5000",
+    });
+  });
+
+  it("accepts supplied item categories with optional parent", () => {
+    expect(
+      createSuppliedItemCategorySchema.parse({
+        name: "Combustíveis",
+        parentId: null,
+      }),
+    ).toEqual({
+      name: "Combustíveis",
+      parentId: null,
+    });
   });
 });

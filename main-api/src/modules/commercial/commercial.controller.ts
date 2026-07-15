@@ -12,6 +12,7 @@ import {
   validateQuery,
 } from "../../lib/utils/zodResolver";
 import {
+  createSuppliedItemCategorySchema,
   createMeasurementUnitSchema,
   createCommercialRegistrySchema,
   createSuppliedItemSchema,
@@ -19,6 +20,8 @@ import {
   supplierOfferSchema as createSupplierOfferBodySchema,
   listCommercialRegistryQuerySchema,
   selectorQuerySchema,
+  updateSuppliedItemCategorySchema,
+  updateSuppliedItemSchema,
   updateSupplierOfferSchema,
   updateSupplierSchema,
 } from "./commercial.dto";
@@ -325,8 +328,73 @@ const suppliedItemSchema = {
     id: { type: "string", format: "uuid" },
     name: { type: "string" },
     baseUnitId: { type: "string", format: "uuid" },
+    categoryId: { type: "string", format: "uuid", nullable: true },
+    valueUnitQuantity: { type: "string" },
+    basePrice: { type: "string" },
   },
   additionalProperties: false,
+} as const;
+
+const suppliedItemCategorySchema = {
+  type: "object",
+  required: ["id", "name", "parentId", "createdAt", "updatedAt"],
+  properties: {
+    id: { type: "string", format: "uuid" },
+    name: { type: "string" },
+    parentId: { type: "string", format: "uuid", nullable: true },
+    createdAt: { type: "string", format: "date-time" },
+    updatedAt: { type: "string", format: "date-time" },
+  },
+  additionalProperties: false,
+} as const;
+
+const suppliedItemCatalogItemSchema = {
+  type: "object",
+  required: [
+    "id",
+    "name",
+    "categoryId",
+    "baseUnitId",
+    "baseUnit",
+    "valueUnitQuantity",
+    "basePrice",
+    "activeSupplierCount",
+    "spentQuantity",
+    "lastSpentAt",
+    "updatedAt",
+  ],
+  properties: {
+    id: { type: "string", format: "uuid" },
+    name: { type: "string" },
+    categoryId: { type: "string", format: "uuid", nullable: true },
+    baseUnitId: { type: "string", format: "uuid" },
+    baseUnit: { ...measurementUnitSchema, nullable: true },
+    valueUnitQuantity: { type: "string" },
+    basePrice: { type: "string" },
+    activeSupplierCount: { type: "integer", minimum: 0 },
+    spentQuantity: { type: "string", nullable: true },
+    lastSpentAt: { type: "string", format: "date-time", nullable: true },
+    updatedAt: { type: "string", format: "date-time" },
+  },
+  additionalProperties: false,
+} as const;
+
+const suppliedItemCatalogResponseSchema = {
+  type: "object",
+  required: ["success", "message", "data"],
+  properties: {
+    success: { type: "boolean", const: true },
+    message: { type: "string" },
+    data: {
+      type: "object",
+      required: ["categories", "items"],
+      properties: {
+        categories: { type: "array", items: suppliedItemCategorySchema },
+        items: { type: "array", items: suppliedItemCatalogItemSchema },
+      },
+      additionalProperties: false,
+    },
+  },
 } as const;
 
 const listResponseSchema = {
@@ -429,6 +497,24 @@ const removalResponseSchema = {
   },
 } as const;
 
+const deactivationResponseSchema = {
+  type: "object",
+  required: ["success", "message", "data"],
+  properties: {
+    success: { type: "boolean", const: true },
+    message: { type: "string" },
+    data: {
+      type: "object",
+      required: ["id", "isActive"],
+      properties: {
+        id: { type: "string", format: "uuid" },
+        isActive: { type: "boolean", const: false },
+      },
+      additionalProperties: false,
+    },
+  },
+} as const;
+
 const clientParamsSchema = z.object({ clientId: z.string().uuid() }).strict();
 const fuelSupplierParamsSchema = z
   .object({ fuelSupplierId: z.string().uuid() })
@@ -438,6 +524,12 @@ const supplierParamsSchema = z
   .strict();
 const supplierOfferParamsSchema = z
   .object({ supplierId: z.string().uuid(), offerId: z.string().uuid() })
+  .strict();
+const suppliedItemParamsSchema = z
+  .object({ itemId: z.string().uuid() })
+  .strict();
+const suppliedItemCategoryParamsSchema = z
+  .object({ categoryId: z.string().uuid() })
   .strict();
 
 export const v1CommercialController = async (app: FastifyInstance) => {
@@ -946,6 +1038,170 @@ export const v1CommercialController = async (app: FastifyInstance) => {
   );
 
   app.get(
+    "/supplied-items/catalog",
+    {
+      preHandler: app.requireCompanyScope,
+      schema: {
+        tags: ["Commercial"],
+        summary: "List the global Supplied Item catalog tree",
+        security: [{ bearerAuth: [] }],
+        response: {
+          200: suppliedItemCatalogResponseSchema,
+          401: errorSchema,
+          403: errorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const data = await commercialService.listSuppliedItemCatalog(
+        scopeFromRequest(request),
+      );
+      return jsonResponse.success({ reply, data });
+    },
+  );
+
+  app.post(
+    "/supplied-item-categories",
+    {
+      preHandler: [
+        app.requireCompanyScope,
+        validateBody(createSuppliedItemCategorySchema),
+      ],
+      schema: {
+        tags: ["Commercial"],
+        summary: "Create a Supplied Item Category",
+        security: [{ bearerAuth: [] }],
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["name"],
+          properties: {
+            name: { type: "string", minLength: 1, maxLength: 120 },
+            parentId: { type: "string", format: "uuid", nullable: true },
+          },
+        },
+        response: {
+          201: {
+            type: "object",
+            required: ["success", "message", "data"],
+            properties: {
+              success: { type: "boolean", const: true },
+              message: { type: "string" },
+              data: suppliedItemCategorySchema,
+            },
+          },
+          400: errorSchema,
+          401: errorSchema,
+          403: errorSchema,
+          409: errorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const data = await commercialService.createSuppliedItemCategory(
+        scopeFromRequest(request),
+        request.body as z.infer<typeof createSuppliedItemCategorySchema>,
+      );
+      return jsonResponse.success({ reply, data, statusCode: 201 });
+    },
+  );
+
+  app.patch(
+    "/supplied-item-categories/:categoryId",
+    {
+      preHandler: [
+        app.requireCompanyScope,
+        validateParams(suppliedItemCategoryParamsSchema),
+        validateBody(updateSuppliedItemCategorySchema),
+      ],
+      schema: {
+        tags: ["Commercial"],
+        summary: "Update a Supplied Item Category",
+        security: [{ bearerAuth: [] }],
+        params: {
+          type: "object",
+          additionalProperties: false,
+          required: ["categoryId"],
+          properties: { categoryId: { type: "string", format: "uuid" } },
+        },
+        body: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            name: { type: "string", minLength: 1, maxLength: 120 },
+            parentId: { type: "string", format: "uuid", nullable: true },
+          },
+        },
+        response: {
+          200: {
+            type: "object",
+            required: ["success", "message", "data"],
+            properties: {
+              success: { type: "boolean", const: true },
+              message: { type: "string" },
+              data: suppliedItemCategorySchema,
+            },
+          },
+          400: errorSchema,
+          401: errorSchema,
+          403: errorSchema,
+          404: errorSchema,
+          409: errorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { categoryId } = request.params as z.infer<
+        typeof suppliedItemCategoryParamsSchema
+      >;
+      const data = await commercialService.updateSuppliedItemCategory(
+        scopeFromRequest(request),
+        categoryId,
+        request.body as z.infer<typeof updateSuppliedItemCategorySchema>,
+      );
+      return jsonResponse.success({ reply, data });
+    },
+  );
+
+  app.delete(
+    "/supplied-item-categories/:categoryId",
+    {
+      preHandler: [
+        app.requireCompanyScope,
+        validateParams(suppliedItemCategoryParamsSchema),
+      ],
+      schema: {
+        tags: ["Commercial"],
+        summary: "Deactivate a Supplied Item Category subtree",
+        security: [{ bearerAuth: [] }],
+        params: {
+          type: "object",
+          additionalProperties: false,
+          required: ["categoryId"],
+          properties: { categoryId: { type: "string", format: "uuid" } },
+        },
+        response: {
+          200: deactivationResponseSchema,
+          400: errorSchema,
+          401: errorSchema,
+          403: errorSchema,
+          404: errorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { categoryId } = request.params as z.infer<
+        typeof suppliedItemCategoryParamsSchema
+      >;
+      const data = await commercialService.removeSuppliedItemCategory(
+        scopeFromRequest(request),
+        categoryId,
+      );
+      return jsonResponse.success({ reply, data });
+    },
+  );
+
+  app.get(
     "/supplied-items",
     {
       preHandler: app.requireCompanyScope,
@@ -994,6 +1250,12 @@ export const v1CommercialController = async (app: FastifyInstance) => {
           properties: {
             name: { type: "string", minLength: 1, maxLength: 160 },
             baseUnitId: { type: "string", format: "uuid" },
+            categoryId: { type: "string", format: "uuid", nullable: true },
+            valueUnitQuantity: {
+              type: "string",
+              pattern: "^\\d{1,12}\\.\\d{6}$",
+            },
+            basePrice: { type: "string", pattern: "^\\d{1,14}\\.\\d{4}$" },
           },
         },
         response: {
@@ -1019,6 +1281,107 @@ export const v1CommercialController = async (app: FastifyInstance) => {
         request.body as z.infer<typeof createSuppliedItemSchema>,
       );
       return jsonResponse.success({ reply, data, statusCode: 201 });
+    },
+  );
+
+  app.patch(
+    "/supplied-items/:itemId",
+    {
+      preHandler: [
+        app.requireCompanyScope,
+        validateParams(suppliedItemParamsSchema),
+        validateBody(updateSuppliedItemSchema),
+      ],
+      schema: {
+        tags: ["Commercial"],
+        summary: "Update a global Supplied Item",
+        security: [{ bearerAuth: [] }],
+        params: {
+          type: "object",
+          additionalProperties: false,
+          required: ["itemId"],
+          properties: { itemId: { type: "string", format: "uuid" } },
+        },
+        body: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            name: { type: "string", minLength: 1, maxLength: 160 },
+            baseUnitId: { type: "string", format: "uuid" },
+            categoryId: { type: "string", format: "uuid", nullable: true },
+            valueUnitQuantity: {
+              type: "string",
+              pattern: "^\\d{1,12}\\.\\d{6}$",
+            },
+            basePrice: { type: "string", pattern: "^\\d{1,14}\\.\\d{4}$" },
+          },
+        },
+        response: {
+          200: {
+            type: "object",
+            required: ["success", "message", "data"],
+            properties: {
+              success: { type: "boolean", const: true },
+              message: { type: "string" },
+              data: suppliedItemSchema,
+            },
+          },
+          400: errorSchema,
+          401: errorSchema,
+          403: errorSchema,
+          404: errorSchema,
+          409: errorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { itemId } = request.params as z.infer<
+        typeof suppliedItemParamsSchema
+      >;
+      const data = await commercialService.updateSuppliedItem(
+        scopeFromRequest(request),
+        itemId,
+        request.body as z.infer<typeof updateSuppliedItemSchema>,
+      );
+      return jsonResponse.success({ reply, data });
+    },
+  );
+
+  app.delete(
+    "/supplied-items/:itemId",
+    {
+      preHandler: [
+        app.requireCompanyScope,
+        validateParams(suppliedItemParamsSchema),
+      ],
+      schema: {
+        tags: ["Commercial"],
+        summary: "Deactivate a global Supplied Item",
+        security: [{ bearerAuth: [] }],
+        params: {
+          type: "object",
+          additionalProperties: false,
+          required: ["itemId"],
+          properties: { itemId: { type: "string", format: "uuid" } },
+        },
+        response: {
+          200: deactivationResponseSchema,
+          400: errorSchema,
+          401: errorSchema,
+          403: errorSchema,
+          404: errorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { itemId } = request.params as z.infer<
+        typeof suppliedItemParamsSchema
+      >;
+      const data = await commercialService.removeSuppliedItem(
+        scopeFromRequest(request),
+        itemId,
+      );
+      return jsonResponse.success({ reply, data });
     },
   );
 

@@ -12,11 +12,14 @@ import {
 import type {
   CreateMeasurementUnitInput,
   CreateCommercialRegistryInput,
+  CreateSuppliedItemCategoryInput,
   CreateSupplierOfferInput,
   CreateSuppliedItemInput,
   CreateSupplierInput,
   ListCommercialRegistryQuery,
   SelectorQuery,
+  UpdateSuppliedItemCategoryInput,
+  UpdateSuppliedItemInput,
   UpdateSupplierOfferInput,
   UpdateSupplierInput,
 } from "./commercial.dto";
@@ -46,6 +49,8 @@ interface AuthenticatedCompanyScope {
 interface AuthenticatedCommercialActorScope extends AuthenticatedCompanyScope {
   actorUserId: string;
 }
+
+const maxItemCategoryDepth = 3;
 
 function mapEntityType(
   entityType: CreateCommercialRegistryInput["entityType"],
@@ -131,6 +136,49 @@ function toDetailDto(record: CommercialRegistryRecord) {
     ...toListDto(record),
     document: toProtectedDocumentDto(protectedDocument(record)),
   };
+}
+
+async function categoryDepth(
+  context: HandlerContext,
+  scope: AuthenticatedCompanyScope,
+  categoryId: string | null | undefined,
+) {
+  if (!categoryId) return -1;
+  const store = commercialRegistryStore(context);
+  let depth = 0;
+  let currentId: string | null = categoryId;
+  const seen = new Set<string>();
+
+  while (currentId) {
+    if (seen.has(currentId)) {
+      throw new AppError({
+        code: "SUPPLIED_ITEM_CATEGORY_INVALID_TREE",
+        message: "Supplied item category tree is invalid",
+        statusCode: 409,
+      });
+    }
+    seen.add(currentId);
+    const category = await store.suppliedItemCategory.findFirst({
+      where: {
+        id: currentId,
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        isActive: true,
+      },
+      select: { id: true, parentId: true },
+    });
+    if (!category) {
+      throw new AppError({
+        code: "SUPPLIED_ITEM_CATEGORY_NOT_FOUND",
+        message: "Supplied item category not found",
+        statusCode: 404,
+      });
+    }
+    currentId = category.parentId;
+    if (currentId) depth += 1;
+  }
+
+  return depth;
 }
 
 async function supplierOffersDto(
@@ -886,7 +934,7 @@ export class CommercialService {
 
   async listSuppliedItems(scope: AuthenticatedCompanyScope) {
     const store = commercialRegistryStore(this.context);
-    return store.suppliedItem.findMany({
+    const items = await store.suppliedItem.findMany({
       where: {
         corporationId: scope.corporationId,
         companyId: scope.companyId,
@@ -894,24 +942,452 @@ export class CommercialService {
         isActive: true,
       },
       orderBy: [{ name: "asc" }, { id: "asc" }],
-      select: { id: true, name: true, baseUnitId: true },
+      select: {
+        id: true,
+        name: true,
+        baseUnitId: true,
+        categoryId: true,
+        valueUnitQuantity: true,
+        basePrice: true,
+      },
     });
+    return items.map((item) => ({
+      id: item.id,
+      name: item.name,
+      baseUnitId: item.baseUnitId,
+      categoryId: item.categoryId,
+      valueUnitQuantity: item.valueUnitQuantity.toFixed(6),
+      basePrice: item.basePrice.toFixed(4),
+    }));
+  }
+
+  async listSuppliedItemCatalog(scope: AuthenticatedCompanyScope) {
+    const store = commercialRegistryStore(this.context);
+    const [categories, items] = await Promise.all([
+      store.suppliedItemCategory.findMany({
+        where: {
+          corporationId: scope.corporationId,
+          companyId: scope.companyId,
+          isActive: true,
+        },
+        orderBy: [{ name: "asc" }, { id: "asc" }],
+        select: {
+          id: true,
+          name: true,
+          parentId: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      }),
+      store.suppliedItem.findMany({
+        where: {
+          corporationId: scope.corporationId,
+          companyId: scope.companyId,
+          isGlobal: true,
+          isActive: true,
+        },
+        orderBy: [{ name: "asc" }, { id: "asc" }],
+        select: {
+          id: true,
+          name: true,
+          baseUnitId: true,
+          categoryId: true,
+          valueUnitQuantity: true,
+          basePrice: true,
+          updatedAt: true,
+        },
+      }),
+    ]);
+    const [units, offers] = await Promise.all([
+      store.measurementUnit.findMany({
+        where: { id: { in: items.map((item) => item.baseUnitId) } },
+        select: { id: true, code: true, name: true },
+      }),
+      store.supplierOffer.findMany({
+        where: {
+          corporationId: scope.corporationId,
+          companyId: scope.companyId,
+          itemId: { in: items.map((item) => item.id) },
+          isActive: true,
+        },
+        select: { itemId: true, supplierId: true },
+      }),
+    ]);
+    const unitById = new Map(units.map((unit) => [unit.id, unit]));
+    const suppliersByItemId = new Map<string, Set<string>>();
+    for (const offer of offers) {
+      const suppliers = suppliersByItemId.get(offer.itemId) ?? new Set();
+      suppliers.add(offer.supplierId);
+      suppliersByItemId.set(offer.itemId, suppliers);
+    }
+
+    return {
+      categories: categories.map((category) => ({
+        id: category.id,
+        name: category.name,
+        parentId: category.parentId,
+        createdAt: category.createdAt.toISOString(),
+        updatedAt: category.updatedAt.toISOString(),
+      })),
+      items: items.map((item) => {
+        const unit = unitById.get(item.baseUnitId);
+        return {
+          id: item.id,
+          name: item.name,
+          categoryId: item.categoryId,
+          baseUnitId: item.baseUnitId,
+          baseUnit: unit
+            ? { id: unit.id, code: unit.code, name: unit.name }
+            : null,
+          valueUnitQuantity: item.valueUnitQuantity.toFixed(6),
+          basePrice: item.basePrice.toFixed(4),
+          activeSupplierCount: suppliersByItemId.get(item.id)?.size ?? 0,
+          spentQuantity: null,
+          lastSpentAt: null,
+          updatedAt: item.updatedAt.toISOString(),
+        };
+      }),
+    };
+  }
+
+  private async assertSuppliedItemReferences(
+    scope: AuthenticatedCompanyScope,
+    input: { baseUnitId?: string; categoryId?: string | null },
+  ) {
+    const store = commercialRegistryStore(this.context);
+    if (input.baseUnitId) {
+      const unit = await store.measurementUnit.findFirst({
+        where: {
+          id: input.baseUnitId,
+          isActive: true,
+          OR: [
+            { corporationId: null, companyId: null },
+            { corporationId: scope.corporationId, companyId: scope.companyId },
+          ],
+        },
+        select: { id: true },
+      });
+      if (!unit) {
+        throw new AppError({
+          code: "MEASUREMENT_UNIT_NOT_FOUND",
+          message: "Measurement unit not found",
+          statusCode: 404,
+        });
+      }
+    }
+
+    if (input.categoryId) {
+      await categoryDepth(this.context, scope, input.categoryId);
+    }
   }
 
   async createSuppliedItem(
     scope: AuthenticatedCompanyScope,
     input: CreateSuppliedItemInput,
   ) {
+    await this.assertSuppliedItemReferences(scope, input);
     const store = commercialRegistryStore(this.context);
-    return store.suppliedItem.create({
+    const created = await store.suppliedItem.create({
       data: {
         corporationId: scope.corporationId,
         companyId: scope.companyId,
         name: input.name,
         baseUnitId: input.baseUnitId,
+        categoryId: input.categoryId ?? null,
+        valueUnitQuantity: input.valueUnitQuantity ?? "1.000000",
+        basePrice: input.basePrice ?? "0.0000",
         isGlobal: true,
       },
-      select: { id: true, name: true, baseUnitId: true },
+      select: {
+        id: true,
+        name: true,
+        baseUnitId: true,
+        categoryId: true,
+        valueUnitQuantity: true,
+        basePrice: true,
+      },
     });
+    return {
+      id: created.id,
+      name: created.name,
+      baseUnitId: created.baseUnitId,
+      categoryId: created.categoryId,
+      valueUnitQuantity: created.valueUnitQuantity.toFixed(6),
+      basePrice: created.basePrice.toFixed(4),
+    };
+  }
+
+  async updateSuppliedItem(
+    scope: AuthenticatedCompanyScope,
+    itemId: string,
+    input: UpdateSuppliedItemInput,
+  ) {
+    await this.assertSuppliedItemReferences(scope, input);
+    const store = commercialRegistryStore(this.context);
+    const updated = await store.suppliedItem.updateMany({
+      where: {
+        id: itemId,
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        isGlobal: true,
+        isActive: true,
+      },
+      data: {
+        name: input.name,
+        baseUnitId: input.baseUnitId,
+        categoryId: input.categoryId,
+        valueUnitQuantity: input.valueUnitQuantity,
+        basePrice: input.basePrice,
+      },
+    });
+    if (updated.count === 0) {
+      throw new AppError({
+        code: "SUPPLIED_ITEM_NOT_FOUND",
+        message: "Supplied item not found",
+        statusCode: 404,
+      });
+    }
+    const item = await store.suppliedItem.findFirstOrThrow({
+      where: {
+        id: itemId,
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+      },
+      select: {
+        id: true,
+        name: true,
+        baseUnitId: true,
+        categoryId: true,
+        valueUnitQuantity: true,
+        basePrice: true,
+      },
+    });
+    return {
+      id: item.id,
+      name: item.name,
+      baseUnitId: item.baseUnitId,
+      categoryId: item.categoryId,
+      valueUnitQuantity: item.valueUnitQuantity.toFixed(6),
+      basePrice: item.basePrice.toFixed(4),
+    };
+  }
+
+  async removeSuppliedItem(scope: AuthenticatedCompanyScope, itemId: string) {
+    const store = commercialRegistryStore(this.context);
+    const updated = await store.suppliedItem.updateMany({
+      where: {
+        id: itemId,
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        isGlobal: true,
+        isActive: true,
+      },
+      data: { isActive: false },
+    });
+    if (updated.count === 0) {
+      throw new AppError({
+        code: "SUPPLIED_ITEM_NOT_FOUND",
+        message: "Supplied item not found",
+        statusCode: 404,
+      });
+    }
+    return { id: itemId, isActive: false };
+  }
+
+  async createSuppliedItemCategory(
+    scope: AuthenticatedCompanyScope,
+    input: CreateSuppliedItemCategoryInput,
+  ) {
+    const parentDepth = await categoryDepth(
+      this.context,
+      scope,
+      input.parentId,
+    );
+    if (parentDepth + 1 > maxItemCategoryDepth) {
+      throw new AppError({
+        code: "SUPPLIED_ITEM_CATEGORY_DEPTH_EXCEEDED",
+        message: "Supplied item category depth exceeded",
+        statusCode: 400,
+      });
+    }
+    const store = commercialRegistryStore(this.context);
+    return store.suppliedItemCategory.create({
+      data: {
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        name: input.name,
+        parentId: input.parentId ?? null,
+      },
+      select: {
+        id: true,
+        name: true,
+        parentId: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+  }
+
+  async updateSuppliedItemCategory(
+    scope: AuthenticatedCompanyScope,
+    categoryId: string,
+    input: UpdateSuppliedItemCategoryInput,
+  ) {
+    if (input.parentId === categoryId) {
+      throw new AppError({
+        code: "SUPPLIED_ITEM_CATEGORY_INVALID_TREE",
+        message: "Supplied item category cannot be its own parent",
+        statusCode: 400,
+      });
+    }
+    if (input.parentId !== undefined) {
+      const parentDepth = await categoryDepth(
+        this.context,
+        scope,
+        input.parentId,
+      );
+      const store = commercialRegistryStore(this.context);
+      const categories = await store.suppliedItemCategory.findMany({
+        where: {
+          corporationId: scope.corporationId,
+          companyId: scope.companyId,
+          isActive: true,
+        },
+        select: { id: true, parentId: true },
+      });
+      const descendants = new Set<string>();
+      let changed = true;
+      while (changed) {
+        changed = false;
+        for (const category of categories) {
+          if (
+            category.parentId &&
+            (category.parentId === categoryId ||
+              descendants.has(category.parentId)) &&
+            !descendants.has(category.id)
+          ) {
+            descendants.add(category.id);
+            changed = true;
+          }
+        }
+      }
+      if (input.parentId && descendants.has(input.parentId)) {
+        throw new AppError({
+          code: "SUPPLIED_ITEM_CATEGORY_INVALID_TREE",
+          message: "Supplied item category cannot move under a descendant",
+          statusCode: 400,
+        });
+      }
+      const deepestDescendant = [...descendants].reduce((maxDepth, id) => {
+        let depth = 1;
+        let current = categories.find((category) => category.id === id);
+        while (current?.parentId && current.parentId !== categoryId) {
+          depth += 1;
+          current = categories.find(
+            (category) => category.id === current?.parentId,
+          );
+        }
+        return Math.max(maxDepth, depth);
+      }, 0);
+      if (parentDepth + 1 + deepestDescendant > maxItemCategoryDepth) {
+        throw new AppError({
+          code: "SUPPLIED_ITEM_CATEGORY_DEPTH_EXCEEDED",
+          message: "Supplied item category depth exceeded",
+          statusCode: 400,
+        });
+      }
+    }
+    const store = commercialRegistryStore(this.context);
+    const updated = await store.suppliedItemCategory.updateMany({
+      where: {
+        id: categoryId,
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        isActive: true,
+      },
+      data: {
+        name: input.name,
+        parentId: input.parentId,
+      },
+    });
+    if (updated.count === 0) {
+      throw new AppError({
+        code: "SUPPLIED_ITEM_CATEGORY_NOT_FOUND",
+        message: "Supplied item category not found",
+        statusCode: 404,
+      });
+    }
+    return store.suppliedItemCategory.findFirstOrThrow({
+      where: {
+        id: categoryId,
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+      },
+      select: {
+        id: true,
+        name: true,
+        parentId: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+  }
+
+  async removeSuppliedItemCategory(
+    scope: AuthenticatedCompanyScope,
+    categoryId: string,
+  ) {
+    const store = commercialRegistryStore(this.context);
+    const categories = await store.suppliedItemCategory.findMany({
+      where: {
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        isActive: true,
+      },
+      select: { id: true, parentId: true },
+    });
+    const descendants = new Set<string>([categoryId]);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const category of categories) {
+        if (
+          category.parentId &&
+          descendants.has(category.parentId) &&
+          !descendants.has(category.id)
+        ) {
+          descendants.add(category.id);
+          changed = true;
+        }
+      }
+    }
+    const ids = [...descendants];
+    const updated = await store.suppliedItemCategory.updateMany({
+      where: {
+        id: { in: ids },
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        isActive: true,
+      },
+      data: { isActive: false },
+    });
+    if (updated.count === 0) {
+      throw new AppError({
+        code: "SUPPLIED_ITEM_CATEGORY_NOT_FOUND",
+        message: "Supplied item category not found",
+        statusCode: 404,
+      });
+    }
+    await store.suppliedItem.updateMany({
+      where: {
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        isGlobal: true,
+        isActive: true,
+        categoryId: { in: ids },
+      },
+      data: { isActive: false },
+    });
+    return { id: categoryId, isActive: false };
   }
 }
