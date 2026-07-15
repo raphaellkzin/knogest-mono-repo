@@ -25,54 +25,65 @@ export async function getProjectDetail(projectId: string) {
 }
 
 export async function getProjectWizardOptions() {
-  const [clients, employees, machines, suppliers, suppliedItems, units] =
-    await Promise.all([
-      getApiV1Clients({
-        params: {
-          limit: 100,
-          sortBy: "name",
-          sortDirection: "asc",
-        },
-      }),
-      getApiV1Employees({
-        params: {
-          limit: 100,
-          state: "active",
-          sortBy: "name",
-          sortDirection: "asc",
-        },
-      }),
-      getApiV1Machines({
-        params: {
-          limit: 100,
-          availability: "available",
-          sortBy: "name",
-          sortDirection: "asc",
-        },
-      }),
-      client<{
-        success: true;
-        data: {
-          data: Array<{
-            id: string;
-            name: string;
-            document: { maskedDocument: string };
-          }>;
-        };
-      }>({
-        url: "/api/v1/suppliers",
-        method: "GET",
-        params: { limit: 100, sortBy: "name", sortDirection: "asc" },
-      }),
-      client<{
-        success: true;
-        data: Array<{ id: string; name: string; baseUnitId: string }>;
-      }>({ url: "/api/v1/supplied-items", method: "GET" }),
-      client<{
-        success: true;
-        data: Array<{ id: string; code: string; name: string }>;
-      }>({ url: "/api/v1/measurement-units", method: "GET" }),
-    ]);
+  const [
+    clients,
+    employees,
+    machines,
+    suppliers,
+    suppliedItems,
+    units,
+    jobRoles,
+  ] = await Promise.all([
+    getApiV1Clients({
+      params: {
+        limit: 100,
+        sortBy: "name",
+        sortDirection: "asc",
+      },
+    }),
+    getApiV1Employees({
+      params: {
+        limit: 100,
+        state: "active",
+        sortBy: "name",
+        sortDirection: "asc",
+      },
+    }),
+    getApiV1Machines({
+      params: {
+        limit: 100,
+        availability: "available",
+        sortBy: "name",
+        sortDirection: "asc",
+      },
+    }),
+    client<{
+      success: true;
+      data: {
+        data: Array<{
+          id: string;
+          name: string;
+          document: { maskedDocument: string };
+        }>;
+      };
+    }>({
+      url: "/api/v1/suppliers",
+      method: "GET",
+      params: { limit: 100, sortBy: "name", sortDirection: "asc" },
+    }),
+    client<{
+      success: true;
+      data: Array<{ id: string; name: string; baseUnitId: string }>;
+    }>({ url: "/api/v1/supplied-items", method: "GET" }),
+    client<{
+      success: true;
+      data: Array<{ id: string; code: string; name: string }>;
+    }>({ url: "/api/v1/measurement-units", method: "GET" }),
+    client<{
+      success: true;
+      data: Array<{ id: string; name: string; isActive: boolean }>;
+    }>({ url: "/api/v1/job-roles", method: "GET" }),
+  ]);
   return {
     clients: clients.data.data.map((item) => ({
       id: item.id,
@@ -84,8 +95,10 @@ export async function getProjectWizardOptions() {
       .map((item) => ({
         id: item.employment.id,
         label: item.person.displayName,
-        detail: item.employment.jobRole?.name ?? item.person.document.maskedDocument,
+        detail:
+          item.employment.jobRole?.name ?? item.person.document.maskedDocument,
         jobRolePeriodId: item.employment.jobRole?.periodId,
+        jobRoleId: item.employment.jobRole?.id,
       })),
     machines: machines.data.data
       .filter(
@@ -114,5 +127,8 @@ export async function getProjectWizardOptions() {
       label: item.code,
       detail: item.name,
     })),
+    jobRoles: jobRoles.data.data
+      .filter((item) => item.isActive)
+      .map((item) => ({ id: item.id, label: item.name })),
   };
 }

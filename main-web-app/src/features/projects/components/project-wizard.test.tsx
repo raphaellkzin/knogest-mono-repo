@@ -22,6 +22,7 @@ vi.mock("next/navigation", () => ({
 
 import type { BaseFormModalRenderHelpers } from "@/components/modals/BaseFormModal";
 import {
+  EmployeeMobilization,
   MachineMobilization,
   ProjectWizard,
   ProjectWizardIdentity,
@@ -35,7 +36,10 @@ import { lookupProjectAddressByCepAction } from "../projects.actions";
 
 const options: ProjectWizardOptions = {
   clients: [{ id: "client-1", label: "Cliente Norte" }],
-  employees: [{ id: "employee-1", label: "Ana Silva", detail: "Engenheira" }],
+  employees: [
+    { id: "employee-1", label: "Ana Silva", detail: "Engenheira" },
+    { id: "employee-2", label: "Bruno Lima", detail: "Operador" },
+  ],
   machines: [
     {
       id: "machine-1",
@@ -47,6 +51,7 @@ const options: ProjectWizardOptions = {
   suppliers: [],
   suppliedItems: [],
   units: [{ id: "unit-1", label: "L", detail: "Litro" }],
+  jobRoles: [{ id: "job-role-1", label: "Engenheira" }],
 };
 
 const command: ProjectCommand = {
@@ -69,7 +74,8 @@ const command: ProjectCommand = {
   technicalResponsibilityEmploymentIds: ["employee-1"],
 };
 
-const input = (label: string) => screen.getByLabelText(label) as HTMLInputElement;
+const input = (label: string) =>
+  screen.getByLabelText(label) as HTMLInputElement;
 
 afterEach(() => {
   cleanup();
@@ -116,6 +122,7 @@ function MachineHarness() {
       initialEmployeeAllocations: [
         {
           employmentId: "employee-1",
+          confirmedJobRoleId: "job-role-1",
           confirmedJobRolePeriodId: "role-period-1",
           expectedDailyWorkloadMinutes: 480,
           compensationMode: "monthly",
@@ -145,6 +152,31 @@ function MachineHarness() {
         Remover equipe
       </button>
       <output>{JSON.stringify(machineAllocations)}</output>
+    </>
+  );
+}
+
+function EmployeeHarness() {
+  const [sessionKey, setSessionKey] = React.useState("session-1");
+  const form = useForm<ProjectCommand>({
+    defaultValues: structuredClone(emptyProjectCommand),
+  });
+  const employeeAllocations = useWatch({
+    control: form.control,
+    name: "initialEmployeeAllocations",
+  });
+
+  return (
+    <>
+      <EmployeeMobilization
+        form={form}
+        options={options}
+        sessionKey={sessionKey}
+      />
+      <button type="button" onClick={() => setSessionKey("session-2")}>
+        Nova sessão
+      </button>
+      <output>{JSON.stringify(employeeAllocations)}</output>
     </>
   );
 }
@@ -276,5 +308,34 @@ describe("Project wizard polish", () => {
     expect(screen.getByRole("status").textContent).toContain(
       '"operatorEmploymentId":""',
     );
+  });
+
+  it("keeps project-only job roles temporary inside the current wizard session", async () => {
+    const user = userEvent.setup();
+    render(<EmployeeHarness />);
+
+    await user.click(screen.getByLabelText(/Ana Silva/));
+    expect(screen.queryByLabelText("Nova função")).toBeNull();
+    await user.click(
+      screen.getByRole("button", { name: "Criar nova função" }),
+    );
+    await user.type(screen.getByLabelText(/Aplicado somente nesta obra/), "Apontador");
+    await user.click(screen.getByRole("button", { name: "Salvar" }));
+
+    expect(screen.getByText(/Apontador — somente nesta obra/)).toBeTruthy();
+    await user.click(
+      screen.getByRole("button", { name: "Confirmar funcionário" }),
+    );
+    expect(screen.getByRole("status").textContent).toContain(
+      '"confirmedJobRoleName":"Apontador"',
+    );
+
+    await user.click(screen.getByLabelText(/Bruno Lima/));
+    expect(screen.getByRole("option", { name: "Apontador" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Cancelar" }));
+
+    await user.click(screen.getByRole("button", { name: "Nova sessão" }));
+    await user.click(screen.getByLabelText(/Ana Silva/));
+    expect(screen.queryByRole("option", { name: "Apontador" })).toBeNull();
   });
 });

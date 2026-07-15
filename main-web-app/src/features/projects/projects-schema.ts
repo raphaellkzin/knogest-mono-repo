@@ -1,5 +1,8 @@
 import { z } from "zod";
-import { decimalInputToCanonical, onlyDigits } from "@/lib/brazilian-input-mask";
+import {
+  decimalInputToCanonical,
+  onlyDigits,
+} from "@/lib/brazilian-input-mask";
 
 const controlPattern = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/u;
 const timePattern = /^(?:[01]\d|2[0-3]):[0-5]\d$/u;
@@ -27,18 +30,23 @@ const text = (
     );
 
 const optionalText = (max: number) =>
-  z.union([z.null(), z.undefined(), z
-    .string()
-    .transform((value) => value.trim().normalize("NFC"))
-    .pipe(
+  z
+    .union([
+      z.null(),
+      z.undefined(),
       z
         .string()
-        .max(max, `Use no máximo ${max} caracteres.`)
-        .refine(
-          (value) => !controlPattern.test(value),
-          "Remova caracteres inválidos do texto.",
+        .transform((value) => value.trim().normalize("NFC"))
+        .pipe(
+          z
+            .string()
+            .max(max, `Use no máximo ${max} caracteres.`)
+            .refine(
+              (value) => !controlPattern.test(value),
+              "Remova caracteres inválidos do texto.",
+            ),
         ),
-    )])
+    ])
     .transform((value) => value || null);
 
 const optionalNullableText = (max: number) =>
@@ -90,7 +98,12 @@ const optionalDate = z
   .union([z.string(), z.null(), z.undefined()])
   .transform((value) => (typeof value === "string" ? value.trim() : value))
   .pipe(
-    z.union([z.string().regex(datePattern), z.literal(""), z.null(), z.undefined()]),
+    z.union([
+      z.string().regex(datePattern),
+      z.literal(""),
+      z.null(),
+      z.undefined(),
+    ]),
   )
   .transform((value) => value || null);
 
@@ -148,7 +161,9 @@ const optionalCoordinate = (min: number, max: number) =>
   z
     .union([z.string(), z.null(), z.undefined()])
     .transform((value) => (typeof value === "string" ? value.trim() : value))
-    .pipe(z.union([coordinate(min, max), z.literal(""), z.null(), z.undefined()]))
+    .pipe(
+      z.union([coordinate(min, max), z.literal(""), z.null(), z.undefined()]),
+    )
     .transform((value) => value || null);
 
 export const weekDays = [1, 2, 3, 4, 5, 6, 7] as const;
@@ -195,20 +210,41 @@ const breakTemplateSchema = z.object({
   durationMinutes: z.coerce.number().int().min(1).max(1440),
 });
 
-const employeeAllocationSchema = z.object({
-  employmentId: z.string().uuid(),
-  confirmedJobRolePeriodId: z.string().uuid(),
-  expectedDailyWorkloadMinutes: z.coerce.number().int().min(1).max(1440),
-  compensationMode: z.enum([
-    "daily",
-    "hourly",
-    "weekly",
-    "fortnightly",
-    "monthly",
-  ]),
-  compensationValue: decimal(2, 16, false),
-  overtimeRate: decimal(2, 16, false),
-});
+const employeeAllocationSchema = z
+  .object({
+    employmentId: z.string().uuid(),
+    confirmedJobRoleId: z.string().uuid().optional(),
+    confirmedJobRolePeriodId: z.string().uuid().nullable().optional(),
+    confirmedJobRoleName: optionalText(120).optional(),
+    expectedDailyWorkloadMinutes: z.coerce.number().int().min(1).max(1440),
+    compensationMode: z.enum([
+      "daily",
+      "hourly",
+      "weekly",
+      "fortnightly",
+      "monthly",
+    ]),
+    compensationValue: decimal(2, 16, false),
+    overtimeRate: decimal(2, 16, false),
+  })
+  .superRefine((allocation, context) => {
+    const hasExistingRole = Boolean(
+      allocation.confirmedJobRoleId || allocation.confirmedJobRolePeriodId,
+    );
+    const hasTemporaryRole = Boolean(allocation.confirmedJobRoleName);
+    if (!hasExistingRole && !hasTemporaryRole)
+      context.addIssue({
+        code: "custom",
+        path: ["confirmedJobRoleId"],
+        message: "Selecione ou crie a função aplicada nesta obra.",
+      });
+    if (hasExistingRole && hasTemporaryRole)
+      context.addIssue({
+        code: "custom",
+        path: ["confirmedJobRoleName"],
+        message: "Use uma função existente ou uma função temporária.",
+      });
+  });
 
 const machineAllocationSchema = z.object({
   machineId: z.string().uuid(),

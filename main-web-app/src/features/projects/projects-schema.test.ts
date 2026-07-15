@@ -21,6 +21,16 @@ const valid = () => ({
   technicalResponsibilityEmploymentIds: [
     "00000000-0000-4000-8000-000000000301",
   ],
+  projectSupplierOffers: [
+    {
+      supplierId: "00000000-0000-4000-8000-000000000701",
+      itemId: "00000000-0000-4000-8000-000000000702",
+      sourceOfferId: null,
+      purchaseUnitId: "00000000-0000-4000-8000-00000000a001",
+      conversionToBase: "1,000000",
+      price: "1,0000",
+    },
+  ],
 });
 
 describe("projectCommandSchema", () => {
@@ -97,6 +107,7 @@ describe("projectCommandSchema", () => {
     command.initialEmployeeAllocations = [
       {
         employmentId: operator,
+        confirmedJobRoleId: "00000000-0000-4000-8000-000000000401",
         confirmedJobRolePeriodId: "00000000-0000-4000-8000-000000000402",
         expectedDailyWorkloadMinutes: 480,
         compensationMode: "monthly",
@@ -115,6 +126,27 @@ describe("projectCommandSchema", () => {
 
     command.initialMachineAllocations[0].operatorEmploymentId =
       "00000000-0000-4000-8000-000000000303";
+    expect(projectCommandSchema.safeParse(command).success).toBe(false);
+  });
+
+  it("accepts a temporary job role name for initial team allocations", () => {
+    const command = valid();
+    command.initialEmployeeAllocations = [
+      {
+        employmentId: "00000000-0000-4000-8000-000000000302",
+        confirmedJobRoleName: "Apontador de obra",
+        confirmedJobRolePeriodId: null,
+        expectedDailyWorkloadMinutes: 480,
+        compensationMode: "monthly",
+        compensationValue: "0.00",
+        overtimeRate: "0.00",
+      },
+    ];
+
+    expect(projectCommandSchema.safeParse(command).success).toBe(true);
+
+    command.initialEmployeeAllocations[0].confirmedJobRoleId =
+      "00000000-0000-4000-8000-000000000401";
     expect(projectCommandSchema.safeParse(command).success).toBe(false);
   });
 });

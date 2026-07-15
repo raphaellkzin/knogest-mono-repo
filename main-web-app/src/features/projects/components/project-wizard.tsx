@@ -1,7 +1,15 @@
 "use client";
 
 import * as React from "react";
-import { HardHat, MapPinned, Plus, Trash2 } from "lucide-react";
+import {
+  Check,
+  HardHat,
+  MapPinned,
+  Pencil,
+  Plus,
+  Trash2,
+  X,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { Path, UseFormReturn } from "react-hook-form";
 import { toast } from "sonner";
@@ -39,7 +47,9 @@ type Option = {
   detail?: string;
   readingId?: string;
   jobRolePeriodId?: string;
+  jobRoleId?: string;
   baseUnitId?: string;
+  temporary?: boolean;
 };
 
 type AddressAutofillState =
@@ -54,11 +64,13 @@ export type ProjectWizardOptions = {
   suppliers: Option[];
   suppliedItems: Option[];
   units: Option[];
+  jobRoles: Option[];
 };
 
 const controlClass =
   "min-h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-medium text-foreground shadow-xs outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50";
 const fieldGridClass = "grid gap-3 md:grid-cols-2";
+const temporaryJobRolePrefix = "__project_job_role__:";
 const projectFieldLabels: Partial<Record<Path<ProjectCommand>, string>> = {
   name: "Nome da obra",
   contractNumber: "Número do contrato",
@@ -177,14 +189,20 @@ function MoneyField({
         onChange={(event) =>
           form.setValue(
             name,
-            formatBrazilianDecimalInput(event.target.value, fractionDigits) as never,
+            formatBrazilianDecimalInput(
+              event.target.value,
+              fractionDigits,
+            ) as never,
             { shouldDirty: true, shouldValidate: true },
           )
         }
         onBlur={(event) =>
           form.setValue(
             name,
-            formatBrazilianDecimalInput(event.target.value, fractionDigits) as never,
+            formatBrazilianDecimalInput(
+              event.target.value,
+              fractionDigits,
+            ) as never,
             { shouldDirty: true, shouldValidate: true },
           )
         }
@@ -448,16 +466,8 @@ export function ProjectWizardIdentity({
           />
         </div>
         <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
-          <FormField
-            form={form}
-            name="latitude"
-            label="Latitude"
-          />
-          <FormField
-            form={form}
-            name="longitude"
-            label="Longitude"
-          />
+          <FormField form={form} name="latitude" label="Latitude" />
+          <FormField form={form} name="longitude" label="Longitude" />
           <Button
             type="button"
             variant="outline"
@@ -739,184 +749,540 @@ function Schedule({ form }: { form: UseFormReturn<ProjectCommand> }) {
   );
 }
 
-function EmployeeMobilization({
+export function EmployeeMobilization({
   form,
   options,
+  sessionKey,
 }: {
   form: UseFormReturn<ProjectCommand>;
   options: ProjectWizardOptions;
+  sessionKey: string;
 }) {
   const allocations = form.watch("initialEmployeeAllocations");
-  const replaceAllocation = (
-    employmentId: string,
-    patch: Partial<ProjectCommand["initialEmployeeAllocations"][number]>,
+  const weeklySchedule = form.watch("weeklySchedule");
+  const [activeEmploymentId, setActiveEmploymentId] = React.useState<
+    string | null
+  >(null);
+  const [draft, setDraft] = React.useState<{
+    employmentId: string;
+    confirmedJobRoleId: string;
+    dailyHours: string;
+    compensationMode: ProjectCommand["initialEmployeeAllocations"][number]["compensationMode"];
+    compensationValue: string;
+    overtimeRate: string;
+    overtimeIsManual: boolean;
+  } | null>(null);
+  const [jobRoles, setJobRoles] = React.useState(options.jobRoles);
+  const [newJobRoleName, setNewJobRoleName] = React.useState("");
+  const [isAddingJobRole, setIsAddingJobRole] = React.useState(false);
+  const [jobRoleMessage, setJobRoleMessage] = React.useState("");
+
+  React.useEffect(() => {
+    setActiveEmploymentId(null);
+    setDraft(null);
+    setJobRoles(options.jobRoles);
+    setNewJobRoleName("");
+    setIsAddingJobRole(false);
+    setJobRoleMessage("");
+  }, [options.jobRoles, sessionKey]);
+
+  const workingDays = weeklySchedule.filter((day) => day.isWorking).length;
+  const formatHours = (minutes: number) =>
+    String(Number((minutes / 60).toFixed(2))).replace(".", ",");
+  const formatCompensation = (amount: string) =>
+    new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    }).format(Number(decimalInputToCanonical(amount) || 0));
+  const toHours = (value: string) => Number(value.replace(",", "."));
+  const calculateHourlyRate = React.useCallback(
+    (
+      compensationValue: string,
+      compensationMode: ProjectCommand["initialEmployeeAllocations"][number]["compensationMode"],
+      dailyHours: string,
+    ) => {
+      const amount = Number(decimalInputToCanonical(compensationValue) || 0);
+      const hours = toHours(dailyHours);
+      const weeklyHours = hours * workingDays;
+      if (!Number.isFinite(amount) || !Number.isFinite(hours) || hours <= 0)
+        return "0,00";
+      const divisor =
+        compensationMode === "hourly"
+          ? 1
+          : compensationMode === "daily"
+            ? hours
+            : compensationMode === "weekly"
+              ? weeklyHours
+              : compensationMode === "fortnightly"
+                ? weeklyHours * 2
+                : weeklyHours * 4.3333;
+      return canonicalDecimalToBrazilian(
+        (divisor > 0 ? amount / divisor : 0).toFixed(2),
+      );
+    },
+    [workingDays],
+  );
+  React.useEffect(() => {
+    setDraft((current) =>
+      current && !current.overtimeIsManual
+        ? {
+            ...current,
+            overtimeRate: calculateHourlyRate(
+              current.compensationValue,
+              current.compensationMode,
+              current.dailyHours,
+            ),
+          }
+        : current,
+    );
+  }, [calculateHourlyRate]);
+  const updateDraft = (
+    patch: Partial<NonNullable<typeof draft>>,
+    manualOvertime = false,
   ) =>
+    setDraft((current) => {
+      if (!current) return current;
+      const next = { ...current, ...patch };
+      if (manualOvertime) return { ...next, overtimeIsManual: true };
+      if (!next.overtimeIsManual)
+        next.overtimeRate = calculateHourlyRate(
+          next.compensationValue,
+          next.compensationMode,
+          next.dailyHours,
+        );
+      return next;
+    });
+  const beginEditing = (option: Option) => {
+    const allocation = allocations.find(
+      (item) => item.employmentId === option.id,
+    );
+    const compensationMode = allocation?.compensationMode ?? "monthly";
+    const compensationValue = allocation?.compensationValue ?? "0.00";
+    const dailyHours = formatHours(
+      allocation?.expectedDailyWorkloadMinutes ?? 480,
+    );
+    setActiveEmploymentId(option.id);
+    setNewJobRoleName("");
+    setIsAddingJobRole(false);
+    setJobRoleMessage("");
+    const temporaryRoleId = allocation?.confirmedJobRoleName
+      ? jobRoles.find((role) => role.label === allocation.confirmedJobRoleName)
+          ?.id
+      : undefined;
+    setDraft({
+      employmentId: option.id,
+      confirmedJobRoleId:
+        allocation?.confirmedJobRoleId ??
+        temporaryRoleId ??
+        option.jobRoleId ??
+        "",
+      dailyHours,
+      compensationMode,
+      compensationValue,
+      overtimeRate:
+        allocation?.overtimeRate ??
+        calculateHourlyRate(compensationValue, compensationMode, dailyHours),
+      overtimeIsManual: Boolean(allocation),
+    });
+  };
+  const cancelEditing = () => {
+    setActiveEmploymentId(null);
+    setDraft(null);
+    setNewJobRoleName("");
+    setIsAddingJobRole(false);
+    setJobRoleMessage("");
+  };
+  const confirmDraft = () => {
+    if (!draft) return;
+    const hours = toHours(draft.dailyHours);
+    const role = jobRoles.find((item) => item.id === draft.confirmedJobRoleId);
+    if (!role) {
+      setJobRoleMessage("Selecione o cargo que será aplicado nesta obra.");
+      return;
+    }
+    if (!Number.isFinite(hours) || hours <= 0 || hours > 24) {
+      setJobRoleMessage("Informe uma carga diária entre 0,01 e 24 horas.");
+      return;
+    }
+    const option = options.employees.find(
+      (item) => item.id === draft.employmentId,
+    );
+    const isTemporaryRole =
+      role.temporary || role.id.startsWith(temporaryJobRolePrefix);
+    const allocation = {
+      employmentId: draft.employmentId,
+      ...(isTemporaryRole
+        ? {
+            confirmedJobRoleName: role.label,
+            confirmedJobRolePeriodId: null,
+          }
+        : {
+            confirmedJobRoleId: role.id,
+            confirmedJobRolePeriodId:
+              option?.jobRoleId === role.id
+                ? (option.jobRolePeriodId ?? null)
+                : null,
+          }),
+      expectedDailyWorkloadMinutes: Math.round(hours * 60),
+      compensationMode: draft.compensationMode,
+      compensationValue: decimalInputToCanonical(draft.compensationValue),
+      overtimeRate: decimalInputToCanonical(draft.overtimeRate),
+    };
     form.setValue(
       "initialEmployeeAllocations",
-      allocations.map((item) =>
-        item.employmentId === employmentId ? { ...item, ...patch } : item,
-      ),
+      allocations.some((item) => item.employmentId === draft.employmentId)
+        ? allocations.map((item) =>
+            item.employmentId === draft.employmentId ? allocation : item,
+          )
+        : [...allocations, allocation],
       { shouldDirty: true, shouldValidate: true },
     );
+    cancelEditing();
+  };
+  const createTemporaryJobRole = () => {
+    const name = newJobRoleName.trim().normalize("NFC");
+    if (!name) {
+      setJobRoleMessage("Informe o nome da função.");
+      return;
+    }
+    if (name.length > 120) {
+      setJobRoleMessage("Use no máximo 120 caracteres para a função.");
+      return;
+    }
+    const existing = jobRoles.find(
+      (role) =>
+        role.label.localeCompare(name, "pt-BR", { sensitivity: "base" }) ===
+        0,
+    );
+    const role =
+      existing ??
+      ({
+        id: `${temporaryJobRolePrefix}${crypto.randomUUID()}`,
+        label: name,
+        temporary: true,
+      } satisfies Option);
+    if (!existing)
+      setJobRoles((current) =>
+        [...current, role].sort((a, b) =>
+          a.label.localeCompare(b.label, "pt-BR"),
+        ),
+      );
+    updateDraft({ confirmedJobRoleId: role.id });
+    setNewJobRoleName("");
+    setIsAddingJobRole(false);
+    setJobRoleMessage("");
+  };
+
+  const activeOption = activeEmploymentId
+    ? options.employees.find((option) => option.id === activeEmploymentId)
+    : undefined;
+  const selectedRole = draft
+    ? jobRoles.find((role) => role.id === draft.confirmedJobRoleId)
+    : undefined;
 
   return (
     <FormSection
       title="Mobilização inicial da equipe"
-      description="Opcional. Selecione quem inicia na obra e confirme as condições de trabalho."
+      description="Opcional. Configure e confirme as condições de cada funcionário antes de mobilizá-lo."
     >
-      <p className="text-sm font-semibold text-muted-foreground">
-        {allocations.length} funcionário(s) selecionado(s)
-      </p>
-      <div className="grid gap-3">
-        {options.employees.length > 0 ? (
-          options.employees.map((option) => {
-            const allocation = allocations.find(
-              (item) => item.employmentId === option.id,
-            );
-            const selected = Boolean(allocation);
-            const roleCanBeConfirmed = Boolean(option.jobRolePeriodId);
-            return (
-              <div key={option.id} className="grid gap-3">
-                <SelectionRow
-                  checked={selected}
-                  onChange={(nextChecked) =>
-                    form.setValue(
-                      "initialEmployeeAllocations",
-                      nextChecked
-                        ? [
-                            ...allocations,
-                            {
-                              employmentId: option.id,
-                              confirmedJobRolePeriodId: "",
-                              expectedDailyWorkloadMinutes: 480,
-                              compensationMode: "monthly",
-                              compensationValue: "0.00",
-                              overtimeRate: "0.00",
-                            },
-                          ]
-                        : allocations.filter(
-                            (item) => item.employmentId !== option.id,
-                          ),
-                      { shouldDirty: true, shouldValidate: true },
-                    )
-                  }
+      {activeOption && draft ? (
+        <div className="grid gap-5 rounded-lg border border-primary/35 bg-primary/[0.035] p-4 sm:p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border pb-4">
+            <div className="min-w-0">
+              <p className="text-base font-bold">{activeOption.label}</p>
+              <p className="mt-1 text-sm font-medium text-muted-foreground">
+                Função atual: {activeOption.detail || "Não informada"}
+              </p>
+            </div>
+            <span className="inline-flex min-h-8 items-center rounded-md bg-primary px-2.5 text-sm font-bold text-primary-foreground">
+              Em configuração
+            </span>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-1.5 text-sm font-semibold md:col-span-2">
+              {isAddingJobRole ? (
+                <label
+                  className="grid gap-1.5"
+                  htmlFor="project-temporary-job-role"
                 >
-                  {option.label}
-                  {option.detail ? ` — ${option.detail}` : ""}
-                </SelectionRow>
-                {allocation && (
-                  <div className="grid gap-3 border-t border-border pt-3 md:grid-cols-2">
-                    <label className="flex min-h-11 items-center gap-2 text-sm font-semibold md:col-span-2">
-                      <input
-                        type="checkbox"
-                        checked={
-                          roleCanBeConfirmed &&
-                          allocation.confirmedJobRolePeriodId ===
-                            option.jobRolePeriodId
-                        }
-                        disabled={!roleCanBeConfirmed}
-                        className="size-4 accent-primary"
-                        onChange={(event) =>
-                          replaceAllocation(option.id, {
-                            confirmedJobRolePeriodId: event.target.checked
-                              ? (option.jobRolePeriodId ?? "")
-                              : "",
-                          })
-                        }
-                      />
-                      {roleCanBeConfirmed
-                        ? `Confirmo a função ${option.detail} para esta obra`
-                        : "Função indisponível para confirmação"}
-                    </label>
-                    <label className="grid gap-1.5 text-sm font-semibold">
-                      <span>Carga diária (minutos)</span>
+                    <span>
+                      Aplicado somente nesta obra. O vínculo oficial do
+                      funcionário não será alterado.
+                    </span>
+                    <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center">
                       <Input
+                        id="project-temporary-job-role"
                         className="h-11"
-                        type="number"
-                        min={1}
-                        max={1440}
-                        value={allocation.expectedDailyWorkloadMinutes}
+                        value={newJobRoleName}
+                        maxLength={120}
+                        placeholder="Ex.: Encarregado de campo"
                         onChange={(event) =>
-                          replaceAllocation(option.id, {
-                            expectedDailyWorkloadMinutes: Number(
-                              event.target.value,
-                            ),
-                          })
+                          setNewJobRoleName(event.target.value)
                         }
                       />
-                    </label>
-                    <label className="grid gap-1.5 text-sm font-semibold">
-                      <span>Modalidade de pagamento</span>
+                      <Button
+                        type="button"
+                        className="min-h-11"
+                        disabled={!newJobRoleName.trim()}
+                        onClick={createTemporaryJobRole}
+                      >
+                        <Check className="size-4" />
+                        Salvar
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="min-h-11"
+                        onClick={() => {
+                          setNewJobRoleName("");
+                          setIsAddingJobRole(false);
+                          setJobRoleMessage("");
+                        }}
+                      >
+                        <X className="size-4" />
+                        Cancelar
+                      </Button>
+                    </div>
+                </label>
+              ) : (
+                <label className="grid gap-1.5" htmlFor="project-job-role">
+                    <span>Cargo na obra</span>
+                    <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
                       <select
+                        id="project-job-role"
                         className={controlClass}
-                        value={allocation.compensationMode}
+                        value={draft.confirmedJobRoleId}
                         onChange={(event) =>
-                          replaceAllocation(option.id, {
-                            compensationMode: event.target
-                              .value as typeof allocation.compensationMode,
-                          })
+                          updateDraft({ confirmedJobRoleId: event.target.value })
                         }
                       >
-                        <option value="daily">Diária</option>
-                        <option value="hourly">Hora</option>
-                        <option value="weekly">Semanal</option>
-                        <option value="fortnightly">Quinzenal</option>
-                        <option value="monthly">Mensal</option>
+                        <option value="">Selecione o cargo</option>
+                        {jobRoles.map((role) => (
+                          <option key={role.id} value={role.id}>
+                            {role.label}
+                          </option>
+                        ))}
                       </select>
-                    </label>
-                    <label className="grid gap-1.5 text-sm font-semibold">
-                      <span>Valor</span>
-                      <Input
-                        className="h-11"
-                        inputMode="decimal"
-                        value={
-                          allocation.compensationValue.includes(".")
-                            ? canonicalDecimalToBrazilian(
-                                allocation.compensationValue,
-                              )
-                            : allocation.compensationValue
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="min-h-11"
+                        onClick={() => {
+                          setIsAddingJobRole(true);
+                          setNewJobRoleName("");
+                          setJobRoleMessage("");
+                        }}
+                      >
+                        <Plus className="size-4" />
+                        Criar nova função
+                      </Button>
+                    </div>
+                </label>
+              )}
+            </div>
+            <div className="grid content-end gap-1.5 text-sm font-semibold md:col-span-2">
+              <span>Função confirmada</span>
+              <p className="min-h-11 rounded-md border border-input bg-background px-3 py-2 font-medium text-foreground">
+                {selectedRole?.label || "Selecione o cargo acima"}
+                {selectedRole?.temporary ? " — somente nesta obra" : ""}
+              </p>
+            </div>
+            <label className="grid gap-1.5 text-sm font-semibold">
+              <span>Carga diária (horas)</span>
+              <Input
+                className="h-11"
+                type="number"
+                inputMode="decimal"
+                min={0.01}
+                max={24}
+                step={0.25}
+                value={draft.dailyHours}
+                onChange={(event) =>
+                  updateDraft({ dailyHours: event.target.value })
+                }
+              />
+            </label>
+            <label className="grid gap-1.5 text-sm font-semibold">
+              <span>Modalidade de pagamento</span>
+              <select
+                className={controlClass}
+                value={draft.compensationMode}
+                onChange={(event) =>
+                  updateDraft({
+                    compensationMode: event.target
+                      .value as typeof draft.compensationMode,
+                  })
+                }
+              >
+                <option value="daily">Diária</option>
+                <option value="hourly">Hora</option>
+                <option value="weekly">Semanal</option>
+                <option value="fortnightly">Quinzenal</option>
+                <option value="monthly">Mensal</option>
+              </select>
+            </label>
+            <label className="grid gap-1.5 text-sm font-semibold">
+              <span>Valor</span>
+              <Input
+                className="h-11"
+                inputMode="decimal"
+                value={
+                  draft.compensationValue.includes(".")
+                    ? canonicalDecimalToBrazilian(draft.compensationValue)
+                    : draft.compensationValue
+                }
+                onChange={(event) =>
+                  updateDraft({
+                    compensationValue: formatBrazilianDecimalInput(
+                      event.target.value,
+                    ),
+                  })
+                }
+              />
+            </label>
+            <div className="grid gap-1.5 text-sm font-semibold">
+              <label htmlFor="project-overtime-rate">Valor da hora extra</label>
+              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+              <Input
+                id="project-overtime-rate"
+                className="h-11"
+                inputMode="decimal"
+                value={
+                  draft.overtimeRate.includes(".")
+                    ? canonicalDecimalToBrazilian(draft.overtimeRate)
+                    : draft.overtimeRate
+                }
+                onChange={(event) =>
+                  updateDraft(
+                    {
+                      overtimeRate: formatBrazilianDecimalInput(
+                        event.target.value,
+                      ),
+                    },
+                    true,
+                  )
+                }
+              />
+              <Button
+                type="button"
+                variant="outline"
+                className="min-h-11 justify-center px-3 text-sm"
+                onClick={() =>
+                  setDraft((current) =>
+                    current
+                      ? {
+                          ...current,
+                          overtimeRate: calculateHourlyRate(
+                            current.compensationValue,
+                            current.compensationMode,
+                            current.dailyHours,
+                          ),
+                          overtimeIsManual: false,
                         }
-                        onChange={(event) =>
-                          replaceAllocation(option.id, {
-                            compensationValue: formatBrazilianDecimalInput(
-                              event.target.value,
-                            ),
-                          })
-                        }
-                      />
-                    </label>
-                    <label className="grid gap-1.5 text-sm font-semibold">
-                      <span>Hora extra</span>
-                      <Input
-                        className="h-11"
-                        inputMode="decimal"
-                        value={
-                          allocation.overtimeRate.includes(".")
-                            ? canonicalDecimalToBrazilian(
-                                allocation.overtimeRate,
-                              )
-                            : allocation.overtimeRate
-                        }
-                        onChange={(event) =>
-                          replaceAllocation(option.id, {
-                            overtimeRate: formatBrazilianDecimalInput(
-                              event.target.value,
-                            ),
-                          })
-                        }
-                      />
-                    </label>
-                  </div>
-                )}
+                      : current,
+	                  )
+	                }
+	              >
+	                Recalcular pelo valor-hora
+	              </Button>
               </div>
-            );
-          })
-        ) : (
-          <p className="text-sm font-medium text-muted-foreground">
-            Nenhum funcionário disponível para mobilização.
+            </div>
+          </div>
+          {jobRoleMessage && (
+            <p
+              role="status"
+              className="text-sm font-semibold text-muted-foreground"
+            >
+              {jobRoleMessage}
+            </p>
+          )}
+          <div className="flex flex-wrap justify-end gap-2 border-t border-border pt-4">
+            <Button type="button" variant="outline" onClick={cancelEditing}>
+              <X className="size-4" />
+              Cancelar
+            </Button>
+            <Button type="button" onClick={confirmDraft}>
+              <Check className="size-4" />
+              Confirmar funcionário
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <p className="text-sm font-semibold text-muted-foreground">
+            {allocations.length} funcionário(s) confirmado(s)
           </p>
-        )}
-      </div>
+          <div className="grid gap-2">
+            {options.employees.length > 0 ? (
+              options.employees.map((option) => {
+                const allocation = allocations.find(
+                  (item) => item.employmentId === option.id,
+                );
+                const role = allocation
+                  ? jobRoles.find(
+                      (item) => item.id === allocation.confirmedJobRoleId,
+                    )
+                  : undefined;
+                if (!allocation)
+                  return (
+                    <SelectionRow
+                      key={option.id}
+                      checked={false}
+                      onChange={(checked) => checked && beginEditing(option)}
+                    >
+                      {option.label}
+                      {option.detail ? ` — ${option.detail}` : ""}
+                    </SelectionRow>
+                  );
+                return (
+                  <div
+                    key={option.id}
+                    className="flex min-h-11 flex-wrap items-center gap-2 rounded-md border border-primary/35 bg-primary/[0.035] px-3 py-2"
+                  >
+                    <Check
+                      className="size-4 shrink-0 text-primary"
+                      aria-hidden="true"
+                    />
+                    <p className="min-w-0 flex-1 text-sm font-semibold">
+                      {option.label}
+                    </p>
+                    <span className="min-h-7 rounded-md bg-background px-2 py-1 text-xs font-semibold text-muted-foreground">
+                      {allocation.confirmedJobRoleName ||
+                        role?.label ||
+                        option.detail ||
+                        "Cargo não informado"} ·{" "}
+                      {formatHours(allocation.expectedDailyWorkloadMinutes)}{" "}
+                      h/dia · {formatCompensation(allocation.compensationValue)}{" "}
+                      {allocation.compensationMode === "monthly"
+                        ? "mensal"
+                        : allocation.compensationMode === "daily"
+                          ? "diária"
+                          : allocation.compensationMode === "hourly"
+                            ? "por hora"
+                            : allocation.compensationMode === "weekly"
+                              ? "semanal"
+                              : "quinzenal"}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-lg"
+                      aria-label={`Editar condições de ${option.label}`}
+                      onClick={() => beginEditing(option)}
+                    >
+                      <Pencil className="size-4" />
+                    </Button>
+                  </div>
+                );
+              })
+            ) : (
+              <p className="text-sm font-medium text-muted-foreground">
+                Nenhum funcionário disponível para mobilização.
+              </p>
+            )}
+          </div>
+        </>
+      )}
     </FormSection>
   );
 }
@@ -1128,7 +1494,8 @@ function SupplierOffers({
             ? options.suppliedItems.find((option) => option.id === offer.itemId)
             : null;
           const baseUnit = options.units.find(
-            (option) => option.id === (item?.baseUnitId ?? offer.item?.baseUnitId),
+            (option) =>
+              option.id === (item?.baseUnitId ?? offer.item?.baseUnitId),
           );
           return (
             <div
@@ -1351,13 +1718,17 @@ function SupplierOffers({
                   fractionDigits={6}
                   form={form}
                   label={`Conversão para ${baseUnit?.label ?? "unidade-base"}`}
-                  name={`projectSupplierOffers.${index}.conversionToBase` as Path<ProjectCommand>}
+                  name={
+                    `projectSupplierOffers.${index}.conversionToBase` as Path<ProjectCommand>
+                  }
                 />
                 <MoneyField
                   fractionDigits={4}
                   form={form}
                   label="Preço da obra"
-                  name={`projectSupplierOffers.${index}.price` as Path<ProjectCommand>}
+                  name={
+                    `projectSupplierOffers.${index}.price` as Path<ProjectCommand>
+                  }
                 />
                 <Button
                   type="button"
@@ -1365,7 +1736,9 @@ function SupplierOffers({
                   onClick={() =>
                     form.setValue(
                       "projectSupplierOffers",
-                      offers.filter((_, currentIndex) => currentIndex !== index),
+                      offers.filter(
+                        (_, currentIndex) => currentIndex !== index,
+                      ),
                       { shouldDirty: true, shouldValidate: true },
                     )
                   }
@@ -1444,9 +1817,7 @@ export function ProjectWizardReview({
       address.neighborhood && address.city && address.state
         ? `${address.neighborhood} - ${address.city}/${address.state}`
         : "",
-      address.postalCode
-        ? `CEP ${formatCep(address.postalCode)}`
-        : "",
+      address.postalCode ? `CEP ${formatCep(address.postalCode)}` : "",
     ]
       .filter(Boolean)
       .join(" - ");
@@ -1668,7 +2039,7 @@ export function ProjectWizard({
         fields: ["initialEmployeeAllocations"],
         fieldLabels: projectFieldLabels,
         component: (form) => (
-          <EmployeeMobilization form={form} options={options} />
+          <EmployeeMobilization form={form} options={options} sessionKey={key} />
         ),
       },
       {

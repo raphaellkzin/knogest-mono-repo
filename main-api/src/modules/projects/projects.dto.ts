@@ -197,7 +197,9 @@ export const projectCommandSchema = z
         z
           .object({
             employmentId: uuid,
-            confirmedJobRolePeriodId: uuid,
+            confirmedJobRoleId: uuid.optional(),
+            confirmedJobRolePeriodId: uuid.nullable().optional(),
+            confirmedJobRoleName: optionalNullableText(120).optional(),
             expectedDailyWorkloadMinutes: z.number().int().min(1).max(1440),
             compensationMode: z.enum([
               "daily",
@@ -209,7 +211,26 @@ export const projectCommandSchema = z
             compensationValue: decimal(2, 16),
             overtimeRate: decimal(2, 16),
           })
-          .strict(),
+          .strict()
+          .superRefine((allocation, context) => {
+            const hasExistingRole = Boolean(
+              allocation.confirmedJobRoleId ||
+                allocation.confirmedJobRolePeriodId,
+            );
+            const hasTemporaryRole = Boolean(allocation.confirmedJobRoleName);
+            if (!hasExistingRole && !hasTemporaryRole)
+              context.addIssue({
+                code: "custom",
+                path: ["confirmedJobRoleId"],
+                message: "A job role must be confirmed",
+              });
+            if (hasExistingRole && hasTemporaryRole)
+              context.addIssue({
+                code: "custom",
+                path: ["confirmedJobRoleName"],
+                message: "A temporary job role cannot be mixed with an id",
+              });
+          }),
       )
       .max(200),
     initialMachineAllocations: z

@@ -10893,7 +10893,6 @@
                       "additionalProperties": false,
                       "required": [
                         "employmentId",
-                        "confirmedJobRolePeriodId",
                         "expectedDailyWorkloadMinutes",
                         "compensationMode",
                         "compensationValue",
@@ -10901,9 +10900,20 @@
                       ],
                       "properties": {
                         "employmentId": { "type": "string", "format": "uuid" },
-                        "confirmedJobRolePeriodId": {
+                        "confirmedJobRoleId": {
                           "type": "string",
                           "format": "uuid"
+                        },
+                        "confirmedJobRolePeriodId": {
+                          "type": "string",
+                          "format": "uuid",
+                          "nullable": true
+                        },
+                        "confirmedJobRoleName": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 120,
+                          "nullable": true
                         },
                         "expectedDailyWorkloadMinutes": {
                           "type": "integer",

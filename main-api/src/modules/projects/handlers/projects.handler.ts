@@ -1,9 +1,7 @@
 import { Prisma } from "../../../db/generated/prisma/client";
 import type { HandlerContext } from "../../../lib/utils/handler.dto";
 import { AppError } from "../../../lib/utils/appError";
-import {
-  protectSensitiveDocument,
-} from "../../../lib/security/sensitive-document";
+import { protectSensitiveDocument } from "../../../lib/security/sensitive-document";
 import {
   buildCursorPage,
   parseBoundCursor,
@@ -90,114 +88,135 @@ async function validateResources(
   const sourceOfferIds = command.projectSupplierOffers
     .map((item) => item.sourceOfferId)
     .filter((id): id is string => Boolean(id));
+  const jobRoleIds = command.initialEmployeeAllocations
+    .map((item) => item.confirmedJobRoleId)
+    .filter((id): id is string => Boolean(id));
 
-  const [client, employments, suppliers, items, units, sourceOffers, machines] =
-    await Promise.all([
-      context.prisma.client.findFirst({
-        where: {
-          id: command.clientId,
-          corporationId: scope.corporationId,
-          companyId: scope.companyId,
-          isActive: true,
-          removedAt: null,
-        },
-      }),
-      context.prisma.employment.findMany({
-        where: {
-          id: {
-            in: [
-              ...new Set([
-                command.managerEmploymentId,
-                ...command.technicalResponsibilityEmploymentIds,
-                ...command.initialEmployeeAllocations.map(
-                  (item) => item.employmentId,
-                ),
-              ]),
-            ],
-          },
-          corporationId: scope.corporationId,
-          companyId: scope.companyId,
-          state: "ACTIVE",
-          isActive: true,
-          periods: { some: { effectiveTo: null } },
-        },
-        select: {
-          id: true,
-          personId: true,
-          jobRolePeriods: {
-            where: { effectiveTo: null },
-            select: {
-              id: true,
-              jobRole: { select: { name: true, isActive: true } },
-            },
-          },
-        },
-      }),
-      context.prisma.fuelSupplier.findMany({
-        where: {
-          id: { in: uniqueExistingSupplierIds },
-          corporationId: scope.corporationId,
-          companyId: scope.companyId,
-          isActive: true,
-          removedAt: null,
-          isGlobal: true,
-        },
-        select: { id: true },
-      }),
-      context.prisma.suppliedItem.findMany({
-        where: {
-          id: { in: uniqueExistingItemIds },
-          corporationId: scope.corporationId,
-          companyId: scope.companyId,
-          isGlobal: true,
-          isActive: true,
-        },
-        select: { id: true },
-      }),
-      context.prisma.measurementUnit.findMany({
-        where: {
-          id: { in: unitIds },
-          isActive: true,
-          OR: [
-            { corporationId: null, companyId: null },
-            { corporationId: scope.corporationId, companyId: scope.companyId },
+  const [
+    client,
+    employments,
+    suppliers,
+    items,
+    units,
+    sourceOffers,
+    machines,
+    jobRoles,
+  ] = await Promise.all([
+    context.prisma.client.findFirst({
+      where: {
+        id: command.clientId,
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        isActive: true,
+        removedAt: null,
+      },
+    }),
+    context.prisma.employment.findMany({
+      where: {
+        id: {
+          in: [
+            ...new Set([
+              command.managerEmploymentId,
+              ...command.technicalResponsibilityEmploymentIds,
+              ...command.initialEmployeeAllocations.map(
+                (item) => item.employmentId,
+              ),
+            ]),
           ],
         },
-        select: { id: true },
-      }),
-      context.prisma.supplierOffer.findMany({
-        where: {
-          id: { in: sourceOfferIds },
-          corporationId: scope.corporationId,
-          companyId: scope.companyId,
-          isActive: true,
-        },
-        select: { id: true },
-      }),
-      context.prisma.machine.findMany({
-        where: {
-          id: {
-            in: command.initialMachineAllocations.map((item) => item.machineId),
-          },
-          corporationId: scope.corporationId,
-          isActive: true,
-          ownershipPeriods: {
-            some: { companyId: scope.companyId, effectiveTo: null },
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        state: "ACTIVE",
+        isActive: true,
+        periods: { some: { effectiveTo: null } },
+      },
+      select: {
+        id: true,
+        personId: true,
+        jobRolePeriods: {
+          where: { effectiveTo: null },
+          select: {
+            id: true,
+            jobRole: { select: { id: true, name: true, isActive: true } },
           },
         },
-        select: {
-          id: true,
-          meterReadings: {
-            where: { status: "CONFIRMED" },
-            orderBy: { readingSequence: "desc" },
-            take: 1,
-            select: { id: true },
-          },
+      },
+    }),
+    context.prisma.fuelSupplier.findMany({
+      where: {
+        id: { in: uniqueExistingSupplierIds },
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        isActive: true,
+        removedAt: null,
+        isGlobal: true,
+      },
+      select: { id: true },
+    }),
+    context.prisma.suppliedItem.findMany({
+      where: {
+        id: { in: uniqueExistingItemIds },
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        isGlobal: true,
+        isActive: true,
+      },
+      select: { id: true },
+    }),
+    context.prisma.measurementUnit.findMany({
+      where: {
+        id: { in: unitIds },
+        isActive: true,
+        OR: [
+          { corporationId: null, companyId: null },
+          { corporationId: scope.corporationId, companyId: scope.companyId },
+        ],
+      },
+      select: { id: true },
+    }),
+    context.prisma.supplierOffer.findMany({
+      where: {
+        id: { in: sourceOfferIds },
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        isActive: true,
+      },
+      select: { id: true },
+    }),
+    context.prisma.machine.findMany({
+      where: {
+        id: {
+          in: command.initialMachineAllocations.map((item) => item.machineId),
         },
-      }),
-    ]);
+        corporationId: scope.corporationId,
+        isActive: true,
+        ownershipPeriods: {
+          some: { companyId: scope.companyId, effectiveTo: null },
+        },
+      },
+      select: {
+        id: true,
+        meterReadings: {
+          where: { status: "CONFIRMED" },
+          orderBy: { readingSequence: "desc" },
+          take: 1,
+          select: { id: true },
+        },
+      },
+    }),
+    context.prisma.jobRole.findMany({
+      where: {
+        id: { in: [...new Set(jobRoleIds)] },
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        isActive: true,
+      },
+      select: { id: true, name: true },
+    }),
+  ]);
   if (!client) throw conflict();
   const employmentMap = new Map(employments.map((item) => [item.id, item]));
+  const jobRoleMap = new Map(jobRoles.map((item) => [item.id, item]));
   for (const id of [
     command.managerEmploymentId,
     ...command.technicalResponsibilityEmploymentIds,
@@ -220,10 +239,26 @@ async function validateResources(
     else {
       const employment = employmentMap.get(allocation.employmentId)!;
       const currentRole = employment.jobRolePeriods[0];
+      const selectedRole = allocation.confirmedJobRoleId
+        ? jobRoleMap.get(allocation.confirmedJobRoleId)
+        : undefined;
+      const temporaryRoleIsConfirmed = Boolean(
+        allocation.confirmedJobRoleName &&
+          !allocation.confirmedJobRoleId &&
+          !allocation.confirmedJobRolePeriodId,
+      );
+      const legacyRoleIsConfirmed =
+        !selectedRole &&
+        !temporaryRoleIsConfirmed &&
+        Boolean(currentRole?.jobRole.isActive) &&
+        currentRole?.id === allocation.confirmedJobRolePeriodId;
+      const suppliedPeriodIsValid =
+        !allocation.confirmedJobRolePeriodId ||
+        (currentRole?.id === allocation.confirmedJobRolePeriodId &&
+          currentRole.jobRole.id === selectedRole?.id);
       if (
-        !currentRole ||
-        !currentRole.jobRole.isActive ||
-        currentRole.id !== allocation.confirmedJobRolePeriodId
+        (!selectedRole && !legacyRoleIsConfirmed && !temporaryRoleIsConfirmed) ||
+        !suppliedPeriodIsValid
       )
         throw conflict([
           resource(
@@ -270,14 +305,16 @@ async function validateResources(
           : [],
       );
   }
-  return employmentMap;
+  return { employmentMap, jobRoleMap };
 }
 
 async function createInlineSupplier(
   tx: HandlerContext,
   scope: ProjectScope,
   projectId: string,
-  supplier: NonNullable<ProjectCommand["projectSupplierOffers"][number]["supplier"]>,
+  supplier: NonNullable<
+    ProjectCommand["projectSupplierOffers"][number]["supplier"]
+  >,
 ) {
   const protectedDocumentResult = protectSensitiveDocument({
     document: supplier.document,
@@ -295,7 +332,9 @@ async function createInlineSupplier(
       message: "Supplier document type does not match entity type",
     });
   const displayName =
-    supplier.entityType === "individual" ? supplier.fullName : supplier.legalName;
+    supplier.entityType === "individual"
+      ? supplier.fullName
+      : supplier.legalName;
   if (!displayName)
     throw new AppError({
       code: "VALIDATION_ERROR",
@@ -402,7 +441,8 @@ export class ProjectsHandler {
             });
           return { projectId: existing.projectId, status: "planned" as const };
         }
-        const employments = await validateResources(tx, scope, command);
+        const { employmentMap: employments, jobRoleMap } =
+          await validateResources(tx, scope, command);
         const now = new Date();
         const formattedAddress = formatProjectAddress(command.address);
         const project = await tx.prisma.project.create({
@@ -499,7 +539,23 @@ export class ProjectsHandler {
           });
         for (const allocation of command.initialEmployeeAllocations) {
           const employment = employments.get(allocation.employmentId)!;
-          const confirmedRole = employment.jobRolePeriods[0]!;
+          const currentRole = employment.jobRolePeriods[0];
+          const confirmedRole = allocation.confirmedJobRoleId
+            ? jobRoleMap.get(allocation.confirmedJobRoleId)!
+            : allocation.confirmedJobRoleName
+              ? null
+              : currentRole!.jobRole;
+          const referencesEmploymentRole =
+            confirmedRole !== null &&
+            currentRole?.jobRole.id === confirmedRole.id;
+          const jobRoleName =
+            allocation.confirmedJobRoleName ?? confirmedRole?.name;
+          if (!jobRoleName)
+            throw new AppError({
+              code: "VALIDATION_ERROR",
+              message: "A job role must be confirmed",
+              statusCode: 400,
+            });
           await tx.prisma.projectEmployeeAllocation.create({
             data: {
               corporationId: scope.corporationId,
@@ -508,8 +564,10 @@ export class ProjectsHandler {
               personId: employment.personId,
               effectiveFrom: now,
               employmentId: allocation.employmentId,
-              employmentJobRolePeriodId: confirmedRole.id,
-              jobRole: confirmedRole.jobRole.name,
+              employmentJobRolePeriodId: referencesEmploymentRole
+                ? currentRole?.id
+                : null,
+              jobRole: jobRoleName,
               expectedDailyWorkloadMinutes:
                 allocation.expectedDailyWorkloadMinutes,
               compensationMode: allocation.compensationMode,
@@ -543,7 +601,12 @@ export class ProjectsHandler {
         for (const offer of command.projectSupplierOffers) {
           const supplierId =
             offer.supplierId ??
-            (await createInlineSupplier(tx, scope, project.id, offer.supplier!));
+            (await createInlineSupplier(
+              tx,
+              scope,
+              project.id,
+              offer.supplier!,
+            ));
           const itemId =
             offer.itemId ??
             (await createInlineItem(tx, scope, project.id, offer.item!));

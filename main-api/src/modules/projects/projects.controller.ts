@@ -42,13 +42,7 @@ const uuid = { type: "string", format: "uuid" } as const;
 const projectAddressOpenApiSchema = {
   type: "object",
   additionalProperties: false,
-  required: [
-    "postalCode",
-    "street",
-    "neighborhood",
-    "city",
-    "state",
-  ],
+  required: ["postalCode", "street", "neighborhood", "city", "state"],
   properties: {
     postalCode: { type: "string", pattern: "^\\d{8}$" },
     street: { type: "string", minLength: 1, maxLength: 160 },
@@ -133,7 +127,6 @@ const projectCommandOpenApiSchema = {
         additionalProperties: false,
         required: [
           "employmentId",
-          "confirmedJobRolePeriodId",
           "expectedDailyWorkloadMinutes",
           "compensationMode",
           "compensationValue",
@@ -141,7 +134,14 @@ const projectCommandOpenApiSchema = {
         ],
         properties: {
           employmentId: uuid,
-          confirmedJobRolePeriodId: uuid,
+          confirmedJobRoleId: uuid,
+          confirmedJobRolePeriodId: { ...uuid, nullable: true },
+          confirmedJobRoleName: {
+            type: "string",
+            minLength: 1,
+            maxLength: 120,
+            nullable: true,
+          },
           expectedDailyWorkloadMinutes: {
             type: "integer",
             minimum: 1,
