@@ -4,6 +4,7 @@ Leia este arquivo antes de alterar o projeto.
 
 ## Regras obrigatorias
 
+- Nao use `bmad-quick-dev` a menos que o usuario chame explicitamente esse skill/workflow. Se ele nao chamar, trabalhe com o modelo puro Codex.
 - Preserve o fluxo `controller -> service -> handler`.
 - Somente arquivos em `handlers/`, `src/db/` e plugins de infraestrutura podem acessar Prisma.
 - Controllers nao importam Prisma, nao usam `app.prisma` e nao fazem query.
