@@ -3,7 +3,11 @@ import {
   ProjectsHandler,
   type ProjectScope,
 } from "./handlers/projects.handler";
-import type { ProjectCommand, ProjectListQuery } from "./projects.dto";
+import type {
+  ProjectCommand,
+  ProjectListQuery,
+  ProjectReadinessCommand,
+} from "./projects.dto";
 
 export type { ProjectScope } from "./handlers/projects.handler";
 
@@ -29,5 +33,17 @@ export class ProjectsService {
 
   detail(scope: ProjectScope, projectId: string) {
     return this.handler.detail(scope, projectId);
+  }
+
+  saveReadiness(
+    scope: ProjectScope,
+    projectId: string,
+    command: ProjectReadinessCommand,
+  ) {
+    return this.handler.saveReadiness(scope, projectId, command);
+  }
+
+  activate(scope: ProjectScope, projectId: string) {
+    return this.handler.activate(scope, projectId);
   }
 }

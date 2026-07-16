@@ -56,6 +56,19 @@ const coordinate = (min: number, max: number) =>
     .regex(/^-?\d{1,3}\.\d{6}$/u)
     .refine((value) => Number(value) >= min && Number(value) <= max);
 const uuid = z.string().uuid();
+const productionMetricCodeSchema = z.enum([
+  "cut",
+  "fill",
+  "finishing",
+  "top_soil",
+]);
+const compensationModeSchema = z.enum([
+  "daily",
+  "hourly",
+  "weekly",
+  "fortnightly",
+  "monthly",
+]);
 
 const supplierInlineSchema = z
   .object({
@@ -371,6 +384,11 @@ export const projectIdempotencyKeySchema = z
   .string()
   .uuid()
   .refine((value) => value[14] === "4", "UUID v4 required");
+export const projectParamsSchema = z
+  .object({
+    projectId: uuid,
+  })
+  .strict();
 export const projectListQuerySchema = z
   .object({
     limit: z.coerce.number().int().min(1).max(100).default(25),
@@ -381,8 +399,98 @@ export const projectListQuerySchema = z
   })
   .strict();
 
+const projectFuelAgreementReadinessSchema = z
+  .object({
+    fuelSupplierId: uuid,
+    fuelTypes: z
+      .array(
+        z
+          .object({
+            fuelTypeId: z.enum(["diesel-s10", "diesel-s500"]),
+            pricePerLiter: decimal(4, 14, true),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(2),
+  })
+  .strict()
+  .superRefine((agreement, context) => {
+    const fuelTypeIds = agreement.fuelTypes.map((item) => item.fuelTypeId);
+    if (new Set(fuelTypeIds).size !== fuelTypeIds.length)
+      context.addIssue({
+        code: "custom",
+        path: ["fuelTypes"],
+        message: "Duplicate fuel type",
+      });
+  });
+
+export const projectReadinessCommandSchema = z
+  .object({
+    plannedEndDate: z.iso.date(),
+    productionMetricTargets: z
+      .array(
+        z
+          .object({
+            metricCode: productionMetricCodeSchema,
+            targetTotal: decimal(2, 16, true),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(4),
+    fuelAgreements: z
+      .array(projectFuelAgreementReadinessSchema)
+      .min(1)
+      .max(10),
+    compensationPaymentTerms: z
+      .array(
+        z
+          .object({
+            compensationMode: compensationModeSchema,
+            daysAfterPeriodEnd: z.number().int().min(0).max(60),
+          })
+          .strict(),
+      )
+      .max(5),
+  })
+  .strict()
+  .superRefine((command, context) => {
+    const metrics = command.productionMetricTargets.map(
+      (item) => item.metricCode,
+    );
+    if (new Set(metrics).size !== metrics.length)
+      context.addIssue({
+        code: "custom",
+        path: ["productionMetricTargets"],
+        message: "Duplicate production metric",
+      });
+    const suppliers = command.fuelAgreements.map(
+      (item) => item.fuelSupplierId,
+    );
+    if (new Set(suppliers).size !== suppliers.length)
+      context.addIssue({
+        code: "custom",
+        path: ["fuelAgreements"],
+        message: "Duplicate fuel supplier",
+      });
+    const paymentModes = command.compensationPaymentTerms.map(
+      (item) => item.compensationMode,
+    );
+    if (new Set(paymentModes).size !== paymentModes.length)
+      context.addIssue({
+        code: "custom",
+        path: ["compensationPaymentTerms"],
+        message: "Duplicate compensation mode",
+      });
+  });
+
 export type ProjectCommand = z.infer<typeof projectCommandSchema>;
 export type ProjectListQuery = z.infer<typeof projectListQuerySchema>;
+export type ProjectParams = z.infer<typeof projectParamsSchema>;
+export type ProjectReadinessCommand = z.infer<
+  typeof projectReadinessCommandSchema
+>;
 
 export const projectFieldDetailSchema = z
   .object({ path: z.string(), code: z.string() })

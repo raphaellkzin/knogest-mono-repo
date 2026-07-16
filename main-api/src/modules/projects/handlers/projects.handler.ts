@@ -1,7 +1,10 @@
 import { Prisma } from "../../../db/generated/prisma/client";
 import type { HandlerContext } from "../../../lib/utils/handler.dto";
 import { AppError } from "../../../lib/utils/appError";
-import { protectSensitiveDocument } from "../../../lib/security/sensitive-document";
+import {
+  protectSensitiveDocument,
+  toMaskedDocumentDto,
+} from "../../../lib/security/sensitive-document";
 import {
   buildCursorPage,
   parseBoundCursor,
@@ -11,6 +14,7 @@ import {
   formatProjectAddress,
   type ProjectCommand,
   type ProjectListQuery,
+  type ProjectReadinessCommand,
 } from "../projects.dto";
 
 export type ProjectScope = {
@@ -22,12 +26,70 @@ export type ProjectScope = {
 };
 
 const operation = "project-finalization:v1";
+const lifecycleStatuses = [
+  "PLANNED",
+  "ACTIVE",
+  "PAUSED",
+  "COMPLETED",
+  "CANCELLED",
+] as const;
+const compensationModes = [
+  "daily",
+  "hourly",
+  "weekly",
+  "fortnightly",
+  "monthly",
+] as const;
+type ProjectStatusDto = Lowercase<(typeof lifecycleStatuses)[number]>;
 const resource = (
   kind: string,
   id: string,
   section: string,
   reason = "unavailable",
 ) => ({ kind, id, section, reason });
+
+type ReadinessBlocker = {
+  section:
+    | "dates"
+    | "metrics"
+    | "fuel"
+    | "items"
+    | "equipment"
+    | "team"
+    | "payments";
+  message: string;
+};
+
+function decimalString(value: Prisma.Decimal | number | string, scale: number) {
+  if (typeof value === "string") return new Prisma.Decimal(value).toFixed(scale);
+  if (typeof value === "number") return new Prisma.Decimal(value).toFixed(scale);
+  return value.toFixed(scale);
+}
+
+function civilDateString(value: Date | null) {
+  return value ? value.toISOString().slice(0, 10) : null;
+}
+
+function statusDto(status: (typeof lifecycleStatuses)[number]): ProjectStatusDto {
+  return status.toLowerCase() as ProjectStatusDto;
+}
+
+function projectNotFound(): never {
+  throw new AppError({
+    code: "NOT_FOUND",
+    statusCode: 404,
+    message: "Project not found",
+  });
+}
+
+function projectLifecycleConflict(message: string): never {
+  throw new AppError({
+    code: "PROJECT_RESOURCE_CONFLICT",
+    statusCode: 409,
+    message,
+    data: { fields: [], resources: [] },
+  });
+}
 
 function conflict(resources: Array<ReturnType<typeof resource>> = []) {
   return new AppError({
@@ -408,6 +470,555 @@ async function runSerializable<T>(
   throw new Error("Unreachable serializable retry state");
 }
 
+async function buildProjectSnapshot(
+  context: HandlerContext,
+  scope: ProjectScope,
+  projectId: string,
+) {
+  const scopeWhere = {
+    corporationId: scope.corporationId,
+    companyId: scope.companyId,
+    projectId,
+  };
+  const project = await context.prisma.project.findFirst({
+    where: {
+      id: projectId,
+      corporationId: scope.corporationId,
+      companyId: scope.companyId,
+    },
+  });
+  if (!project) projectNotFound();
+
+  const [
+    baseline,
+    clientPeriod,
+    managerTenure,
+    technicalResponsibilities,
+    scheduleRevision,
+    employeeAllocations,
+    machineAllocations,
+    fuelAgreements,
+    supplierOffers,
+    productionMetricTargets,
+    compensationPaymentTerms,
+  ] = await Promise.all([
+    context.prisma.projectBaseline.findFirst({
+      where: { ...scopeWhere, effectiveTo: null },
+      orderBy: { effectiveFrom: "desc" },
+    }),
+    context.prisma.projectClientPeriod.findFirst({
+      where: { ...scopeWhere, effectiveTo: null },
+    }),
+    context.prisma.projectManagerTenure.findFirst({
+      where: { ...scopeWhere, effectiveTo: null },
+    }),
+    context.prisma.projectTechnicalResponsibility.findMany({
+      where: { ...scopeWhere, effectiveTo: null },
+      orderBy: { effectiveFrom: "asc" },
+    }),
+    context.prisma.projectScheduleRevision.findFirst({
+      where: { ...scopeWhere, effectiveTo: null },
+      orderBy: { effectiveFrom: "desc" },
+    }),
+    context.prisma.projectEmployeeAllocation.findMany({
+      where: { ...scopeWhere, effectiveTo: null },
+      orderBy: { effectiveFrom: "asc" },
+    }),
+    context.prisma.projectMachineAllocation.findMany({
+      where: { ...scopeWhere, effectiveTo: null },
+      orderBy: { effectiveFrom: "asc" },
+    }),
+    context.prisma.projectFuelAgreement.findMany({
+      where: { ...scopeWhere, effectiveTo: null },
+      orderBy: { effectiveFrom: "asc" },
+    }),
+    context.prisma.projectSupplierOffer.findMany({
+      where: { ...scopeWhere, effectiveTo: null },
+      orderBy: { effectiveFrom: "asc" },
+    }),
+    context.prisma.projectProductionMetricTarget.findMany({
+      where: scopeWhere,
+      orderBy: { metricCode: "asc" },
+    }),
+    context.prisma.projectCompensationPaymentTerm.findMany({
+      where: scopeWhere,
+      orderBy: { compensationMode: "asc" },
+    }),
+  ]);
+
+  const [scheduleDays, breakTemplates] = scheduleRevision
+    ? await Promise.all([
+        context.prisma.projectScheduleDay.findMany({
+          where: {
+            corporationId: scope.corporationId,
+            companyId: scope.companyId,
+            scheduleRevisionId: scheduleRevision.id,
+          },
+          orderBy: { dayOfWeek: "asc" },
+        }),
+        context.prisma.projectBreakTemplate.findMany({
+          where: {
+            corporationId: scope.corporationId,
+            companyId: scope.companyId,
+            scheduleRevisionId: scheduleRevision.id,
+          },
+          orderBy: { position: "asc" },
+        }),
+      ])
+    : [[], []];
+
+  const employmentIds = [
+    managerTenure?.employmentId,
+    ...technicalResponsibilities.map((item) => item.employmentId),
+    ...employeeAllocations.map((item) => item.employmentId),
+    ...machineAllocations.map((item) => item.operatorEmploymentId),
+  ].filter((id): id is string => Boolean(id));
+  const machineIds = machineAllocations.map((item) => item.machineId);
+  const readingIds = machineAllocations.map((item) => item.startMeterReadingId);
+  const fuelSupplierIds = [
+    ...fuelAgreements.map((item) => item.fuelSupplierId),
+    ...supplierOffers.map((item) => item.supplierId),
+  ];
+  const supplierItemIds = supplierOffers.map((item) => item.itemId);
+  const purchaseUnitIds = supplierOffers.map((item) => item.purchaseUnitId);
+
+  const fuelPrices = fuelAgreements.length
+    ? await context.prisma.projectFuelPrice.findMany({
+        where: {
+          corporationId: scope.corporationId,
+          companyId: scope.companyId,
+          agreementId: { in: fuelAgreements.map((item) => item.id) },
+          effectiveTo: null,
+        },
+        orderBy: [{ agreementId: "asc" }, { fuelTypeId: "asc" }],
+      })
+    : [];
+  const projectSupplierOfferPrices = supplierOffers.length
+    ? await context.prisma.projectSupplierOfferPrice.findMany({
+        where: {
+          corporationId: scope.corporationId,
+          companyId: scope.companyId,
+          projectOfferId: { in: supplierOffers.map((item) => item.id) },
+          effectiveTo: null,
+        },
+      })
+    : [];
+
+  const [
+    client,
+    employments,
+    machines,
+    readings,
+    fuelSuppliers,
+    fuelTypes,
+    suppliedItems,
+    measurementUnits,
+  ] = await Promise.all([
+    clientPeriod
+      ? context.prisma.client.findFirst({
+          where: {
+            id: clientPeriod.clientId,
+            corporationId: scope.corporationId,
+            companyId: scope.companyId,
+          },
+          select: {
+            id: true,
+            displayName: true,
+            documentType: true,
+            ciphertext: true,
+            iv: true,
+            authTag: true,
+            encryptionKeyVersion: true,
+            isActive: true,
+            removedAt: true,
+          },
+        })
+      : null,
+    employmentIds.length
+      ? context.prisma.employment.findMany({
+          where: {
+            id: { in: [...new Set(employmentIds)] },
+            corporationId: scope.corporationId,
+            companyId: scope.companyId,
+          },
+          select: {
+            id: true,
+            state: true,
+            isActive: true,
+            person: { select: { displayName: true } },
+            periods: {
+              where: { effectiveTo: null },
+              select: { id: true },
+              take: 1,
+            },
+            jobRolePeriods: {
+              where: { effectiveTo: null },
+              select: {
+                jobRole: { select: { name: true } },
+              },
+              take: 1,
+            },
+          },
+        })
+      : [],
+    machineIds.length
+      ? context.prisma.machine.findMany({
+          where: {
+            id: { in: [...new Set(machineIds)] },
+            corporationId: scope.corporationId,
+          },
+          select: {
+            id: true,
+            name: true,
+            meterType: true,
+            isActive: true,
+            identifiers: {
+              where: { companyId: scope.companyId, releasedAt: null },
+              select: { kind: true, value: true },
+              take: 1,
+            },
+          },
+        })
+      : [],
+    readingIds.length
+      ? context.prisma.machineMeterReading.findMany({
+          where: {
+            id: { in: [...new Set(readingIds)] },
+            corporationId: scope.corporationId,
+            companyId: scope.companyId,
+          },
+          select: { id: true, value: true },
+        })
+      : [],
+    fuelSupplierIds.length
+      ? context.prisma.fuelSupplier.findMany({
+          where: {
+            id: { in: [...new Set(fuelSupplierIds)] },
+            corporationId: scope.corporationId,
+            companyId: scope.companyId,
+          },
+          select: {
+            id: true,
+            displayName: true,
+            tradeName: true,
+            documentType: true,
+            ciphertext: true,
+            iv: true,
+            authTag: true,
+            encryptionKeyVersion: true,
+            isActive: true,
+            removedAt: true,
+          },
+        })
+      : [],
+    fuelPrices.length
+      ? context.prisma.fuelType.findMany({
+          where: {
+            id: { in: [...new Set(fuelPrices.map((item) => item.fuelTypeId))] },
+          },
+          select: { id: true, name: true, isActive: true },
+        })
+      : [],
+    supplierItemIds.length
+      ? context.prisma.suppliedItem.findMany({
+          where: {
+            id: { in: [...new Set(supplierItemIds)] },
+            corporationId: scope.corporationId,
+            companyId: scope.companyId,
+          },
+          select: { id: true, name: true, isActive: true },
+        })
+      : [],
+    purchaseUnitIds.length
+      ? context.prisma.measurementUnit.findMany({
+          where: {
+            id: { in: [...new Set(purchaseUnitIds)] },
+            OR: [
+              { corporationId: null, companyId: null },
+              { corporationId: scope.corporationId, companyId: scope.companyId },
+            ],
+          },
+          select: { id: true, code: true, name: true, isActive: true },
+        })
+      : [],
+  ]);
+
+  const employmentMap = new Map(employments.map((item) => [item.id, item]));
+  const machineMap = new Map(machines.map((item) => [item.id, item]));
+  const readingMap = new Map(readings.map((item) => [item.id, item]));
+  const fuelSupplierMap = new Map(fuelSuppliers.map((item) => [item.id, item]));
+  const fuelTypeMap = new Map(fuelTypes.map((item) => [item.id, item]));
+  const suppliedItemMap = new Map(suppliedItems.map((item) => [item.id, item]));
+  const unitMap = new Map(measurementUnits.map((item) => [item.id, item]));
+  const projectOfferPriceMap = new Map(
+    projectSupplierOfferPrices.map((item) => [item.projectOfferId, item]),
+  );
+  const currentTeamEmploymentIds = new Set(
+    employeeAllocations.map((item) => item.employmentId),
+  );
+
+  const employeeDto = (employmentId: string) => {
+    const employment = employmentMap.get(employmentId);
+    if (!employment) return null;
+    return {
+      id: employment.id,
+      name: employment.person.displayName,
+      jobRole: employment.jobRolePeriods[0]?.jobRole.name ?? null,
+      isActive:
+        employment.isActive &&
+        employment.state === "ACTIVE" &&
+        employment.periods.length > 0,
+    };
+  };
+
+  const fuelSupplierDto = (fuelSupplierId: string) => {
+    const supplier = fuelSupplierMap.get(fuelSupplierId);
+    if (!supplier) return null;
+    return {
+      id: supplier.id,
+      name: supplier.displayName,
+      tradeName: supplier.tradeName,
+      document: toMaskedDocumentDto(supplier),
+      isActive: supplier.isActive && supplier.removedAt === null,
+    };
+  };
+
+  const fuelAgreementDtos = fuelAgreements.map((agreement) => ({
+    id: agreement.id,
+    fuelSupplier: fuelSupplierDto(agreement.fuelSupplierId),
+    fuelTypes: fuelPrices
+      .filter((price) => price.agreementId === agreement.id)
+      .map((price) => ({
+        fuelTypeId: price.fuelTypeId,
+        name: fuelTypeMap.get(price.fuelTypeId)?.name ?? price.fuelTypeId,
+        isActive: fuelTypeMap.get(price.fuelTypeId)?.isActive ?? false,
+        pricePerLiter: decimalString(price.pricePerLiter, 4),
+      })),
+  }));
+
+  const employeeAllocationDtos = employeeAllocations.map((allocation) => ({
+    id: allocation.id,
+    employment: employeeDto(allocation.employmentId),
+    jobRole: allocation.jobRole,
+    expectedDailyWorkloadMinutes: allocation.expectedDailyWorkloadMinutes,
+    compensationMode: allocation.compensationMode,
+    compensationValue: decimalString(allocation.compensationValue, 2),
+    overtimeRate: decimalString(allocation.overtimeRate, 2),
+    effectiveFrom: allocation.effectiveFrom.toISOString(),
+  }));
+
+  const machineAllocationDtos = machineAllocations.map((allocation) => {
+    const machine = machineMap.get(allocation.machineId);
+    const reading = readingMap.get(allocation.startMeterReadingId);
+    return {
+      id: allocation.id,
+      machine: machine
+        ? {
+            id: machine.id,
+            name: machine.name,
+            meterType: machine.meterType.toLowerCase(),
+            identifier: machine.identifiers[0] ?? null,
+            isActive: machine.isActive,
+          }
+        : null,
+      operator: employeeDto(allocation.operatorEmploymentId),
+      startMeterReading: reading
+        ? {
+            id: reading.id,
+            value: decimalString(reading.value, 2),
+          }
+        : null,
+      effectiveFrom: allocation.effectiveFrom.toISOString(),
+    };
+  });
+
+  const supplierOfferDtos = supplierOffers.map((offer) => {
+    const item = suppliedItemMap.get(offer.itemId);
+    const unit = unitMap.get(offer.purchaseUnitId);
+    return {
+      id: offer.id,
+      supplier: fuelSupplierDto(offer.supplierId),
+      item: item ? { id: item.id, name: item.name, isActive: item.isActive } : null,
+      purchaseUnit: unit
+        ? { id: unit.id, code: unit.code, name: unit.name, isActive: unit.isActive }
+        : null,
+      conversionToBase: decimalString(offer.conversionToBase, 6),
+      price: decimalString(
+        projectOfferPriceMap.get(offer.id)?.price ?? offer.price,
+        4,
+      ),
+      effectiveFrom: offer.effectiveFrom.toISOString(),
+    };
+  });
+
+  const blockers: ReadinessBlocker[] = [];
+  if (!baseline?.plannedEndDate)
+    blockers.push({
+      section: "dates",
+      message: "Informe a data prevista de fim da obra.",
+    });
+  if (productionMetricTargets.length === 0)
+    blockers.push({
+      section: "metrics",
+      message: "Selecione ao menos uma métrica de produção com meta total.",
+    });
+  if (
+    fuelAgreementDtos.length === 0 ||
+    fuelAgreementDtos.some(
+      (agreement) =>
+        !agreement.fuelSupplier?.isActive ||
+        agreement.fuelTypes.length === 0 ||
+        agreement.fuelTypes.some((fuelType) => !fuelType.isActive),
+    )
+  )
+    blockers.push({
+      section: "fuel",
+      message: "Confirme fornecedor de combustível, tipo e preço vigente.",
+    });
+  if (!client || !client.isActive || client.removedAt)
+    blockers.push({
+      section: "team",
+      message: "Confirme um cliente ativo para a obra.",
+    });
+  if (!managerTenure || !employeeDto(managerTenure.employmentId)?.isActive)
+    blockers.push({
+      section: "team",
+      message: "Confirme um gestor ativo para a obra.",
+    });
+  if (
+    technicalResponsibilities.length === 0 ||
+    technicalResponsibilities.some(
+      (item) => !employeeDto(item.employmentId)?.isActive,
+    )
+  )
+    blockers.push({
+      section: "team",
+      message: "Confirme ao menos um responsável técnico ativo.",
+    });
+  if (
+    scheduleDays.length !== 7 ||
+    !scheduleDays.some((day) => day.isWorking) ||
+    scheduleDays.some(
+      (day) =>
+        (day.isWorking && (!day.startTime || !day.endTime)) ||
+        (!day.isWorking && (day.startTime || day.endTime)),
+    )
+  )
+    blockers.push({
+      section: "team",
+      message: "Confirme uma agenda semanal válida.",
+    });
+  if (
+    machineAllocations.some(
+      (allocation) =>
+        !currentTeamEmploymentIds.has(allocation.operatorEmploymentId),
+    )
+  )
+    blockers.push({
+      section: "equipment",
+      message: "Cada máquina precisa de operador presente na equipe da obra.",
+    });
+  if (
+    supplierOfferDtos.some(
+      (offer) =>
+        !offer.supplier?.isActive ||
+        !offer.item?.isActive ||
+        !offer.purchaseUnit?.isActive,
+    )
+  )
+    blockers.push({
+      section: "items",
+      message: "Revise fornecedores, itens e unidades configurados.",
+    });
+  const requiredPaymentModes = [
+    ...new Set(
+      employeeAllocationDtos.map((item) => item.compensationMode).sort(),
+    ),
+  ];
+  const suppliedPaymentModes = compensationPaymentTerms
+    .map((item) => item.compensationMode)
+    .sort();
+  if (
+    requiredPaymentModes.length !== suppliedPaymentModes.length ||
+    requiredPaymentModes.some((mode, index) => mode !== suppliedPaymentModes[index])
+  )
+    blockers.push({
+      section: "payments",
+      message:
+        "Defina o prazo de pagamento para cada modalidade presente na equipe.",
+    });
+
+  return {
+    id: project.id,
+    name: project.name,
+    address: {
+      formatted: project.address,
+      postalCode: project.addressPostalCode,
+      street: project.addressStreet,
+      number: project.addressNumber,
+      complement: project.addressComplement,
+      neighborhood: project.addressNeighborhood,
+      city: project.addressCity,
+      state: project.addressState,
+    },
+    latitude: project.latitude ? decimalString(project.latitude, 6) : null,
+    longitude: project.longitude ? decimalString(project.longitude, 6) : null,
+    contractNumber: project.contractNumber,
+    status: statusDto(project.status),
+    actualStartedAt: project.actualStartedAt?.toISOString() ?? null,
+    createdAt: project.createdAt.toISOString(),
+    baseline: baseline
+      ? {
+          approvedBudget: decimalString(baseline.approvedBudget, 2),
+          plannedStartDate: civilDateString(baseline.plannedStartDate),
+          plannedEndDate: civilDateString(baseline.plannedEndDate),
+          effectiveFrom: baseline.effectiveFrom.toISOString(),
+        }
+      : null,
+    client: client
+      ? {
+          id: client.id,
+          name: client.displayName,
+          document: toMaskedDocumentDto(client),
+          isActive: client.isActive && client.removedAt === null,
+        }
+      : null,
+    manager: managerTenure ? employeeDto(managerTenure.employmentId) : null,
+    technicalResponsibilities: technicalResponsibilities
+      .map((item) => employeeDto(item.employmentId))
+      .filter(Boolean),
+    schedule: {
+      days: scheduleDays.map((day) => ({
+        dayOfWeek: day.dayOfWeek,
+        isWorking: day.isWorking,
+        startTime: day.startTime,
+        endTime: day.endTime,
+      })),
+      breakTemplates: breakTemplates.map((item) => ({
+        id: item.id,
+        name: item.name,
+        durationMinutes: item.durationMinutes,
+      })),
+    },
+    employeeAllocations: employeeAllocationDtos,
+    machineAllocations: machineAllocationDtos,
+    fuelAgreements: fuelAgreementDtos,
+    supplierOffers: supplierOfferDtos,
+    productionMetricTargets: productionMetricTargets.map((item) => ({
+      metricCode: item.metricCode,
+      targetTotal: decimalString(item.targetTotal, 2),
+    })),
+    compensationPaymentTerms: compensationPaymentTerms.map((item) => ({
+      compensationMode: item.compensationMode,
+      daysAfterPeriodEnd: item.daysAfterPeriodEnd,
+    })),
+    readiness: {
+      canActivate: blockers.length === 0,
+      blockers,
+    },
+  };
+}
+
 export class ProjectsHandler {
   constructor(private readonly context: HandlerContext) {}
 
@@ -686,6 +1297,223 @@ export class ProjectsHandler {
     }
   }
 
+  async saveReadiness(
+    scope: ProjectScope,
+    projectId: string,
+    command: ProjectReadinessCommand,
+  ) {
+    return runSerializable(this.context, async (tx) => {
+      const project = await tx.prisma.project.findFirst({
+        where: {
+          id: projectId,
+          corporationId: scope.corporationId,
+          companyId: scope.companyId,
+        },
+        select: { id: true, status: true },
+      });
+      if (!project) projectNotFound();
+      if (project.status !== "PLANNED")
+        projectLifecycleConflict("Only planned Projects can update readiness");
+
+      const teamModes = await tx.prisma.projectEmployeeAllocation.findMany({
+        where: {
+          corporationId: scope.corporationId,
+          companyId: scope.companyId,
+          projectId,
+          effectiveTo: null,
+        },
+        select: { compensationMode: true },
+      });
+      const requiredPaymentModes = [
+        ...new Set(teamModes.map((item) => item.compensationMode).sort()),
+      ];
+      const suppliedPaymentModes = command.compensationPaymentTerms
+        .map((item) => item.compensationMode)
+        .sort();
+      if (
+        requiredPaymentModes.length !== suppliedPaymentModes.length ||
+        requiredPaymentModes.some(
+          (mode, index) => mode !== suppliedPaymentModes[index],
+        )
+      )
+        throw new AppError({
+          code: "VALIDATION_ERROR",
+          statusCode: 400,
+          message: "Payment terms must match Project compensation modes",
+          data: {
+            fields: [
+              {
+                path: "compensationPaymentTerms",
+                code: "payment-modes-mismatch",
+              },
+            ],
+            resources: [],
+          },
+        });
+
+      const supplierIds = command.fuelAgreements.map(
+        (item) => item.fuelSupplierId,
+      );
+      const fuelTypeIds = command.fuelAgreements.flatMap((agreement) =>
+        agreement.fuelTypes.map((item) => item.fuelTypeId),
+      );
+      const [suppliers, fuelTypes] = await Promise.all([
+        tx.prisma.fuelSupplier.findMany({
+          where: {
+            id: { in: [...new Set(supplierIds)] },
+            corporationId: scope.corporationId,
+            companyId: scope.companyId,
+            isActive: true,
+            removedAt: null,
+            isGlobal: true,
+          },
+          select: { id: true },
+        }),
+        tx.prisma.fuelType.findMany({
+          where: {
+            id: { in: [...new Set(fuelTypeIds)] },
+            isActive: true,
+          },
+          select: { id: true },
+        }),
+      ]);
+      if (suppliers.length !== new Set(supplierIds).size)
+        throw conflict([resource("fuelSupplier", "unknown", "fuelAgreements")]);
+      if (fuelTypes.length !== new Set(fuelTypeIds).size)
+        throw conflict([resource("fuelType", "unknown", "fuelAgreements")]);
+
+      const updatedBaseline = await tx.prisma.projectBaseline.updateMany({
+        where: {
+          corporationId: scope.corporationId,
+          companyId: scope.companyId,
+          projectId,
+          effectiveTo: null,
+        },
+        data: {
+          plannedEndDate: new Date(`${command.plannedEndDate}T00:00:00.000Z`),
+        },
+      });
+      if (updatedBaseline.count !== 1)
+        throw conflict([resource("project", projectId, "identity")]);
+
+      const scopeWhere = {
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        projectId,
+      };
+      await tx.prisma.projectProductionMetricTarget.deleteMany({
+        where: scopeWhere,
+      });
+      await tx.prisma.projectProductionMetricTarget.createMany({
+        data: command.productionMetricTargets.map((target) => ({
+          ...scopeWhere,
+          metricCode: target.metricCode,
+          targetTotal: target.targetTotal,
+        })),
+      });
+
+      const currentFuelAgreements = await tx.prisma.projectFuelAgreement.findMany({
+        where: { ...scopeWhere, effectiveTo: null },
+        select: { id: true },
+      });
+      if (currentFuelAgreements.length)
+        await tx.prisma.projectFuelPrice.deleteMany({
+          where: {
+            corporationId: scope.corporationId,
+            companyId: scope.companyId,
+            agreementId: {
+              in: currentFuelAgreements.map((agreement) => agreement.id),
+            },
+          },
+        });
+      await tx.prisma.projectFuelAgreement.deleteMany({
+        where: scopeWhere,
+      });
+      for (const agreement of command.fuelAgreements) {
+        const row = await tx.prisma.projectFuelAgreement.create({
+          data: {
+            ...scopeWhere,
+            fuelSupplierId: agreement.fuelSupplierId,
+            effectiveFrom: new Date(),
+          },
+          select: { id: true, effectiveFrom: true },
+        });
+        await tx.prisma.projectFuelPrice.createMany({
+          data: agreement.fuelTypes.map((fuelType) => ({
+            corporationId: scope.corporationId,
+            companyId: scope.companyId,
+            agreementId: row.id,
+            fuelTypeId: fuelType.fuelTypeId,
+            pricePerLiter: fuelType.pricePerLiter,
+            effectiveFrom: row.effectiveFrom,
+          })),
+        });
+      }
+
+      await tx.prisma.projectCompensationPaymentTerm.deleteMany({
+        where: scopeWhere,
+      });
+      if (command.compensationPaymentTerms.length)
+        await tx.prisma.projectCompensationPaymentTerm.createMany({
+          data: command.compensationPaymentTerms.map((term) => ({
+            ...scopeWhere,
+            compensationMode: term.compensationMode,
+            daysAfterPeriodEnd: term.daysAfterPeriodEnd,
+          })),
+        });
+
+      return buildProjectSnapshot(tx, scope, projectId);
+    });
+  }
+
+  async activate(scope: ProjectScope, projectId: string) {
+    return runSerializable(this.context, async (tx) => {
+      const snapshot = await buildProjectSnapshot(tx, scope, projectId);
+      if (snapshot.status !== "planned")
+        projectLifecycleConflict("Project is not planned");
+      if (!snapshot.readiness.canActivate)
+        throw new AppError({
+          code: "PROJECT_RESOURCE_CONFLICT",
+          statusCode: 409,
+          message: "Project readiness is incomplete",
+          data: {
+            fields: [],
+            resources: [],
+            blockers: snapshot.readiness.blockers,
+          },
+        });
+
+      const now = new Date();
+      const updated = await tx.prisma.project.updateMany({
+        where: {
+          id: projectId,
+          corporationId: scope.corporationId,
+          companyId: scope.companyId,
+          status: "PLANNED",
+          actualStartedAt: null,
+        },
+        data: {
+          status: "ACTIVE",
+          actualStartedAt: now,
+        },
+      });
+      if (updated.count !== 1) projectLifecycleConflict("Project changed");
+      await tx.prisma.projectLifecycleEvent.create({
+        data: {
+          corporationId: scope.corporationId,
+          companyId: scope.companyId,
+          projectId,
+          fromStatus: "PLANNED",
+          toStatus: "ACTIVE",
+          occurredAt: now,
+          actorUserId: scope.userId,
+          reason: null,
+        },
+      });
+      return buildProjectSnapshot(tx, scope, projectId);
+    });
+  }
+
   async list(scope: ProjectScope, query: ProjectListQuery) {
     const normalizedSearch = query.search?.toLocaleLowerCase("pt-BR");
     const boundary = parseBoundCursor({
@@ -745,7 +1573,8 @@ export class ProjectsHandler {
         id: row.id,
         name: row.name,
         contractNumber: row.contractNumber,
-        status: row.status.toLowerCase(),
+        status: statusDto(row.status),
+        actualStartedAt: row.actualStartedAt?.toISOString() ?? null,
         createdAt: row.createdAt.toISOString(),
       })),
       limit: query.limit,
@@ -762,26 +1591,6 @@ export class ProjectsHandler {
   }
 
   async detail(scope: ProjectScope, projectId: string) {
-    const project = await this.context.prisma.project.findFirst({
-      where: {
-        id: projectId,
-        corporationId: scope.corporationId,
-        companyId: scope.companyId,
-      },
-    });
-    if (!project)
-      throw new AppError({
-        code: "NOT_FOUND",
-        statusCode: 404,
-        message: "Project not found",
-      });
-    return {
-      id: project.id,
-      name: project.name,
-      address: project.address,
-      contractNumber: project.contractNumber,
-      status: project.status.toLowerCase(),
-      createdAt: project.createdAt.toISOString(),
-    };
+    return buildProjectSnapshot(this.context, scope, projectId);
   }
 }

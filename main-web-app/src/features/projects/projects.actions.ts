@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { postApiV1Projects } from "@/generated/clients/postApiV1Projects";
-import { ApiClientError } from "@/lib/api/server-client";
+import client, { ApiClientError } from "@/lib/api/server-client";
 import { configureZodPortugueseErrors } from "@/lib/zod-locale";
 import { projectCommandSchema, type ProjectCommand } from "./projects-schema";
 
@@ -76,6 +76,71 @@ export type ProjectCepLookupResult =
       };
     }
   | { kind: "failure"; message: string };
+
+const readinessDecimal = (scale: number) => {
+  const pattern = new RegExp(`^\\d{1,16}\\.\\d{${scale}}$`, "u");
+  return z.string().regex(pattern);
+};
+
+const projectReadinessActionSchema = z
+  .object({
+    plannedEndDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u),
+    productionMetricTargets: z
+      .array(
+        z.object({
+          metricCode: z.enum(["cut", "fill", "finishing", "top_soil"]),
+          targetTotal: readinessDecimal(2),
+        }),
+      )
+      .min(1)
+      .max(4),
+    fuelAgreements: z
+      .array(
+        z.object({
+          fuelSupplierId: z.string().uuid(),
+          fuelTypes: z
+            .array(
+              z.object({
+                fuelTypeId: z.enum(["diesel-s10", "diesel-s500"]),
+                pricePerLiter: readinessDecimal(4),
+              }),
+            )
+            .min(1)
+            .max(2),
+        }),
+      )
+      .min(1)
+      .max(10),
+    compensationPaymentTerms: z
+      .array(
+        z.object({
+          compensationMode: z.enum([
+            "daily",
+            "hourly",
+            "weekly",
+            "fortnightly",
+            "monthly",
+          ]),
+          daysAfterPeriodEnd: z.number().int().min(0).max(60),
+        }),
+      )
+      .max(5),
+  })
+  .strict();
+
+export type ProjectReadinessActionInput = z.infer<
+  typeof projectReadinessActionSchema
+>;
+
+export type ProjectReadinessMutationResult =
+  | { kind: "success" }
+  | {
+      kind: "recoverable-conflict";
+      code: string;
+      blockers?: { section: string; message: string }[];
+      requestId?: string;
+    }
+  | { kind: "terminal-failure"; code: string; requestId?: string };
 
 export async function lookupProjectAddressByCepAction(
   postalCode: string,
@@ -172,5 +237,75 @@ export async function finalizeProjectAction(input: {
         requestId,
       };
     return { kind: "terminal-failure", code, requestId };
+  }
+}
+
+function parseProjectError(error: unknown): ProjectReadinessMutationResult {
+  if (!(error instanceof ApiClientError))
+    return { kind: "terminal-failure", code: "UNKNOWN_ERROR" };
+  const envelope =
+    error.data && typeof error.data === "object"
+      ? (error.data as Record<string, unknown>)
+      : {};
+  const code =
+    typeof envelope.code === "string" ? envelope.code : "PROJECT_ACTION_FAILED";
+  const requestId =
+    typeof envelope.requestId === "string" ? envelope.requestId : undefined;
+  const details =
+    envelope.details && typeof envelope.details === "object"
+      ? (envelope.details as Record<string, unknown>)
+      : {};
+  const blockers = Array.isArray(details.blockers)
+    ? details.blockers
+        .filter(
+          (item): item is { section: string; message: string } =>
+            Boolean(item) &&
+            typeof item === "object" &&
+            typeof (item as Record<string, unknown>).section === "string" &&
+            typeof (item as Record<string, unknown>).message === "string",
+        )
+        .map((item) => ({ section: item.section, message: item.message }))
+    : undefined;
+  if (error.status === 400 || error.status === 409)
+    return { kind: "recoverable-conflict", code, blockers, requestId };
+  return { kind: "terminal-failure", code, requestId };
+}
+
+export async function saveProjectReadinessAction(
+  projectId: string,
+  input: ProjectReadinessActionInput,
+): Promise<ProjectReadinessMutationResult> {
+  configureZodPortugueseErrors();
+  const id = z.string().uuid().parse(projectId);
+  const command = projectReadinessActionSchema.parse(input);
+  try {
+    await client({
+      url: `/api/v1/projects/${id}/readiness`,
+      method: "PUT",
+      data: command,
+      headers: { "content-type": "application/json" },
+    });
+    revalidatePath(`/home/obras/${id}`);
+    revalidatePath("/home/obras");
+    return { kind: "success" };
+  } catch (error) {
+    return parseProjectError(error);
+  }
+}
+
+export async function activateProjectAction(
+  projectId: string,
+): Promise<ProjectReadinessMutationResult> {
+  const id = z.string().uuid().parse(projectId);
+  try {
+    await client({
+      url: `/api/v1/projects/${id}/activate`,
+      method: "POST",
+    });
+    revalidatePath(`/home/obras/${id}`);
+    revalidatePath("/home/obras");
+    return { kind: "success" };
+  } catch (error) {
+    return parseProjectError(error);
   }
 }

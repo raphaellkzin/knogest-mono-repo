@@ -4,6 +4,8 @@ import {
   projectCommandSchema,
   projectIdempotencyKeySchema,
   projectListQuerySchema,
+  projectParamsSchema,
+  projectReadinessCommandSchema,
 } from "./projects.dto";
 import { ProjectsService, type ProjectScope } from "./projects.service";
 
@@ -27,14 +29,25 @@ const successSchema = (data: object) => ({
     data,
   },
 });
+const projectLifecycleStatusSchema = {
+  enum: ["planned", "active", "paused", "completed", "cancelled"],
+} as const;
 const projectItemSchema = {
   type: "object",
-  required: ["id", "name", "contractNumber", "status", "createdAt"],
+  required: [
+    "id",
+    "name",
+    "contractNumber",
+    "status",
+    "actualStartedAt",
+    "createdAt",
+  ],
   properties: {
     id: { type: "string", format: "uuid" },
     name: { type: "string" },
     contractNumber: { type: "string", nullable: true },
-    status: { const: "planned" },
+    status: projectLifecycleStatusSchema,
+    actualStartedAt: { type: "string", format: "date-time", nullable: true },
     createdAt: { type: "string", format: "date-time" },
   },
 };
@@ -214,6 +227,128 @@ const projectCommandOpenApiSchema = {
           price: { type: "string" },
         },
       },
+    },
+  },
+} as const;
+
+const projectReadinessCommandOpenApiSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "plannedEndDate",
+    "productionMetricTargets",
+    "fuelAgreements",
+    "compensationPaymentTerms",
+  ],
+  properties: {
+    plannedEndDate: { type: "string", format: "date" },
+    productionMetricTargets: {
+      type: "array",
+      minItems: 1,
+      maxItems: 4,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["metricCode", "targetTotal"],
+        properties: {
+          metricCode: { enum: ["cut", "fill", "finishing", "top_soil"] },
+          targetTotal: { type: "string" },
+        },
+      },
+    },
+    fuelAgreements: {
+      type: "array",
+      minItems: 1,
+      maxItems: 10,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["fuelSupplierId", "fuelTypes"],
+        properties: {
+          fuelSupplierId: uuid,
+          fuelTypes: {
+            type: "array",
+            minItems: 1,
+            maxItems: 2,
+            items: {
+              type: "object",
+              additionalProperties: false,
+              required: ["fuelTypeId", "pricePerLiter"],
+              properties: {
+                fuelTypeId: { enum: ["diesel-s10", "diesel-s500"] },
+                pricePerLiter: { type: "string" },
+              },
+            },
+          },
+        },
+      },
+    },
+    compensationPaymentTerms: {
+      type: "array",
+      maxItems: 5,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["compensationMode", "daysAfterPeriodEnd"],
+        properties: {
+          compensationMode: {
+            enum: ["daily", "hourly", "weekly", "fortnightly", "monthly"],
+          },
+          daysAfterPeriodEnd: { type: "integer", minimum: 0, maximum: 60 },
+        },
+      },
+    },
+  },
+} as const;
+
+const projectReadinessBlockerSchema = {
+  type: "object",
+  required: ["section", "message"],
+  properties: {
+    section: {
+      enum: [
+        "dates",
+        "metrics",
+        "fuel",
+        "items",
+        "equipment",
+        "team",
+        "payments",
+      ],
+    },
+    message: { type: "string" },
+  },
+  additionalProperties: false,
+} as const;
+
+const projectDetailSchema = {
+  type: "object",
+  additionalProperties: true,
+  required: [
+    "id",
+    "name",
+    "status",
+    "actualStartedAt",
+    "createdAt",
+    "baseline",
+    "readiness",
+  ],
+  properties: {
+    id: { type: "string", format: "uuid" },
+    name: { type: "string" },
+    contractNumber: { type: "string", nullable: true },
+    status: projectLifecycleStatusSchema,
+    actualStartedAt: { type: "string", format: "date-time", nullable: true },
+    createdAt: { type: "string", format: "date-time" },
+    baseline: { type: "object", nullable: true, additionalProperties: true },
+    readiness: {
+      type: "object",
+      required: ["canActivate", "blockers"],
+      properties: {
+        canActivate: { type: "boolean" },
+        blockers: { type: "array", items: projectReadinessBlockerSchema },
+      },
+      additionalProperties: false,
     },
   },
 } as const;
@@ -418,25 +553,7 @@ export async function v1ProjectsController(app: FastifyInstance) {
           properties: { projectId: { type: "string", format: "uuid" } },
         },
         response: {
-          200: successSchema({
-            type: "object",
-            required: [
-              "id",
-              "name",
-              "address",
-              "contractNumber",
-              "status",
-              "createdAt",
-            ],
-            properties: {
-              id: { type: "string", format: "uuid" },
-              name: { type: "string" },
-              address: { type: "string" },
-              contractNumber: { type: "string", nullable: true },
-              status: { const: "planned" },
-              createdAt: { type: "string", format: "date-time" },
-            },
-          }),
+          200: successSchema(projectDetailSchema),
           404: errorSchema,
         },
       },
@@ -446,6 +563,108 @@ export async function v1ProjectsController(app: FastifyInstance) {
         return jsonResponse.success({
           reply,
           data: await service.detail(scope(request), request.params.projectId),
+        });
+      } catch (error) {
+        return jsonResponse.fromError({ reply, error });
+      }
+    },
+  );
+
+  app.put<{ Params: { projectId: string } }>(
+    "/projects/:projectId/readiness",
+    {
+      preHandler: app.requireCompanyScope,
+      schema: {
+        tags: ["Projects"],
+        summary: "Save the operational readiness checklist for a planned Project",
+        security: [{ bearerAuth: [] }],
+        params: {
+          type: "object",
+          required: ["projectId"],
+          properties: { projectId: { type: "string", format: "uuid" } },
+        },
+        body: projectReadinessCommandOpenApiSchema,
+        response: {
+          200: successSchema(projectDetailSchema),
+          400: errorSchema,
+          404: errorSchema,
+          409: errorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const parsedParams = projectParamsSchema.safeParse(request.params);
+      if (!parsedParams.success)
+        return jsonResponse.error({
+          reply,
+          statusCode: 400,
+          code: "VALIDATION_ERROR",
+          message: "Invalid Project params",
+        });
+      const parsedBody = projectReadinessCommandSchema.safeParse(request.body);
+      if (!parsedBody.success)
+        return jsonResponse.error({
+          reply,
+          statusCode: 400,
+          code: "VALIDATION_ERROR",
+          message: "Project readiness command is invalid",
+          details: {
+            fields: parsedBody.error.issues.map((issue) => ({
+              path: issue.path.join("."),
+              code: issue.code,
+            })),
+            resources: [],
+          },
+        });
+      try {
+        return jsonResponse.success({
+          reply,
+          data: await service.saveReadiness(
+            scope(request),
+            parsedParams.data.projectId,
+            parsedBody.data,
+          ),
+        });
+      } catch (error) {
+        return jsonResponse.fromError({ reply, error });
+      }
+    },
+  );
+
+  app.post<{ Params: { projectId: string } }>(
+    "/projects/:projectId/activate",
+    {
+      preHandler: app.requireCompanyScope,
+      schema: {
+        tags: ["Projects"],
+        summary: "Activate a planned Project after readiness validation",
+        security: [{ bearerAuth: [] }],
+        params: {
+          type: "object",
+          required: ["projectId"],
+          properties: { projectId: { type: "string", format: "uuid" } },
+        },
+        response: {
+          200: successSchema(projectDetailSchema),
+          400: errorSchema,
+          404: errorSchema,
+          409: errorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const parsedParams = projectParamsSchema.safeParse(request.params);
+      if (!parsedParams.success)
+        return jsonResponse.error({
+          reply,
+          statusCode: 400,
+          code: "VALIDATION_ERROR",
+          message: "Invalid Project params",
+        });
+      try {
+        return jsonResponse.success({
+          reply,
+          data: await service.activate(scope(request), parsedParams.data.projectId),
         });
       } catch (error) {
         return jsonResponse.fromError({ reply, error });

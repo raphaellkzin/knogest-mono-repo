@@ -3,14 +3,24 @@ import { Search } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import type { ProjectLifecycleStatus } from "../projects.server";
 import { ProjectWizard, type ProjectWizardOptions } from "./project-wizard";
 
 type ProjectRow = {
   id: string;
   name: string;
   contractNumber: string | null;
-  status: "planned";
+  status: ProjectLifecycleStatus;
+  actualStartedAt: string | null;
   createdAt: string;
+};
+
+const statusLabels: Record<ProjectLifecycleStatus, string> = {
+  planned: "Planejada",
+  active: "Ativa",
+  paused: "Pausada",
+  completed: "Concluída",
+  cancelled: "Cancelada",
 };
 
 export function ProjectsRegistry({
@@ -109,7 +119,7 @@ export function ProjectsRegistry({
                     </td>
                     <td className="border-b border-border px-4 py-3.5">
                       <span className="inline-flex rounded-md bg-secondary px-2 py-1 text-xs font-bold text-secondary-foreground">
-                        Planejada
+                        {statusLabels[row.status]}
                       </span>
                     </td>
                   </tr>

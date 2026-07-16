@@ -869,6 +869,51 @@ model ProjectSupplierOfferPrice {
   @@map("project_supplier_offer_prices")
 }
 
+model ProjectProductionMetricTarget {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId String   @map("corporation_id") @db.Uuid
+  companyId     String   @map("company_id") @db.Uuid
+  projectId     String   @map("project_id") @db.Uuid
+  metricCode    String   @map("metric_code") @db.VarChar(32)
+  targetTotal   Decimal  @map("target_total") @db.Decimal(18, 2)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([corporationId, companyId, projectId, metricCode])
+  @@index([corporationId, companyId, projectId])
+  @@map("project_production_metric_targets")
+}
+
+model ProjectCompensationPaymentTerm {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId      String   @map("corporation_id") @db.Uuid
+  companyId          String   @map("company_id") @db.Uuid
+  projectId          String   @map("project_id") @db.Uuid
+  compensationMode   String   @map("compensation_mode") @db.VarChar(16)
+  daysAfterPeriodEnd Int      @map("days_after_period_end")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([corporationId, companyId, projectId, compensationMode])
+  @@index([corporationId, companyId, projectId])
+  @@map("project_compensation_payment_terms")
+}
+
+model ProjectLifecycleEvent {
+  id            String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId String                 @map("corporation_id") @db.Uuid
+  companyId     String                 @map("company_id") @db.Uuid
+  projectId     String                 @map("project_id") @db.Uuid
+  fromStatus    ProjectLifecycleStatus @map("from_status")
+  toStatus      ProjectLifecycleStatus @map("to_status")
+  occurredAt    DateTime               @map("occurred_at") @db.Timestamptz(3)
+  actorUserId   String                 @map("actor_user_id") @db.Uuid
+  reason        String?                @db.VarChar(500)
+
+  @@index([corporationId, companyId, projectId, occurredAt, id])
+  @@map("project_lifecycle_events")
+}
+
 model IdempotencyRecord {
   id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   sessionId     String   @map("session_id") @db.Uuid

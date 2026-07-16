@@ -2,7 +2,10 @@ import { notFound } from "next/navigation";
 import { AppShell } from "@/components/layout/app-shell";
 import { requireCompanyWorkspace } from "@/features/company-selection/company-selection.server";
 import { ProjectDetail } from "@/features/projects/components/project-detail";
-import { getProjectDetail } from "@/features/projects/projects.server";
+import {
+  getProjectDetail,
+  getProjectReadinessOptions,
+} from "@/features/projects/projects.server";
 
 export default async function Page({
   params,
@@ -13,8 +16,12 @@ export default async function Page({
     await requireCompanyWorkspace();
   const { projectId } = await params;
   let project;
+  let options;
   try {
-    project = await getProjectDetail(projectId);
+    [project, options] = await Promise.all([
+      getProjectDetail(projectId),
+      getProjectReadinessOptions(),
+    ]);
   } catch {
     notFound();
   }
@@ -25,7 +32,7 @@ export default async function Page({
       userId={session.user.id}
       currentArea="works"
     >
-      <ProjectDetail project={project} />
+      <ProjectDetail options={options} project={project} />
     </AppShell>
   );
 }
