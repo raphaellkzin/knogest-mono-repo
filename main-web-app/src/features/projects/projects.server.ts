@@ -169,6 +169,9 @@ export type ProjectReadinessOptions = {
   employees: ProjectOption[];
   machines: ProjectOption[];
   jobRoles: ProjectOption[];
+  suppliers: FuelSupplierOption[];
+  suppliedItems: { id: string; name: string; baseUnitId: string }[];
+  measurementUnits: { id: string; code: string; name: string }[];
   supplierOffers: SupplierOfferOption[];
 };
 

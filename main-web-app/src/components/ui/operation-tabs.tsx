@@ -1,10 +1,12 @@
 "use client";
 
+import type { ReactNode } from "react";
+
 import { cn } from "@/lib/utils";
 
 export type OperationTabOption<TValue extends string> = {
   value: TValue;
-  label: string;
+  label: ReactNode;
 };
 
 export function OperationTabs<TValue extends string>({

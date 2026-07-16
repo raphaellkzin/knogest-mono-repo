@@ -12,6 +12,7 @@ import type {
   SupplierSelectorOption,
   SuppliedItemOffersPage,
 } from "./commercial-registry.server";
+import { suppliedItemPayload } from "./commercial-registry-item-payload";
 import { supplierOfferPayload } from "./commercial-registry-offer-payload";
 import { z } from "zod";
 
@@ -85,32 +86,6 @@ function updateSupplierPayload(formData: FormData) {
   };
 }
 
-function suppliedItemPayload(formData: FormData) {
-  const valueUnitQuantity =
-    optionalString(formData, "useValueUnit") &&
-    optionalString(formData, "valueUnitQuantity")
-      ? decimalInputToCanonicalFixed(
-          optionalString(formData, "valueUnitQuantity") ?? "",
-          6,
-          6,
-        )
-      : "1.000000";
-  const basePrice = optionalString(formData, "basePrice")
-    ? decimalInputToCanonicalFixed(
-        optionalString(formData, "basePrice") ?? "",
-        4,
-        4,
-      )
-    : "0.0000";
-  return {
-    name: optionalString(formData, "name") ?? "",
-    baseUnitId: optionalString(formData, "baseUnitId") ?? "",
-    categoryId: optionalString(formData, "categoryId") ?? null,
-    valueUnitQuantity,
-    basePrice,
-  };
-}
-
 function suppliedItemUpdatePayload(formData: FormData) {
   return {
     ...suppliedItemPayload(formData),
@@ -143,13 +118,34 @@ function itemSupplierOfferPayload(formData: FormData) {
   };
 }
 
+function validationFieldSummary(error: ApiClientError) {
+  const fields =
+    error.data &&
+    typeof error.data === "object" &&
+    "details" in error.data &&
+    error.data.details &&
+    typeof error.data.details === "object" &&
+    "fields" in error.data.details &&
+    Array.isArray(error.data.details.fields)
+      ? error.data.details.fields
+      : [];
+  const paths = fields
+    .map((field) =>
+      field && typeof field === "object" && "path" in field
+        ? String(field.path)
+        : "",
+    )
+    .filter(Boolean);
+  return paths.length ? ` Campos: ${paths.join(", ")}.` : "";
+}
+
 function failureMessage(error: unknown) {
   if (error instanceof ApiClientError) {
     if (error.code === "DOCUMENT_ALREADY_EXISTS") {
       return "Já existe um registro ativo com este documento nesta empresa.";
     }
     if (error.code === "VALIDATION_ERROR") {
-      return "Revise os dados informados e tente novamente.";
+      return `Revise os dados informados e tente novamente.${validationFieldSummary(error)}`;
     }
     if (error.code === "REGISTRY_RECORD_UNAVAILABLE") {
       return "Este registro já não está disponível para uso operacional.";

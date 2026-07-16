@@ -3,6 +3,7 @@ import {
   formatProjectAddress,
   projectCommandSchema,
   projectIdempotencyKeySchema,
+  projectReadinessCommandSchema,
   type ProjectCommand,
 } from "./projects.dto";
 
@@ -71,6 +72,36 @@ describe("Projects DTO", () => {
         ],
       }).success,
     ).toBe(false);
+  });
+
+  it("accepts readiness offers from existing, project-only and company catalog sources", () => {
+    expect(
+      projectReadinessCommandSchema.safeParse({
+        fuelOffers: [
+          {
+            mode: "existing",
+            sourceOfferId: "00000000-0000-4000-8000-000000000701",
+            price: "7.5000",
+          },
+          {
+            mode: "projectOnly",
+            supplierId: "00000000-0000-4000-8000-000000000702",
+            itemId: "00000000-0000-4000-8000-000000000703",
+            purchaseUnitId: "00000000-0000-4000-8000-000000000704",
+            conversionToBase: "1.000000",
+            price: "7.7000",
+          },
+          {
+            mode: "companyCatalog",
+            supplierId: "00000000-0000-4000-8000-000000000705",
+            itemId: "00000000-0000-4000-8000-000000000706",
+            purchaseUnitId: "00000000-0000-4000-8000-000000000707",
+            conversionToBase: "1.000000",
+            price: "7.9000",
+          },
+        ],
+      }).success,
+    ).toBe(true);
   });
 
   it("accepts addresses without numbers", () => {

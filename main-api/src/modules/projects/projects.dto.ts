@@ -399,12 +399,29 @@ export const projectListQuerySchema = z
   })
   .strict();
 
-const projectReadinessOfferSchema = z
+const projectReadinessExistingOfferSchema = z
   .object({
+    mode: z.literal("existing").optional(),
     sourceOfferId: uuid,
     price: decimal(4, 14, true),
   })
   .strict();
+
+const projectReadinessNewOfferSchema = z
+  .object({
+    mode: z.enum(["projectOnly", "companyCatalog"]),
+    supplierId: uuid,
+    itemId: uuid,
+    purchaseUnitId: uuid,
+    conversionToBase: decimal(6, 12, true),
+    price: decimal(4, 14, true),
+  })
+  .strict();
+
+const projectReadinessOfferSchema = z.union([
+  projectReadinessExistingOfferSchema,
+  projectReadinessNewOfferSchema,
+]);
 
 const projectEmployeeReadinessSchema = z
   .object({
@@ -519,10 +536,21 @@ export const projectReadinessCommandSchema = z
         message: "Duplicate production metric",
       });
     for (const [path, ids] of [
-      ["fuelOffers", (command.fuelOffers ?? []).map((item) => item.sourceOfferId)],
+      [
+        "fuelOffers",
+        (command.fuelOffers ?? []).map((item) =>
+          "sourceOfferId" in item
+            ? item.sourceOfferId
+            : `${item.mode}:${item.supplierId}:${item.itemId}:${item.purchaseUnitId}`,
+        ),
+      ],
       [
         "materialOffers",
-        (command.materialOffers ?? []).map((item) => item.sourceOfferId),
+        (command.materialOffers ?? []).map((item) =>
+          "sourceOfferId" in item
+            ? item.sourceOfferId
+            : `${item.mode}:${item.supplierId}:${item.itemId}:${item.purchaseUnitId}`,
+        ),
       ],
       [
         "employeeAllocations",

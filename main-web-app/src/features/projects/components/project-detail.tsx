@@ -26,7 +26,9 @@ import { useForm, useWatch } from "react-hook-form";
 
 import { OperationsModal } from "@/components/ui/operations-modal";
 import { Button } from "@/components/ui/button";
+import { FormSection } from "@/components/ui/form-section";
 import { Input } from "@/components/ui/input";
+import { OperationTabs } from "@/components/ui/operation-tabs";
 import {
   canonicalDecimalToBrazilian,
   decimalInputToCanonical,
@@ -106,9 +108,29 @@ const statusLabels: Record<ProjectDetailSnapshot["status"], string> = {
 
 type OfferDraft = {
   key: string;
+  mode: "existing" | "new";
   sourceOfferId: string;
+  supplierId: string;
+  itemId: string;
+  purchaseUnitId: string;
+  conversionToBase: string;
   price: string;
+  saveToCatalog: boolean;
 };
+
+type ProjectTab =
+  | "planning"
+  | "fuel"
+  | "accountability"
+  | "team"
+  | "machines"
+  | "payments"
+  | "materials";
+
+type ReadinessTone = "ready" | "pending" | "dirty" | "neutral";
+
+const controlClass =
+  "min-h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-medium text-foreground shadow-xs outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50";
 
 function formatDate(value: string | null) {
   if (!value) return "Não informado";
@@ -154,8 +176,14 @@ function metricInitialState(project: ProjectDetailSnapshot) {
 function offerInitialState(offers: ProjectOfferSnapshot[]): OfferDraft[] {
   return offers.map((offer) => ({
     key: offer.id,
+    mode: offer.sourceOfferId ? "existing" : "new",
     sourceOfferId: offer.sourceOfferId ?? "",
+    supplierId: offer.supplier?.id ?? "",
+    itemId: offer.item?.id ?? "",
+    purchaseUnitId: offer.purchaseUnit?.id ?? "",
+    conversionToBase: canonicalDecimalToBrazilian(offer.conversionToBase, 6),
     price: canonicalDecimalToBrazilian(offer.price, 4),
+    saveToCatalog: Boolean(offer.sourceOfferId),
   }));
 }
 
@@ -233,23 +261,43 @@ function Section({
   children,
   description,
   icon: Icon,
+  status,
   title,
 }: {
   action?: React.ReactNode;
   children: React.ReactNode;
   description?: string;
   icon: typeof HardHat;
+  status?: { label: string; tone: ReadinessTone };
   title: string;
 }) {
   return (
-    <section className="rounded-lg border border-border bg-card">
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-4">
+    <section className="overflow-hidden rounded-lg border border-border bg-card">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border bg-secondary/35 px-4 py-4">
         <div className="flex min-w-0 items-start gap-3">
           <span className="mt-0.5 inline-flex size-9 shrink-0 items-center justify-center rounded-md bg-secondary text-secondary-foreground">
             <Icon className="size-4" />
           </span>
           <div className="min-w-0">
-            <h2 className="text-base font-bold">{title}</h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-base font-bold">{title}</h2>
+              {status && (
+                <span
+                  className={cn(
+                    "inline-flex min-h-6 items-center rounded-md px-2 text-xs font-bold",
+                    status.tone === "ready" &&
+                      "bg-emerald-100 text-emerald-900",
+                    status.tone === "pending" &&
+                      "bg-amber-100 text-amber-950",
+                    status.tone === "dirty" && "bg-primary/10 text-primary",
+                    status.tone === "neutral" &&
+                      "bg-background text-muted-foreground",
+                  )}
+                >
+                  {status.label}
+                </span>
+              )}
+            </div>
             {description && (
               <p className="mt-1 text-sm leading-5 text-muted-foreground">
                 {description}
@@ -275,126 +323,390 @@ function SummaryItem({ label, value }: { label: string; value: string }) {
   );
 }
 
+function DetailRow({
+  label,
+  value,
+}: {
+  label: string;
+  value: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-md border border-border bg-background px-3 py-2.5">
+      <dt className="text-xs font-bold text-muted-foreground">{label}</dt>
+      <dd className="mt-1 min-w-0 break-words text-sm font-semibold">
+        {value}
+      </dd>
+    </div>
+  );
+}
+
+function EmptyBlock({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="rounded-md border border-dashed border-border bg-background px-3 py-5 text-center text-sm font-semibold text-muted-foreground">
+      {children}
+    </p>
+  );
+}
+
+function SelectableRow({
+  checked,
+  children,
+  onChange,
+}: {
+  checked: boolean;
+  children: React.ReactNode;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label
+      className={cn(
+        "flex min-h-11 cursor-pointer items-center gap-3 rounded-md border border-border bg-background px-3 py-2 text-sm font-semibold transition-colors",
+        checked && "border-primary bg-primary/5 text-foreground",
+      )}
+    >
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+        className="size-4 shrink-0 accent-primary"
+      />
+      <span className="min-w-0 flex-1">{children}</span>
+    </label>
+  );
+}
+
+function TabLabel({
+  label,
+  status,
+}: {
+  label: string;
+  status: { label: string; tone: ReadinessTone };
+}) {
+  return (
+    <span className="flex items-center gap-2">
+      <span>{label}</span>
+      <span
+        className={cn(
+          "rounded-sm px-1.5 py-0.5 text-[11px] font-bold leading-4",
+          status.tone === "ready" && "bg-emerald-100 text-emerald-900",
+          status.tone === "pending" && "bg-amber-100 text-amber-950",
+          status.tone === "dirty" && "bg-primary/10 text-primary",
+          status.tone === "neutral" && "bg-background text-muted-foreground",
+        )}
+      >
+        {status.label}
+      </span>
+    </span>
+  );
+}
+
 function optionLabel(option: SupplierOfferOption) {
   return `${option.item.name} · ${option.supplier.name} · ${option.purchaseUnit.code}`;
+}
+
+function defaultUnitId(
+  units: ProjectReadinessOptions["measurementUnits"],
+  item?: ProjectReadinessOptions["suppliedItems"][number],
+) {
+  if (item?.baseUnitId) return item.baseUnitId;
+  const liter = units.find((unit) => unit.code.toLocaleLowerCase("pt-BR") === "l");
+  return liter?.id ?? units[0]?.id ?? "";
 }
 
 function OfferRows({
   drafts,
   emptyText,
+  kind,
   options,
+  suppliers,
+  suppliedItems,
+  measurementUnits,
   setDrafts,
 }: {
   drafts: OfferDraft[];
   emptyText: string;
+  kind: "fuel" | "material";
   options: SupplierOfferOption[];
+  suppliers: ProjectReadinessOptions["suppliers"];
+  suppliedItems: ProjectReadinessOptions["suppliedItems"];
+  measurementUnits: ProjectReadinessOptions["measurementUnits"];
   setDrafts: React.Dispatch<React.SetStateAction<OfferDraft[]>>;
 }) {
+  const newLabel = kind === "fuel" ? "Novo combustível" : "Novo item";
   return (
     <div className="grid gap-3">
       {drafts.map((draft) => {
         const selected = options.find(
           (option) => option.id === draft.sourceOfferId,
         );
+        const selectedItem = suppliedItems.find((item) => item.id === draft.itemId);
         return (
           <div
             key={draft.key}
-            className="grid gap-3 rounded-md border border-border bg-background p-3 md:grid-cols-[minmax(0,1fr)_9rem_auto] md:items-end"
+            className="grid gap-3 rounded-md border border-border bg-background p-3"
           >
-            <label className="grid gap-1.5 text-sm font-semibold">
-              <span>Oferta do fornecedor</span>
-              <select
-                className="min-h-11 rounded-md border border-input bg-background px-3 py-2 text-sm font-medium outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
-                value={draft.sourceOfferId}
-                onChange={(event) => {
-                  const nextOffer = options.find(
-                    (option) => option.id === event.target.value,
-                  );
-                  setDrafts((current) =>
-                    current.map((item) =>
-                      item.key === draft.key
-                        ? {
-                            ...item,
-                            sourceOfferId: event.target.value,
-                            price: nextOffer
-                              ? canonicalDecimalToBrazilian(
-                                  nextOffer.currentPrice.price,
-                                  4,
-                                )
-                              : item.price,
-                          }
-                        : item,
-                    ),
-                  );
-                }}
-              >
-                <option value="">Selecione</option>
-                {options.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {optionLabel(option)} ·{" "}
-                    {formatMoney(option.currentPrice.price, 4)}
-                  </option>
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="inline-flex rounded-md border border-border bg-secondary/50 p-1">
+                {(["existing", "new"] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    className={cn(
+                      "min-h-9 rounded-sm px-3 text-sm font-bold transition-colors",
+                      draft.mode === mode
+                        ? "bg-background text-foreground shadow-xs"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                    onClick={() =>
+                      setDrafts((current) =>
+                        current.map((item) =>
+                          item.key === draft.key
+                            ? {
+                                ...item,
+                                mode,
+                                sourceOfferId: mode === "new" ? "" : item.sourceOfferId,
+                              }
+                            : item,
+                        ),
+                      )
+                    }
+                  >
+                    {mode === "existing" ? "Oferta existente" : newLabel}
+                  </button>
                 ))}
-              </select>
-              {selected && (
-                <span className="text-xs font-medium text-muted-foreground">
-                  Conversão {selected.conversionToBase} para unidade base.
-                </span>
-              )}
-            </label>
-            <label className="grid gap-1.5 text-sm font-semibold">
-              <span>Preço</span>
-              <Input
-                className="h-11"
-                inputMode="decimal"
-                value={draft.price}
-                onChange={(event) =>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon-lg"
+                aria-label="Remover oferta"
+                onClick={() =>
                   setDrafts((current) =>
-                    current.map((item) =>
-                      item.key === draft.key
-                        ? {
-                            ...item,
-                            price: formatBrazilianDecimalInput(
-                              event.target.value,
-                              4,
-                            ),
-                          }
-                        : item,
-                    ),
+                    current.filter((item) => item.key !== draft.key),
                   )
                 }
-              />
-            </label>
-            <Button
-              type="button"
-              variant="outline"
-              size="icon-lg"
-              aria-label="Remover oferta"
-              onClick={() =>
-                setDrafts((current) =>
-                  current.filter((item) => item.key !== draft.key),
-                )
-              }
-            >
-              <Trash2 className="size-4" />
-            </Button>
+              >
+                <Trash2 className="size-4" />
+              </Button>
+            </div>
+
+            {draft.mode === "existing" ? (
+              <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_9rem] md:items-end">
+                <label className="grid gap-1.5 text-sm font-semibold">
+                  <span>Oferta do fornecedor</span>
+                  <select
+                    className={controlClass}
+                    value={draft.sourceOfferId}
+                    onChange={(event) => {
+                      const nextOffer = options.find(
+                        (option) => option.id === event.target.value,
+                      );
+                      setDrafts((current) =>
+                        current.map((item) =>
+                          item.key === draft.key
+                            ? {
+                                ...item,
+                                sourceOfferId: event.target.value,
+                                supplierId: nextOffer?.supplier.id ?? item.supplierId,
+                                itemId: nextOffer?.item.id ?? item.itemId,
+                                purchaseUnitId:
+                                  nextOffer?.purchaseUnit.id ?? item.purchaseUnitId,
+                                conversionToBase: nextOffer
+                                  ? canonicalDecimalToBrazilian(
+                                      nextOffer.conversionToBase,
+                                      6,
+                                    )
+                                  : item.conversionToBase,
+                                price: nextOffer
+                                  ? canonicalDecimalToBrazilian(
+                                      nextOffer.currentPrice.price,
+                                      4,
+                                    )
+                                  : item.price,
+                              }
+                            : item,
+                        ),
+                      );
+                    }}
+                  >
+                    <option value="">Selecione</option>
+                    {options.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {optionLabel(option)} ·{" "}
+                        {formatMoney(option.currentPrice.price, 4)}
+                      </option>
+                    ))}
+                  </select>
+                  {selected && (
+                    <span className="text-xs font-medium text-muted-foreground">
+                      Conversão {selected.conversionToBase} para unidade base.
+                    </span>
+                  )}
+                </label>
+                <OfferPriceInput draft={draft} setDrafts={setDrafts} />
+              </div>
+            ) : (
+              <div className="grid gap-3">
+                <div className="grid gap-3 md:grid-cols-2">
+                  <label className="grid gap-1.5 text-sm font-semibold">
+                    <span>Fornecedor</span>
+                    <select
+                      className={controlClass}
+                      value={draft.supplierId}
+                      onChange={(event) =>
+                        setDrafts((current) =>
+                          current.map((item) =>
+                            item.key === draft.key
+                              ? { ...item, supplierId: event.target.value }
+                              : item,
+                          ),
+                        )
+                      }
+                    >
+                      <option value="">Selecione</option>
+                      {suppliers.map((supplier) => (
+                        <option key={supplier.id} value={supplier.id}>
+                          {supplier.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="grid gap-1.5 text-sm font-semibold">
+                    <span>Item</span>
+                    <select
+                      className={controlClass}
+                      value={draft.itemId}
+                      onChange={(event) => {
+                        const nextItem = suppliedItems.find(
+                          (item) => item.id === event.target.value,
+                        );
+                        setDrafts((current) =>
+                          current.map((item) =>
+                            item.key === draft.key
+                              ? {
+                                  ...item,
+                                  itemId: event.target.value,
+                                  purchaseUnitId: defaultUnitId(
+                                    measurementUnits,
+                                    nextItem,
+                                  ),
+                                }
+                              : item,
+                          ),
+                        );
+                      }}
+                    >
+                      <option value="">Selecione</option>
+                      {suppliedItems.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_9rem_9rem] md:items-end">
+                  <label className="grid gap-1.5 text-sm font-semibold">
+                    <span>Unidade</span>
+                    <select
+                      className={controlClass}
+                      value={draft.purchaseUnitId}
+                      onChange={(event) =>
+                        setDrafts((current) =>
+                          current.map((item) =>
+                            item.key === draft.key
+                              ? { ...item, purchaseUnitId: event.target.value }
+                              : item,
+                          ),
+                        )
+                      }
+                    >
+                      <option value="">Selecione</option>
+                      {measurementUnits.map((unit) => (
+                        <option key={unit.id} value={unit.id}>
+                          {unit.code} - {unit.name}
+                        </option>
+                      ))}
+                    </select>
+                    {selectedItem && (
+                      <span className="text-xs font-medium text-muted-foreground">
+                        Unidade base do item usada como padrão.
+                      </span>
+                    )}
+                  </label>
+                  <label className="grid gap-1.5 text-sm font-semibold">
+                    <span>Conversão</span>
+                    <Input
+                      className="h-11"
+                      inputMode="decimal"
+                      value={draft.conversionToBase}
+                      onChange={(event) =>
+                        setDrafts((current) =>
+                          current.map((item) =>
+                            item.key === draft.key
+                              ? {
+                                  ...item,
+                                  conversionToBase: formatBrazilianDecimalInput(
+                                    event.target.value,
+                                    6,
+                                  ),
+                                }
+                              : item,
+                          ),
+                        )
+                      }
+                    />
+                  </label>
+                  <OfferPriceInput draft={draft} setDrafts={setDrafts} />
+                </div>
+                <label className="flex min-h-11 items-center gap-3 rounded-md border border-border bg-secondary/40 px-3 text-sm font-semibold">
+                  <input
+                    type="checkbox"
+                    checked={draft.saveToCatalog}
+                    onChange={(event) =>
+                      setDrafts((current) =>
+                        current.map((item) =>
+                          item.key === draft.key
+                            ? { ...item, saveToCatalog: event.target.checked }
+                            : item,
+                        ),
+                      )
+                    }
+                    className="size-4 accent-primary"
+                  />
+                  Refletir no catálogo da empresa
+                </label>
+              </div>
+            )}
           </div>
         );
       })}
       {drafts.length === 0 && (
-        <p className="rounded-md border border-dashed border-border px-3 py-6 text-center text-sm font-medium text-muted-foreground">
-          {emptyText}
-        </p>
+        <EmptyBlock>{emptyText}</EmptyBlock>
       )}
       <Button
         type="button"
         variant="outline"
         className="min-h-10 justify-self-start"
-        disabled={options.length === 0}
+        disabled={
+          suppliers.length === 0 ||
+          suppliedItems.length === 0 ||
+          measurementUnits.length === 0
+        }
         onClick={() =>
           setDrafts((current) => [
             ...current,
-            { key: crypto.randomUUID(), sourceOfferId: "", price: "" },
+            {
+              key: crypto.randomUUID(),
+              mode: options.length > 0 ? "existing" : "new",
+              sourceOfferId: "",
+              supplierId: "",
+              itemId: "",
+              purchaseUnitId: defaultUnitId(measurementUnits),
+              conversionToBase: "1,000000",
+              price: "",
+              saveToCatalog: false,
+            },
           ])
         }
       >
@@ -402,6 +714,37 @@ function OfferRows({
         Adicionar oferta
       </Button>
     </div>
+  );
+}
+
+function OfferPriceInput({
+  draft,
+  setDrafts,
+}: {
+  draft: OfferDraft;
+  setDrafts: React.Dispatch<React.SetStateAction<OfferDraft[]>>;
+}) {
+  return (
+    <label className="grid gap-1.5 text-sm font-semibold">
+      <span>Preço</span>
+      <Input
+        className="h-11"
+        inputMode="decimal"
+        value={draft.price}
+        onChange={(event) =>
+          setDrafts((current) =>
+            current.map((item) =>
+              item.key === draft.key
+                ? {
+                    ...item,
+                    price: formatBrazilianDecimalInput(event.target.value, 4),
+                  }
+                : item,
+            ),
+          )
+        }
+      />
+    </label>
   );
 }
 
@@ -440,8 +783,15 @@ export function ProjectDetail({
   const [fuelDirty, setFuelDirty] = React.useState(false);
   const [materialDirty, setMaterialDirty] = React.useState(false);
   const [paymentDirty, setPaymentDirty] = React.useState(false);
+  const [activeTab, setActiveTab] = React.useState<ProjectTab>("planning");
   const [openModal, setOpenModal] = React.useState<
-    "team" | "machines" | "fuel" | "materials" | "payments" | null
+    | "accountability"
+    | "team"
+    | "machines"
+    | "fuel"
+    | "materials"
+    | "payments"
+    | null
   >(null);
   const readinessForm = useForm<ProjectCommand>({
     defaultValues: projectToCommand(project),
@@ -534,6 +884,108 @@ export function ProjectDetail({
     readinessForm.formState.isDirty;
   const hasKnownBlockers =
     apiBlockers.length > 0 || !project.readiness.canActivate;
+  const accountabilityReady = Boolean(
+    project.client &&
+      project.manager &&
+      project.technicalResponsibilities.length > 0,
+  );
+  const planningReady = Boolean(
+    project.baseline?.plannedEndDate && project.productionMetricTargets.length,
+  );
+  const teamReady = project.employeeAllocations.length > 0;
+  const machinesReady = project.machineAllocations.length > 0;
+  const paymentsReady =
+    project.compensationPaymentTerms.length > 0 &&
+    project.compensationPaymentTerms.length === paymentModes.length;
+  const fuelReady = project.fuelOffers.length > 0;
+  const planningStatus = planningDirty
+    ? ({ label: "Alterado", tone: "dirty" } as const)
+    : planningReady
+      ? ({ label: "OK", tone: "ready" } as const)
+      : ({ label: "Pendente", tone: "pending" } as const);
+  const metricsStatus = planningDirty
+    ? ({ label: "Alterado", tone: "dirty" } as const)
+    : project.productionMetricTargets.length
+      ? ({ label: "OK", tone: "ready" } as const)
+      : ({ label: "Pendente", tone: "pending" } as const);
+  const fuelStatus = fuelDirty
+    ? ({ label: "Alterado", tone: "dirty" } as const)
+    : fuelReady
+      ? ({ label: "OK", tone: "ready" } as const)
+      : ({ label: "Pendente", tone: "pending" } as const);
+  const accountabilityStatus =
+    readinessForm.formState.dirtyFields.clientId ||
+    readinessForm.formState.dirtyFields.managerEmploymentId ||
+    readinessForm.formState.dirtyFields.technicalResponsibilityEmploymentIds
+      ? ({ label: "Alterado", tone: "dirty" } as const)
+      : accountabilityReady
+        ? ({ label: "OK", tone: "ready" } as const)
+        : ({ label: "Pendente", tone: "pending" } as const);
+  const teamStatus = readinessForm.formState.dirtyFields
+    .initialEmployeeAllocations
+    ? ({ label: "Alterado", tone: "dirty" } as const)
+    : teamReady
+      ? ({ label: "OK", tone: "ready" } as const)
+      : ({ label: "Pendente", tone: "pending" } as const);
+  const machinesStatus = readinessForm.formState.dirtyFields
+    .initialMachineAllocations
+    ? ({ label: "Alterado", tone: "dirty" } as const)
+    : machinesReady
+      ? ({ label: "OK", tone: "ready" } as const)
+      : ({ label: "Pendente", tone: "pending" } as const);
+  const paymentsStatus = paymentDirty
+    ? ({ label: "Reconfirmar", tone: "dirty" } as const)
+    : paymentsReady
+      ? ({ label: "OK", tone: "ready" } as const)
+      : ({ label: "Pendente", tone: "pending" } as const);
+  const materialsStatus = materialDirty
+    ? ({ label: "Alterado", tone: "dirty" } as const)
+    : project.supplierOffers.length
+      ? ({ label: "Configurado", tone: "neutral" } as const)
+      : ({ label: "Opcional", tone: "neutral" } as const);
+  const tabs = React.useMemo(
+    () => [
+      {
+        value: "planning" as const,
+        label: <TabLabel label="Planejamento" status={planningStatus} />,
+      },
+      {
+        value: "fuel" as const,
+        label: <TabLabel label="Combustível" status={fuelStatus} />,
+      },
+      {
+        value: "accountability" as const,
+        label: (
+          <TabLabel label="Responsáveis" status={accountabilityStatus} />
+        ),
+      },
+      {
+        value: "team" as const,
+        label: <TabLabel label="Equipe" status={teamStatus} />,
+      },
+      {
+        value: "machines" as const,
+        label: <TabLabel label="Máquinas" status={machinesStatus} />,
+      },
+      {
+        value: "payments" as const,
+        label: <TabLabel label="Pagamentos" status={paymentsStatus} />,
+      },
+      {
+        value: "materials" as const,
+        label: <TabLabel label="Itens" status={materialsStatus} />,
+      },
+    ],
+    [
+      accountabilityStatus,
+      fuelStatus,
+      machinesStatus,
+      materialsStatus,
+      paymentsStatus,
+      planningStatus,
+      teamStatus,
+    ],
+  );
 
   const savePatch = (
     command: ProjectReadinessActionInput,
@@ -590,16 +1042,43 @@ export function ProjectDetail({
   };
 
   const buildOfferCommand = (drafts: OfferDraft[]) => {
-    const command = drafts.map((draft) => ({
-      sourceOfferId: draft.sourceOfferId,
-      price: decimalInputToCanonical(draft.price, 4),
-    }));
-    const hasIncompleteOffer = command.some(
-      (draft) =>
-        !draft.sourceOfferId || !draft.price || draft.price === "0.0000",
+    const command = drafts.map((draft) => {
+      const price = decimalInputToCanonical(draft.price, 4);
+      if (draft.mode === "existing") {
+        return {
+          mode: "existing" as const,
+          sourceOfferId: draft.sourceOfferId,
+          price,
+        };
+      }
+      return {
+        mode: draft.saveToCatalog
+          ? ("companyCatalog" as const)
+          : ("projectOnly" as const),
+        supplierId: draft.supplierId,
+        itemId: draft.itemId,
+        purchaseUnitId: draft.purchaseUnitId,
+        conversionToBase: decimalInputToCanonical(draft.conversionToBase, 6),
+        price,
+      };
+    });
+    const hasIncompleteOffer = command.some((draft) => {
+      if (!draft.price || draft.price === "0.0000") return true;
+      if (draft.mode === "existing") return !draft.sourceOfferId;
+      return (
+        !draft.supplierId ||
+        !draft.itemId ||
+        !draft.purchaseUnitId ||
+        !draft.conversionToBase ||
+        draft.conversionToBase === "0.000000"
+      );
+    });
+    const offerKeys = command.map((draft) =>
+      draft.mode === "existing"
+        ? `existing:${draft.sourceOfferId}`
+        : `${draft.mode}:${draft.supplierId}:${draft.itemId}:${draft.purchaseUnitId}`,
     );
-    const offerIds = command.map((draft) => draft.sourceOfferId);
-    const hasDuplicateOffer = new Set(offerIds).size !== offerIds.length;
+    const hasDuplicateOffer = new Set(offerKeys).size !== offerKeys.length;
     if (hasIncompleteOffer || hasDuplicateOffer) return null;
     return command;
   };
@@ -638,7 +1117,7 @@ export function ProjectDetail({
     );
   };
 
-  const saveTeam = () => {
+  const saveAccountability = () => {
     const values = readinessForm.getValues();
     if (
       !values.clientId ||
@@ -659,9 +1138,22 @@ export function ProjectDetail({
           technicalResponsibilityEmploymentIds:
             values.technicalResponsibilityEmploymentIds,
         },
+      },
+      "Responsáveis da obra salvos.",
+      () => {
+        readinessForm.reset(values);
+        setOpenModal(null);
+      },
+    );
+  };
+
+  const saveTeam = () => {
+    const values = readinessForm.getValues();
+    savePatch(
+      {
         employeeAllocations: values.initialEmployeeAllocations,
       },
-      "Equipe e responsáveis salvos.",
+      "Equipe operacional salva.",
       () => {
         readinessForm.reset(values);
         setPaymentTerms({});
@@ -779,8 +1271,8 @@ export function ProjectDetail({
         Voltar para obras
       </Link>
 
-      <header className="rounded-lg border border-border bg-card px-4 py-4">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+      <header className="overflow-hidden rounded-lg border border-border bg-card">
+        <div className="flex flex-col gap-4 border-b border-border bg-secondary/40 px-4 py-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <span
@@ -798,6 +1290,20 @@ export function ProjectDetail({
                   Alterações não salvas
                 </span>
               )}
+              {isEditable && (
+                <span
+                  className={cn(
+                    "inline-flex min-h-8 items-center rounded-md px-2.5 text-xs font-bold",
+                    project.readiness.canActivate
+                      ? "bg-emerald-100 text-emerald-900"
+                      : "bg-amber-100 text-amber-950",
+                  )}
+                >
+                  {project.readiness.canActivate
+                    ? "Pronta para iniciar"
+                    : "Checklist pendente"}
+                </span>
+              )}
             </div>
             <h1 className="mt-3 text-2xl font-bold tracking-normal">
               {project.name}
@@ -807,23 +1313,28 @@ export function ProjectDetail({
             </p>
           </div>
           {isEditable && (
-            <Button
-              type="button"
-              className="min-h-10"
-              disabled={
-                isPending ||
-                hasKnownBlockers ||
-                hasUnsavedChanges
-              }
-              onClick={activateProject}
-            >
-              <Play className="size-4" />
-              Iniciar obra
-            </Button>
+            <div className="grid gap-2 xl:min-w-56">
+              <Button
+                type="button"
+                className="min-h-11 justify-center"
+                disabled={isPending || hasKnownBlockers || hasUnsavedChanges}
+                onClick={activateProject}
+              >
+                <Play className="size-4" />
+                Iniciar obra
+              </Button>
+              <p className="text-xs font-semibold leading-5 text-muted-foreground">
+                {hasUnsavedChanges
+                  ? "Salve as alterações abertas antes de iniciar."
+                  : hasKnownBlockers
+                    ? "Resolva as pendências do checklist para liberar."
+                    : "Tudo pronto para ativar a obra."}
+              </p>
+            </div>
           )}
         </div>
 
-        <dl className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <dl className="grid gap-3 px-4 py-4 sm:grid-cols-2 xl:grid-cols-4">
           <SummaryItem
             label="Contrato"
             value={project.contractNumber ?? "Não informado"}
@@ -874,12 +1385,25 @@ export function ProjectDetail({
         </section>
       )}
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.62fr)]">
-        <div className="space-y-4">
+      <section className="overflow-hidden rounded-lg border border-border bg-card">
+        <div className="border-b border-border bg-secondary/40 px-3 py-3">
+          <div className="overflow-x-auto">
+            <OperationTabs<ProjectTab>
+              className="min-w-max"
+              value={activeTab}
+              tabs={tabs}
+              onValueChange={setActiveTab}
+            />
+          </div>
+        </div>
+        <div className="p-4">
+          {activeTab === "planning" && (
+            <div className="space-y-4">
           <Section
             icon={CalendarDays}
             title="Datas planejadas"
             description="A data final é obrigatória para liberar o início operacional."
+            status={planningStatus}
             action={
               isEditable && (
                 <Button
@@ -924,6 +1448,7 @@ export function ProjectDetail({
             icon={Gauge}
             title="Métricas de produção"
             description="Selecione as métricas usadas nesta obra e informe a meta total."
+            status={metricsStatus}
           >
             <div className="grid gap-3">
               {metrics.map((metric, index) => (
@@ -989,11 +1514,15 @@ export function ProjectDetail({
               ))}
             </div>
           </Section>
+            </div>
+          )}
 
+          {activeTab === "fuel" && (
           <Section
             icon={Fuel}
             title="Combustível"
             description="Selecione ofertas cadastradas no fornecedor e confirme o preço da obra."
+            status={fuelStatus}
             action={
               isEditable && (
                 <Button
@@ -1032,13 +1561,57 @@ export function ProjectDetail({
               )}
             </div>
           </Section>
-        </div>
+          )}
 
-        <aside className="space-y-4">
+          {activeTab === "accountability" && (
+          <Section
+            icon={HardHat}
+            title="Responsáveis da obra"
+            description="Cliente, gestor e responsabilidade técnica."
+            status={accountabilityStatus}
+            action={
+              isEditable && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="min-h-10"
+                  onClick={() => setOpenModal("accountability")}
+                >
+                  <Pencil className="size-4" />
+                  Editar
+                </Button>
+              )
+            }
+          >
+            <dl className="grid gap-2">
+              <DetailRow
+                label="Cliente"
+                value={project.client?.name ?? "Não informado"}
+              />
+              <DetailRow
+                label="Gestor"
+                value={project.manager?.name ?? "Não informado"}
+              />
+              <DetailRow
+                label="Responsáveis técnicos"
+                value={
+                  project.technicalResponsibilities.length
+                    ? project.technicalResponsibilities
+                        .map((person) => person.name)
+                        .join(", ")
+                    : "Não informado"
+                }
+              />
+            </dl>
+          </Section>
+          )}
+
+          {activeTab === "team" && (
           <Section
             icon={UsersRound}
-            title="Equipe e responsáveis"
-            description="Cliente, gestores, responsáveis técnicos e equipe operacional."
+            title="Equipe operacional"
+            description="Funcionários mobilizados com função, jornada e remuneração."
+            status={teamStatus}
             action={
               isEditable && (
                 <Button
@@ -1053,29 +1626,40 @@ export function ProjectDetail({
               )
             }
           >
-            <div className="space-y-3 text-sm">
-              <p>
-                <span className="font-bold">Gestor: </span>
-                {project.manager?.name ?? "Não informado"}
-              </p>
-              <p>
-                <span className="font-bold">Responsáveis técnicos: </span>
-                {project.technicalResponsibilities.length
-                  ? project.technicalResponsibilities
-                      .map((person) => person.name)
-                      .join(", ")
-                  : "Não informado"}
-              </p>
-              <p className="font-bold">
-                {project.employeeAllocations.length} funcionário(s) alocado(s)
-              </p>
-            </div>
+            {project.employeeAllocations.length ? (
+              <div className="grid gap-2 text-sm">
+                {project.employeeAllocations.slice(0, 4).map((allocation) => (
+                  <div
+                    key={allocation.id}
+                    className="rounded-md border border-border bg-background px-3 py-2"
+                  >
+                    <p className="font-bold">
+                      {allocation.employment?.name ?? "Funcionário"}
+                    </p>
+                    <p className="text-muted-foreground">
+                      {allocation.jobRole} ·{" "}
+                      {compensationLabels[allocation.compensationMode]}
+                    </p>
+                  </div>
+                ))}
+                {project.employeeAllocations.length > 4 && (
+                  <p className="text-sm font-semibold text-muted-foreground">
+                    +{project.employeeAllocations.length - 4} funcionário(s)
+                  </p>
+                )}
+              </div>
+            ) : (
+              <EmptyBlock>Nenhum funcionário mobilizado.</EmptyBlock>
+            )}
           </Section>
+          )}
 
+          {activeTab === "machines" && (
           <Section
             icon={Truck}
             title="Máquinas e operadores"
             description="Cada máquina precisa de operador presente na equipe."
+            status={machinesStatus}
             action={
               isEditable && (
                 <Button
@@ -1106,17 +1690,18 @@ export function ProjectDetail({
                   </div>
                 ))
               ) : (
-                <p className="text-muted-foreground">
-                  Nenhuma máquina alocada.
-                </p>
+                <EmptyBlock>Nenhuma máquina alocada.</EmptyBlock>
               )}
             </div>
           </Section>
+          )}
 
+          {activeTab === "payments" && (
           <Section
             icon={WalletCards}
             title="Pagamento por modalidade"
             description="Dias após o fechamento do período de cada modalidade presente."
+            status={paymentsStatus}
             action={
               isEditable && (
                 <Button
@@ -1146,16 +1731,17 @@ export function ProjectDetail({
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground">
-                Nenhum prazo de pagamento confirmado.
-              </p>
+              <EmptyBlock>Nenhum prazo de pagamento confirmado.</EmptyBlock>
             )}
           </Section>
+          )}
 
+          {activeTab === "materials" && (
           <Section
             icon={PackageCheck}
             title="Itens e fornecedores"
             description="Ofertas não-combustível vinculadas à obra."
+            status={materialsStatus}
             action={
               isEditable && (
                 <Button
@@ -1188,14 +1774,13 @@ export function ProjectDetail({
                   </div>
                 ))
               ) : (
-                <p className="text-muted-foreground">
-                  Nenhum item adicional configurado.
-                </p>
+                <EmptyBlock>Nenhum item adicional configurado.</EmptyBlock>
               )}
             </div>
           </Section>
-        </aside>
-      </div>
+          )}
+        </div>
+      </section>
 
       <OperationsModal
         icon={Fuel}
@@ -1225,7 +1810,11 @@ export function ProjectDetail({
         <OfferRows
           drafts={fuelDrafts}
           emptyText="Nenhuma oferta de combustível selecionada."
+          kind="fuel"
           options={fuelOptions}
+          suppliers={options.suppliers}
+          suppliedItems={options.suppliedItems}
+          measurementUnits={options.measurementUnits}
           setDrafts={setOfferDrafts(setFuelDrafts, () => setFuelDirty(true))}
         />
       </OperationsModal>
@@ -1258,11 +1847,133 @@ export function ProjectDetail({
         <OfferRows
           drafts={materialDrafts}
           emptyText="Nenhum item adicional selecionado."
+          kind="material"
           options={options.supplierOffers}
+          suppliers={options.suppliers}
+          suppliedItems={options.suppliedItems}
+          measurementUnits={options.measurementUnits}
           setDrafts={setOfferDrafts(setMaterialDrafts, () =>
             setMaterialDirty(true),
           )}
         />
+      </OperationsModal>
+
+      <OperationsModal
+        icon={HardHat}
+        open={openModal === "accountability"}
+        onOpenChange={(open) => {
+          if (!open && !isPending) closeTeamOrMachineModal();
+        }}
+        size="xl"
+        title="Editar responsáveis da obra"
+        description="Defina quem responde pela obra. Esta seleção não mobiliza funcionários para produção."
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={closeTeamOrMachineModal}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              disabled={isPending}
+              onClick={saveAccountability}
+            >
+              <Check className="size-4" />
+              Salvar responsáveis
+            </Button>
+          </>
+        }
+      >
+        <div className="grid gap-4">
+          <FormSection
+            title="Governança da obra"
+            description="Cliente e gestor aparecem no resumo operacional e nas validações de início."
+          >
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="grid gap-1.5 text-sm font-semibold">
+                <span>Cliente</span>
+                <select
+                  className={controlClass}
+                  value={watchedClientId ?? ""}
+                  onChange={(event) =>
+                    readinessForm.setValue("clientId", event.target.value, {
+                      shouldDirty: true,
+                    })
+                  }
+                >
+                  <option value="">Selecione</option>
+                  {modalOptions.clients.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label}
+                      {option.detail ? ` · ${option.detail}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="grid gap-1.5 text-sm font-semibold">
+                <span>Gestor da obra</span>
+                <select
+                  className={controlClass}
+                  value={watchedManagerEmploymentId ?? ""}
+                  onChange={(event) =>
+                    readinessForm.setValue(
+                      "managerEmploymentId",
+                      event.target.value,
+                      { shouldDirty: true },
+                    )
+                  }
+                >
+                  <option value="">Selecione</option>
+                  {modalOptions.employees.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label}
+                      {option.detail ? ` · ${option.detail}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          </FormSection>
+
+          <FormSection
+            title="Responsabilidade técnica"
+            description="Selecione quem responde tecnicamente pela obra. A equipe operacional é configurada em outro modal."
+          >
+            <div className="grid gap-2">
+              {modalOptions.employees.length ? (
+                modalOptions.employees.map((option) => {
+                  const selected = watchedTechnicalResponsibilityIds ?? [];
+                  const checked = selected.includes(option.id);
+                  return (
+                    <SelectableRow
+                      key={option.id}
+                      checked={checked}
+                      onChange={(nextChecked) =>
+                        readinessForm.setValue(
+                          "technicalResponsibilityEmploymentIds",
+                          nextChecked
+                            ? [...selected, option.id]
+                            : selected.filter((id) => id !== option.id),
+                          { shouldDirty: true },
+                        )
+                      }
+                    >
+                      {option.label}
+                      {option.detail ? ` · ${option.detail}` : ""}
+                    </SelectableRow>
+                  );
+                })
+              ) : (
+                <EmptyBlock>
+                  Nenhum funcionário disponível para responsabilidade técnica.
+                </EmptyBlock>
+              )}
+            </div>
+          </FormSection>
+        </div>
       </OperationsModal>
 
       <OperationsModal
@@ -1272,8 +1983,8 @@ export function ProjectDetail({
           if (!open && !isPending) closeTeamOrMachineModal();
         }}
         size="xl"
-        title="Editar equipe e responsáveis"
-        description="Confirme cliente, gestor, responsáveis técnicos e funcionários da obra."
+        title="Editar equipe operacional"
+        description="Mobilize funcionários que entram na obra com função, jornada e remuneração confirmadas."
         footer={
           <>
             <Button
@@ -1291,82 +2002,14 @@ export function ProjectDetail({
         }
       >
         <div className="grid gap-4">
-          <div className="grid gap-3 md:grid-cols-2">
-            <label className="grid gap-1.5 text-sm font-semibold">
-              <span>Cliente</span>
-              <select
-                className="min-h-11 rounded-md border border-input bg-background px-3 py-2 text-sm font-medium outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
-                value={watchedClientId ?? ""}
-                onChange={(event) =>
-                  readinessForm.setValue("clientId", event.target.value, {
-                    shouldDirty: true,
-                  })
-                }
-              >
-                <option value="">Selecione</option>
-                {modalOptions.clients.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.label}
-                    {option.detail ? ` · ${option.detail}` : ""}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="grid gap-1.5 text-sm font-semibold">
-              <span>Gestor da obra</span>
-              <select
-                className="min-h-11 rounded-md border border-input bg-background px-3 py-2 text-sm font-medium outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
-                value={watchedManagerEmploymentId ?? ""}
-                onChange={(event) =>
-                  readinessForm.setValue(
-                    "managerEmploymentId",
-                    event.target.value,
-                    { shouldDirty: true },
-                  )
-                }
-              >
-                <option value="">Selecione</option>
-                {modalOptions.employees.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.label}
-                    {option.detail ? ` · ${option.detail}` : ""}
-                  </option>
-                ))}
-              </select>
-            </label>
+          <div className="rounded-md border border-border bg-secondary/30 px-4 py-3">
+            <p className="text-sm font-bold">Mobilização inicial</p>
+            <p className="mt-1 text-sm leading-5 text-muted-foreground">
+              Esta lista define quem pode operar máquinas e quais modalidades
+              precisam de prazo de pagamento. Responsáveis técnicos ficam no
+              modal de responsáveis da obra.
+            </p>
           </div>
-
-          <div className="grid gap-2 rounded-md border border-border bg-background p-3">
-            <p className="text-sm font-bold">Responsáveis técnicos</p>
-            {modalOptions.employees.map((option) => {
-              const selected = watchedTechnicalResponsibilityIds ?? [];
-              const checked = selected.includes(option.id);
-              return (
-                <label
-                  key={option.id}
-                  className="flex min-h-10 items-center gap-2 text-sm font-semibold"
-                >
-                  <input
-                    type="checkbox"
-                    className="size-4 accent-primary"
-                    checked={checked}
-                    onChange={(event) =>
-                      readinessForm.setValue(
-                        "technicalResponsibilityEmploymentIds",
-                        event.target.checked
-                          ? [...selected, option.id]
-                          : selected.filter((id) => id !== option.id),
-                        { shouldDirty: true },
-                      )
-                    }
-                  />
-                  {option.label}
-                  {option.detail ? ` · ${option.detail}` : ""}
-                </label>
-              );
-            })}
-          </div>
-
           <EmployeeMobilization
             form={readinessForm}
             options={modalOptions}

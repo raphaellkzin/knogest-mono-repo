@@ -115,6 +115,30 @@ const emptyItemDraft: ItemDraft = {
   valueUnitQuantity: "1,000000",
 };
 
+function preferredItemUnitId(units: MeasurementUnitOption[]) {
+  const liter = units.find(
+    (unit) => unit.code.trim().toLocaleLowerCase("pt-BR") === "l",
+  );
+  return liter?.id ?? units[0]?.id ?? "";
+}
+
+function itemDraftFromFormData(formData: FormData, fallback: ItemDraft): ItemDraft {
+  const value = (key: string) => {
+    const field = formData.get(key);
+    return typeof field === "string" ? field : "";
+  };
+  return {
+    ...fallback,
+    id: value("itemId") || fallback.id,
+    name: value("name"),
+    categoryId: value("categoryId"),
+    baseUnitId: value("baseUnitId") || fallback.baseUnitId,
+    basePrice: value("basePrice"),
+    useValueUnit: formData.get("useValueUnit") !== null,
+    valueUnitQuantity: value("valueUnitQuantity") || fallback.valueUnitQuantity,
+  };
+}
+
 const emptyCategoryDraft: CategoryDraft = {
   id: "",
   name: "",
@@ -200,7 +224,7 @@ export function SuppliedItemsCatalog({
   const [itemActionId, setItemActionId] = useState<string | null>(null);
   const [itemDraft, setItemDraft] = useState<ItemDraft>({
     ...emptyItemDraft,
-    baseUnitId: catalog.units[0]?.id ?? "",
+    baseUnitId: preferredItemUnitId(catalog.units),
   });
   const [categoryDraft, setCategoryDraft] =
     useState<CategoryDraft>(emptyCategoryDraft);
@@ -234,6 +258,8 @@ export function SuppliedItemsCatalog({
         setIsPropagationModalOpen(false);
         setPendingItemFields([]);
         setOtherOfferCount(0);
+      } else {
+        setItemDraft((current) => itemDraftFromFormData(formData, current));
       }
       return result;
     },
@@ -349,7 +375,7 @@ export function SuppliedItemsCatalog({
           : {
               ...emptyItemDraft,
               categoryId,
-              baseUnitId: catalog.units[0]?.id ?? "",
+              baseUnitId: preferredItemUnitId(catalog.units),
             },
       );
       setIsItemModalOpen(true);

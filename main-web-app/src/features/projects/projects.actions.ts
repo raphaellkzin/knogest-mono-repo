@@ -98,20 +98,42 @@ const projectReadinessActionSchema = z
       .optional(),
     fuelOffers: z
       .array(
-        z.object({
-          sourceOfferId: z.string().uuid(),
-          price: readinessDecimal(4),
-        }),
+        z.union([
+          z.object({
+            mode: z.literal("existing").optional(),
+            sourceOfferId: z.string().uuid(),
+            price: readinessDecimal(4),
+          }),
+          z.object({
+            mode: z.enum(["projectOnly", "companyCatalog"]),
+            supplierId: z.string().uuid(),
+            itemId: z.string().uuid(),
+            purchaseUnitId: z.string().uuid(),
+            conversionToBase: readinessDecimal(6),
+            price: readinessDecimal(4),
+          }),
+        ]),
       )
       .min(1)
       .max(10)
       .optional(),
     materialOffers: z
       .array(
-        z.object({
-          sourceOfferId: z.string().uuid(),
-          price: readinessDecimal(4),
-        }),
+        z.union([
+          z.object({
+            mode: z.literal("existing").optional(),
+            sourceOfferId: z.string().uuid(),
+            price: readinessDecimal(4),
+          }),
+          z.object({
+            mode: z.enum(["projectOnly", "companyCatalog"]),
+            supplierId: z.string().uuid(),
+            itemId: z.string().uuid(),
+            purchaseUnitId: z.string().uuid(),
+            conversionToBase: readinessDecimal(6),
+            price: readinessDecimal(4),
+          }),
+        ]),
       )
       .max(50)
       .optional(),

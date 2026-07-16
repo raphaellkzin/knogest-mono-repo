@@ -255,26 +255,76 @@ const projectReadinessCommandOpenApiSchema = {
       minItems: 1,
       maxItems: 10,
       items: {
-        type: "object",
-        additionalProperties: false,
-        required: ["sourceOfferId", "price"],
-        properties: {
-          sourceOfferId: uuid,
-          price: { type: "string" },
-        },
+        oneOf: [
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["sourceOfferId", "price"],
+            properties: {
+              mode: { enum: ["existing"] },
+              sourceOfferId: uuid,
+              price: { type: "string" },
+            },
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: [
+              "mode",
+              "supplierId",
+              "itemId",
+              "purchaseUnitId",
+              "conversionToBase",
+              "price",
+            ],
+            properties: {
+              mode: { enum: ["projectOnly", "companyCatalog"] },
+              supplierId: uuid,
+              itemId: uuid,
+              purchaseUnitId: uuid,
+              conversionToBase: { type: "string" },
+              price: { type: "string" },
+            },
+          },
+        ],
       },
     },
     materialOffers: {
       type: "array",
       maxItems: 50,
       items: {
-        type: "object",
-        additionalProperties: false,
-        required: ["sourceOfferId", "price"],
-        properties: {
-          sourceOfferId: uuid,
-          price: { type: "string" },
-        },
+        oneOf: [
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["sourceOfferId", "price"],
+            properties: {
+              mode: { enum: ["existing"] },
+              sourceOfferId: uuid,
+              price: { type: "string" },
+            },
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: [
+              "mode",
+              "supplierId",
+              "itemId",
+              "purchaseUnitId",
+              "conversionToBase",
+              "price",
+            ],
+            properties: {
+              mode: { enum: ["projectOnly", "companyCatalog"] },
+              supplierId: uuid,
+              itemId: uuid,
+              purchaseUnitId: uuid,
+              conversionToBase: { type: "string" },
+              price: { type: "string" },
+            },
+          },
+        ],
       },
     },
     accountability: {
@@ -371,12 +421,24 @@ const projectDetailSchema = {
 const projectReadinessOptionsSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["clients", "employees", "machines", "jobRoles", "supplierOffers"],
+  required: [
+    "clients",
+    "employees",
+    "machines",
+    "jobRoles",
+    "suppliers",
+    "suppliedItems",
+    "measurementUnits",
+    "supplierOffers",
+  ],
   properties: {
     clients: { type: "array", items: { type: "object", additionalProperties: true } },
     employees: { type: "array", items: { type: "object", additionalProperties: true } },
     machines: { type: "array", items: { type: "object", additionalProperties: true } },
     jobRoles: { type: "array", items: { type: "object", additionalProperties: true } },
+    suppliers: { type: "array", items: { type: "object", additionalProperties: true } },
+    suppliedItems: { type: "array", items: { type: "object", additionalProperties: true } },
+    measurementUnits: { type: "array", items: { type: "object", additionalProperties: true } },
     supplierOffers: {
       type: "array",
       items: { type: "object", additionalProperties: true },

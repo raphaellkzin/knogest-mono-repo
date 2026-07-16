@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { suppliedItemPayload } from "./commercial-registry-item-payload";
 import { supplierOfferPayload } from "./commercial-registry-offer-payload";
 
 describe("supplierOfferPayload", () => {
@@ -18,6 +19,23 @@ describe("supplierOfferPayload", () => {
       purchaseUnitId: "00000000-0000-4000-8000-00000000a001",
       conversionToBase: "9.876540",
       price: "1.2500",
+    });
+  });
+});
+
+describe("suppliedItemPayload", () => {
+  it("preserves the selected measurement unit when creating a supplied item", () => {
+    const formData = new FormData();
+    formData.set("name", "Diesel S10");
+    formData.set("baseUnitId", "00000000-0000-4000-8000-00000000a010");
+    formData.set("basePrice", "7,2500");
+
+    expect(suppliedItemPayload(formData)).toEqual({
+      name: "Diesel S10",
+      baseUnitId: "00000000-0000-4000-8000-00000000a010",
+      categoryId: null,
+      valueUnitQuantity: "1.000000",
+      basePrice: "7.2500",
     });
   });
 });

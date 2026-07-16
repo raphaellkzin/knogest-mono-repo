@@ -575,7 +575,13 @@ async function replaceProjectOffers(
   offers: ReadinessOffer[],
   now: Date,
 ) {
-  const sourceOfferIds = offers.map((item) => item.sourceOfferId);
+  const sourceOfferIds = offers
+    .map((item) => ("sourceOfferId" in item ? item.sourceOfferId : null))
+    .filter((id): id is string => Boolean(id));
+  const newOffers = offers.filter(
+    (item): item is Extract<ReadinessOffer, { mode: "projectOnly" | "companyCatalog" }> =>
+      !("sourceOfferId" in item),
+  );
   const sourceOffers = await tx.prisma.supplierOffer.findMany({
     where: {
       id: { in: [...new Set(sourceOfferIds)] },
@@ -595,9 +601,18 @@ async function replaceProjectOffers(
     throw conflict([resource("supplierOffer", "unknown", "supplierOffers")]);
 
   const sourceById = new Map(sourceOffers.map((item) => [item.id, item]));
-  const supplierIds = sourceOffers.map((item) => item.supplierId);
-  const itemIds = sourceOffers.map((item) => item.itemId);
-  const unitIds = sourceOffers.map((item) => item.purchaseUnitId);
+  const supplierIds = [
+    ...sourceOffers.map((item) => item.supplierId),
+    ...newOffers.map((item) => item.supplierId),
+  ];
+  const itemIds = [
+    ...sourceOffers.map((item) => item.itemId),
+    ...newOffers.map((item) => item.itemId),
+  ];
+  const unitIds = [
+    ...sourceOffers.map((item) => item.purchaseUnitId),
+    ...newOffers.map((item) => item.purchaseUnitId),
+  ];
   const [suppliers, items, units] = await Promise.all([
     tx.prisma.fuelSupplier.findMany({
       where: {
@@ -639,6 +654,108 @@ async function replaceProjectOffers(
   if (units.length !== new Set(unitIds).size)
     throw conflict([resource("measurementUnit", "unknown", "supplierOffers")]);
 
+  const supplierSet = new Set(suppliers.map((item) => item.id));
+  const itemSet = new Set(items.map((item) => item.id));
+  const unitSet = new Set(units.map((item) => item.id));
+  for (const offer of newOffers) {
+    if (!supplierSet.has(offer.supplierId))
+      throw conflict([resource("supplier", offer.supplierId, "supplierOffers")]);
+    if (!itemSet.has(offer.itemId))
+      throw conflict([resource("suppliedItem", offer.itemId, "supplierOffers")]);
+    if (!unitSet.has(offer.purchaseUnitId))
+      throw conflict([
+        resource("measurementUnit", offer.purchaseUnitId, "supplierOffers"),
+      ]);
+  }
+
+  const normalizedOffers: Array<{
+    sourceOfferId: string | null;
+    supplierId: string;
+    itemId: string;
+    purchaseUnitId: string;
+    conversionToBase: Prisma.Decimal | string;
+    price: string;
+  }> = [];
+
+  for (const offer of offers) {
+    if ("sourceOfferId" in offer) {
+      const source = sourceById.get(offer.sourceOfferId);
+      if (!source)
+        throw conflict([
+          resource("supplierOffer", offer.sourceOfferId, "supplierOffers"),
+        ]);
+      normalizedOffers.push({
+        sourceOfferId: source.id,
+        supplierId: source.supplierId,
+        itemId: source.itemId,
+        purchaseUnitId: source.purchaseUnitId,
+        conversionToBase: source.conversionToBase,
+        price: offer.price,
+      });
+      continue;
+    }
+
+    if (offer.mode === "projectOnly") {
+      normalizedOffers.push({
+        sourceOfferId: null,
+        supplierId: offer.supplierId,
+        itemId: offer.itemId,
+        purchaseUnitId: offer.purchaseUnitId,
+        conversionToBase: offer.conversionToBase,
+        price: offer.price,
+      });
+      continue;
+    }
+
+    const duplicate = await tx.prisma.supplierOffer.findFirst({
+      where: {
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        supplierId: offer.supplierId,
+        itemId: offer.itemId,
+        isActive: true,
+      },
+      select: { id: true },
+    });
+    if (duplicate)
+      throw conflict([resource("supplierOffer", duplicate.id, "supplierOffers")]);
+
+    const source = await tx.prisma.supplierOffer.create({
+      data: {
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        supplierId: offer.supplierId,
+        itemId: offer.itemId,
+        purchaseUnitId: offer.purchaseUnitId,
+        conversionToBase: offer.conversionToBase,
+      },
+      select: {
+        id: true,
+        supplierId: true,
+        itemId: true,
+        purchaseUnitId: true,
+        conversionToBase: true,
+      },
+    });
+    await tx.prisma.supplierOfferPrice.create({
+      data: {
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        offerId: source.id,
+        price: offer.price,
+        effectiveFrom: now,
+      },
+    });
+    normalizedOffers.push({
+      sourceOfferId: source.id,
+      supplierId: source.supplierId,
+      itemId: source.itemId,
+      purchaseUnitId: source.purchaseUnitId,
+      conversionToBase: source.conversionToBase,
+      price: offer.price,
+    });
+  }
+
   const scopeWhere = projectScopeWhere(scope, projectId);
   const currentOffers = await tx.prisma.projectSupplierOffer.findMany({
     where: { ...scopeWhere, usageKind },
@@ -656,19 +773,16 @@ async function replaceProjectOffers(
     where: { ...scopeWhere, usageKind },
   });
 
-  for (const offer of offers) {
-    const source = sourceById.get(offer.sourceOfferId);
-    if (!source)
-      throw conflict([resource("supplierOffer", offer.sourceOfferId, "supplierOffers")]);
+  for (const offer of normalizedOffers) {
     const row = await tx.prisma.projectSupplierOffer.create({
       data: {
         ...scopeWhere,
         usageKind,
-        supplierId: source.supplierId,
-        itemId: source.itemId,
-        sourceOfferId: source.id,
-        purchaseUnitId: source.purchaseUnitId,
-        conversionToBase: source.conversionToBase,
+        supplierId: offer.supplierId,
+        itemId: offer.itemId,
+        sourceOfferId: offer.sourceOfferId,
+        purchaseUnitId: offer.purchaseUnitId,
+        conversionToBase: offer.conversionToBase,
         price: offer.price,
         effectiveFrom: now,
       },
@@ -957,7 +1071,7 @@ async function buildProjectReadinessOptions(
   if (!project) projectNotFound();
 
   const scopeWhere = projectScopeWhere(scope, projectId);
-  const [clients, employments, currentEmployeeAllocations, currentMachineAllocations, machines, jobRoles, supplierOffers] =
+  const [clients, employments, currentEmployeeAllocations, currentMachineAllocations, machines, jobRoles, supplierOffers, suppliers, suppliedItems, measurementUnits] =
     await Promise.all([
       context.prisma.client.findMany({
         where: {
@@ -1055,6 +1169,49 @@ async function buildProjectReadinessOptions(
           purchaseUnitId: true,
           conversionToBase: true,
         },
+      }),
+      context.prisma.fuelSupplier.findMany({
+        where: {
+          corporationId: scope.corporationId,
+          companyId: scope.companyId,
+          isActive: true,
+          removedAt: null,
+          isGlobal: true,
+        },
+        orderBy: { displayName: "asc" },
+        take: 300,
+        select: {
+          id: true,
+          displayName: true,
+          tradeName: true,
+          documentType: true,
+          ciphertext: true,
+          iv: true,
+          authTag: true,
+          encryptionKeyVersion: true,
+        },
+      }),
+      context.prisma.suppliedItem.findMany({
+        where: {
+          corporationId: scope.corporationId,
+          companyId: scope.companyId,
+          isActive: true,
+          isGlobal: true,
+        },
+        orderBy: { name: "asc" },
+        take: 500,
+        select: { id: true, name: true, baseUnitId: true },
+      }),
+      context.prisma.measurementUnit.findMany({
+        where: {
+          isActive: true,
+          OR: [
+            { corporationId: null, companyId: null },
+            { corporationId: scope.corporationId, companyId: scope.companyId },
+          ],
+        },
+        orderBy: [{ code: "asc" }, { id: "asc" }],
+        select: { id: true, code: true, name: true },
       }),
     ]);
 
@@ -1202,6 +1359,18 @@ async function buildProjectReadinessOptions(
           currentMachineIds.has(machine.id),
     })),
     jobRoles: jobRoles.map((role) => ({ id: role.id, label: role.name })),
+    suppliers: suppliers.map((supplier) => ({
+      id: supplier.id,
+      name: supplier.displayName,
+      tradeName: supplier.tradeName,
+      document: toMaskedDocumentDto(supplier),
+    })),
+    suppliedItems: suppliedItems.map((item) => ({
+      id: item.id,
+      name: item.name,
+      baseUnitId: item.baseUnitId,
+    })),
+    measurementUnits,
     supplierOffers: supplierOffers
       .filter((offer) => {
         const supplier = offerSupplierMap.get(offer.supplierId);
@@ -1609,6 +1778,11 @@ async function buildProjectSnapshot(
   const materialOfferDtos = supplierOfferDtos.filter(
     (offer) => offer.usageKind !== "fuel",
   );
+  const hasInvalidProjectOffer = (offer: (typeof supplierOfferDtos)[number]) =>
+    (offer.sourceOfferId !== null && !offer.sourceOfferIsActive) ||
+    !offer.supplier?.isActive ||
+    !offer.item?.isActive ||
+    !offer.purchaseUnit?.isActive;
 
   const blockers: ReadinessBlocker[] = [];
   if (!baseline?.plannedEndDate)
@@ -1623,14 +1797,7 @@ async function buildProjectSnapshot(
     });
   if (
     fuelOfferDtos.length === 0 ||
-    fuelOfferDtos.some(
-      (offer) =>
-        !offer.sourceOfferId ||
-        !offer.sourceOfferIsActive ||
-        !offer.supplier?.isActive ||
-        !offer.item?.isActive ||
-        !offer.purchaseUnit?.isActive,
-    )
+    fuelOfferDtos.some((offer) => hasInvalidProjectOffer(offer))
   )
     blockers.push({
       section: "fuel",
@@ -1679,16 +1846,7 @@ async function buildProjectSnapshot(
       section: "equipment",
       message: "Cada máquina precisa de operador presente na equipe da obra.",
     });
-  if (
-    materialOfferDtos.some(
-      (offer) =>
-        !offer.sourceOfferId ||
-        !offer.sourceOfferIsActive ||
-        !offer.supplier?.isActive ||
-        !offer.item?.isActive ||
-        !offer.purchaseUnit?.isActive,
-    )
-  )
+  if (materialOfferDtos.some((offer) => hasInvalidProjectOffer(offer)))
     blockers.push({
       section: "items",
       message: "Revise fornecedores, itens e unidades configurados.",

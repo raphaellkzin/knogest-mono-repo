@@ -408,6 +408,29 @@ describe("FuelSuppliersTabs", () => {
     expect(submittedData.get("propagateMirrorToExistingOffers")).toBe("on");
   });
 
+  it("keeps the selected unit when item creation fails", async () => {
+    const user = userEvent.setup();
+    const saveSuppliedItemAction: ComponentProps<
+      typeof FuelSuppliersTabs
+    >["saveSuppliedItemAction"] = vi.fn(async () => ({
+      ok: false,
+      message: "Revise os dados informados e tente novamente. Campos: baseUnitId.",
+    }));
+    renderTabs({ saveSuppliedItemAction });
+
+    await user.click(screen.getByRole("button", { name: "Criar item" }));
+    const dialog = within(screen.getByRole("dialog"));
+    await user.type(dialog.getByLabelText("Nome"), "Diesel S500");
+    await user.selectOptions(dialog.getByLabelText("Unidade de medida"), "unit-1");
+    await user.click(dialog.getByRole("button", { name: "Salvar item" }));
+
+    await waitFor(() => expect(saveSuppliedItemAction).toHaveBeenCalled());
+    expect(
+      (dialog.getByLabelText("Unidade de medida") as HTMLSelectElement).value,
+    ).toBe("unit-1");
+    expect(dialog.getByText(/Campos: baseUnitId/u)).toBeTruthy();
+  });
+
   it("shows item action failures through toast", async () => {
     const user = userEvent.setup();
     const addSupplierToSuppliedItemAction: ComponentProps<
