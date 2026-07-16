@@ -28,7 +28,6 @@ import {
   ProjectWizardIdentity,
   ProjectWizardReview,
   ProjectWizardSubmissionNotice,
-  SupplierOffers,
   type ProjectWizardOptions,
 } from "./project-wizard";
 import { emptyProjectCommand, type ProjectCommand } from "../projects-schema";
@@ -55,26 +54,35 @@ const options: ProjectWizardOptions = {
       readingId: "reading-2",
     },
   ],
-  suppliers: [
-    {
-      id: "supplier-1",
-      label: "Fornecedor Sul",
-      detail: "11.222.333/0001-81",
-    },
-  ],
-  suppliedItems: [
-    {
-      id: "item-1",
-      label: "Diesel S10",
-      detail: "unit-1",
-      baseUnitId: "unit-1",
-    },
-  ],
-  units: [
-    { id: "unit-1", label: "L", detail: "Litro" },
-    { id: "unit-2", label: "m³", detail: "Metro cúbico" },
-  ],
   jobRoles: [{ id: "job-role-1", label: "Engenheira" }],
+};
+
+const wizardOptions: ProjectWizardOptions = {
+  clients: [
+    {
+      id: "00000000-0000-4000-8000-000000000201",
+      label: "Cliente Norte",
+    },
+  ],
+  employees: [
+    {
+      id: "00000000-0000-4000-8000-000000000301",
+      label: "Ana Silva",
+      detail: "Engenheira",
+    },
+    {
+      id: "00000000-0000-4000-8000-000000000302",
+      label: "Bruno Lima",
+      detail: "Operador",
+    },
+  ],
+  machines: [],
+  jobRoles: [
+    {
+      id: "00000000-0000-4000-8000-000000000401",
+      label: "Engenheira",
+    },
+  ],
 };
 
 const command: ProjectCommand = {
@@ -124,7 +132,7 @@ function ReviewHarness() {
   const [step, setStep] = React.useState<number | null>(null);
   const helpers: BaseFormModalRenderHelpers = {
     closeModal: () => undefined,
-    currentStep: 6,
+    currentStep: 5,
     goToStep: setStep,
   };
 
@@ -235,23 +243,6 @@ function EmployeeHarness() {
   );
 }
 
-function SupplierOffersHarness() {
-  const form = useForm<ProjectCommand>({
-    defaultValues: structuredClone(emptyProjectCommand),
-  });
-  const supplierOffers = useWatch({
-    control: form.control,
-    name: "projectSupplierOffers",
-  });
-
-  return (
-    <>
-      <SupplierOffers form={form} options={options} />
-      <output>{JSON.stringify(supplierOffers)}</output>
-    </>
-  );
-}
-
 describe("Project wizard polish", () => {
   it("marks invalid fields without inline validation messages", () => {
     render(<IdentityHarness />);
@@ -269,7 +260,7 @@ describe("Project wizard polish", () => {
     render(
       <ProjectWizard
         expectedCompanyId="00000000-0000-4000-8000-000000000001"
-        options={options}
+        options={wizardOptions}
       />,
     );
 
@@ -284,6 +275,64 @@ describe("Project wizard polish", () => {
     expect(declaration.textContent).toContain("Informe o logradouro");
     expect(declaration.textContent).not.toContain("address.street");
     expect(declaration.textContent).not.toContain("Muito pequeno");
+  });
+
+  it("skips the supplier step and reaches review without supplier offers", async () => {
+    const user = userEvent.setup();
+    vi.mocked(lookupProjectAddressByCepAction).mockResolvedValue({
+      kind: "success",
+      address: {
+        street: "Avenida Beira Mar",
+        neighborhood: "Meireles",
+        city: "Fortaleza",
+        state: "CE",
+      },
+    });
+    render(
+      <ProjectWizard
+        expectedCompanyId="00000000-0000-4000-8000-000000000001"
+        options={wizardOptions}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Nova obra" }));
+
+    expect(screen.getByText("Etapa 1 de 6")).toBeTruthy();
+    expect(screen.queryByText("Fornecimentos")).toBeNull();
+
+    await user.type(screen.getByLabelText("Nome da obra"), "Obra Norte");
+    await user.type(screen.getByLabelText("CEP"), "60170000");
+    expect(await screen.findByDisplayValue("Avenida Beira Mar")).toBeTruthy();
+    await user.type(screen.getByLabelText("Início planejado"), "2026-07-01");
+    await user.click(screen.getByRole("button", { name: "Avançar" }));
+
+    await user.selectOptions(
+      screen.getByLabelText("Cliente"),
+      "00000000-0000-4000-8000-000000000201",
+    );
+    await user.selectOptions(
+      screen.getByLabelText("Gestor da obra"),
+      "00000000-0000-4000-8000-000000000301",
+    );
+    await user.click(screen.getByLabelText(/Ana Silva/));
+    await user.click(screen.getByRole("button", { name: "Avançar" }));
+
+    expect(await screen.findByText("Jornada semanal")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Avançar" }));
+    expect(
+      await screen.findByText("Mobilização inicial da equipe"),
+    ).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Avançar" }));
+    expect(
+      await screen.findByText("Mobilização inicial de máquinas"),
+    ).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Avançar" }));
+
+    expect(
+      await screen.findByRole("button", { name: "Criar obra" }),
+    ).toBeTruthy();
+    expect(screen.getByText("Etapa 6 de 6")).toBeTruthy();
+    expect(screen.queryByText("Fornecimentos")).toBeNull();
   });
 
   it("fills structured address fields from ViaCEP", async () => {
@@ -489,75 +538,6 @@ describe("Project wizard polish", () => {
     expect(
       screen.queryByRole("button", { name: "Confirmar máquina" }),
     ).toBeNull();
-  });
-
-  it("guides project supplier offers with an existing item and one measurement unit", async () => {
-    const user = userEvent.setup();
-    render(<SupplierOffersHarness />);
-
-    await user.click(
-      screen.getByRole("button", { name: "Adicionar fornecimento" }),
-    );
-
-    expect(screen.getByLabelText("Fornecedor")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Item existente" })).toBeNull();
-
-    await user.selectOptions(screen.getByLabelText("Fornecedor"), "supplier-1");
-
-    expect(screen.getByRole("button", { name: "Item existente" })).toBeTruthy();
-    expect(
-      (screen.getByLabelText("Unidade de medida") as HTMLSelectElement)
-        .disabled,
-    ).toBe(true);
-    expect(screen.queryByText("Unidade-base")).toBeNull();
-    expect(screen.queryByText("Unidade de compra")).toBeNull();
-    expect(screen.getByLabelText("Conversão")).toBeTruthy();
-
-    await user.clear(screen.getByLabelText("Conversão"));
-    await user.type(screen.getByLabelText("Conversão"), "250000");
-
-    await user.click(
-      screen.getByRole("button", { name: "Confirmar fornecimento" }),
-    );
-
-    const output = screen.getByRole("status").textContent;
-    expect(output).toContain('"supplierId":"supplier-1"');
-    expect(output).toContain('"itemId":"item-1"');
-    expect(output).toContain('"purchaseUnitId":"unit-1"');
-    expect(output).toContain('"conversionToBase":"2.500000"');
-
-    await user.click(
-      screen.getByRole("button", { name: "Remover fornecimento 1" }),
-    );
-    expect(screen.getByRole("status").textContent).toBe("[]");
-  });
-
-  it("guides project supplier offers with a new item and measurement unit", async () => {
-    const user = userEvent.setup();
-    render(<SupplierOffersHarness />);
-
-    await user.click(
-      screen.getByRole("button", { name: "Adicionar fornecimento" }),
-    );
-    await user.selectOptions(screen.getByLabelText("Fornecedor"), "supplier-1");
-    await user.click(screen.getByRole("button", { name: "Novo item" }));
-
-    await user.type(screen.getByLabelText("Novo item"), "Brita graduada");
-    await user.selectOptions(
-      screen.getByLabelText("Unidade de medida"),
-      "unit-2",
-    );
-    await user.clear(screen.getByLabelText("Conversão"));
-    await user.type(screen.getByLabelText("Conversão"), "375000");
-    await user.click(
-      screen.getByRole("button", { name: "Confirmar fornecimento" }),
-    );
-
-    const output = screen.getByRole("status").textContent;
-    expect(output).toContain('"name":"Brita graduada"');
-    expect(output).toContain('"baseUnitId":"unit-2"');
-    expect(output).toContain('"purchaseUnitId":"unit-2"');
-    expect(output).toContain('"conversionToBase":"3.750000"');
   });
 
   it("keeps project-only job roles temporary inside the current wizard session", async () => {

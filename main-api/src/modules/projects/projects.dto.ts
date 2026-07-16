@@ -285,7 +285,6 @@ export const projectCommandSchema = z
               });
           }),
       )
-      .min(1)
       .max(50),
   })
   .strict()

@@ -3,9 +3,19 @@ import {
   formatProjectAddress,
   projectCommandSchema,
   projectIdempotencyKeySchema,
+  type ProjectCommand,
 } from "./projects.dto";
 
-const command = {
+const supplierOffer = (): ProjectCommand["projectSupplierOffers"][number] => ({
+  supplierId: "00000000-0000-4000-8000-000000000701",
+  itemId: "00000000-0000-4000-8000-000000000702",
+  sourceOfferId: null,
+  purchaseUnitId: "00000000-0000-4000-8000-00000000a001",
+  conversionToBase: "1.000000",
+  price: "1.0000",
+});
+
+const command: ProjectCommand = {
   name: "Project",
   address: {
     postalCode: "60170000",
@@ -36,21 +46,32 @@ const command = {
   breakTemplates: [],
   initialEmployeeAllocations: [],
   initialMachineAllocations: [],
-  projectSupplierOffers: [
-    {
-      supplierId: "00000000-0000-4000-8000-000000000701",
-      itemId: "00000000-0000-4000-8000-000000000702",
-      sourceOfferId: null,
-      purchaseUnitId: "00000000-0000-4000-8000-00000000a001",
-      conversionToBase: "1.000000",
-      price: "1.0000",
-    },
-  ],
+  projectSupplierOffers: [],
 };
 
 describe("Projects DTO", () => {
   it("accepts the minimal aggregate", () =>
     expect(projectCommandSchema.safeParse(command).success).toBe(true));
+
+  it("keeps supplier offers optional while validating populated entries", () => {
+    expect(
+      projectCommandSchema.safeParse({
+        ...command,
+        projectSupplierOffers: [supplierOffer()],
+      }).success,
+    ).toBe(true);
+    expect(
+      projectCommandSchema.safeParse({
+        ...command,
+        projectSupplierOffers: [
+          {
+            ...supplierOffer(),
+            supplierId: undefined,
+          },
+        ],
+      }).success,
+    ).toBe(false);
+  });
 
   it("accepts addresses without numbers", () => {
     expect(

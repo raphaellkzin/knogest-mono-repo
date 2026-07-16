@@ -350,7 +350,6 @@ export const projectCommandSchema = z
     initialMachineAllocations: z.array(machineAllocationSchema).max(100),
     projectSupplierOffers: z
       .array(projectSupplierOfferSchema)
-      .min(1, "Configure pelo menos um fornecimento da obra.")
       .max(50, "Configure no máximo 50 fornecimentos."),
   })
   .strict()

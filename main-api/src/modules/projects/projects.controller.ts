@@ -171,7 +171,6 @@ const projectCommandOpenApiSchema = {
     },
     projectSupplierOffers: {
       type: "array",
-      minItems: 1,
       maxItems: 50,
       items: {
         type: "object",

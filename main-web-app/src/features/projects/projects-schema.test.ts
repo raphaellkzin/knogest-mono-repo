@@ -1,7 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { emptyProjectCommand, projectCommandSchema } from "./projects-schema";
+import {
+  emptyProjectCommand,
+  projectCommandSchema,
+  type ProjectCommand,
+} from "./projects-schema";
 
-const valid = () => ({
+const supplierOffer = (): ProjectCommand["projectSupplierOffers"][number] => ({
+  supplierId: "00000000-0000-4000-8000-000000000701",
+  itemId: "00000000-0000-4000-8000-000000000702",
+  sourceOfferId: null,
+  purchaseUnitId: "00000000-0000-4000-8000-00000000a001",
+  conversionToBase: "1,000000",
+  price: "1,0000",
+});
+
+const valid = (): ProjectCommand => ({
   ...structuredClone(emptyProjectCommand),
   name: "Obra Norte",
   address: {
@@ -21,16 +34,7 @@ const valid = () => ({
   technicalResponsibilityEmploymentIds: [
     "00000000-0000-4000-8000-000000000301",
   ],
-  projectSupplierOffers: [
-    {
-      supplierId: "00000000-0000-4000-8000-000000000701",
-      itemId: "00000000-0000-4000-8000-000000000702",
-      sourceOfferId: null,
-      purchaseUnitId: "00000000-0000-4000-8000-00000000a001",
-      conversionToBase: "1,000000",
-      price: "1,0000",
-    },
-  ],
+  projectSupplierOffers: [],
 });
 
 describe("projectCommandSchema", () => {
@@ -43,6 +47,22 @@ describe("projectCommandSchema", () => {
     expect(parsed.longitude).toBeNull();
     expect(parsed.plannedEndDate).toBeNull();
     expect(parsed.weeklySchedule).toHaveLength(7);
+    expect(parsed.projectSupplierOffers).toEqual([]);
+  });
+
+  it("keeps supplier offers optional while validating populated entries", () => {
+    const withOffer = valid();
+    withOffer.projectSupplierOffers = [supplierOffer()];
+    expect(projectCommandSchema.safeParse(withOffer).success).toBe(true);
+
+    const invalidOffer = valid();
+    invalidOffer.projectSupplierOffers = [
+      {
+        ...supplierOffer(),
+        supplierId: undefined,
+      },
+    ];
+    expect(projectCommandSchema.safeParse(invalidOffer).success).toBe(false);
   });
 
   it("accepts addresses without numbers", () => {
