@@ -410,9 +410,27 @@ function defaultUnitId(
   return liter?.id ?? units[0]?.id ?? "";
 }
 
+function createBlankOfferDraft(
+  options: SupplierOfferOption[],
+  measurementUnits: ProjectReadinessOptions["measurementUnits"],
+): OfferDraft {
+  return {
+    key: crypto.randomUUID(),
+    mode: options.length > 0 ? "existing" : "new",
+    sourceOfferId: "",
+    supplierId: "",
+    itemId: "",
+    purchaseUnitId: defaultUnitId(measurementUnits),
+    conversionToBase: "1,000000",
+    price: "",
+    saveToCatalog: false,
+  };
+}
+
 function OfferRows({
   drafts,
   emptyText,
+  highlightedDraftKey,
   kind,
   options,
   suppliers,
@@ -422,6 +440,7 @@ function OfferRows({
 }: {
   drafts: OfferDraft[];
   emptyText: string;
+  highlightedDraftKey?: string | null;
   kind: "fuel" | "material";
   options: SupplierOfferOption[];
   suppliers: ProjectReadinessOptions["suppliers"];
@@ -442,38 +461,49 @@ function OfferRows({
         return (
           <div
             key={draft.key}
-            className="grid gap-3 rounded-md border border-border bg-background p-3"
+            className={cn(
+              "grid gap-3 rounded-md border border-border bg-background p-3",
+              highlightedDraftKey === draft.key &&
+                "border-primary bg-primary/5 ring-1 ring-primary/20",
+            )}
           >
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div className="inline-flex rounded-md border border-border bg-secondary/50 p-1">
-                {(["existing", "new"] as const).map((mode) => (
-                  <button
-                    key={mode}
-                    type="button"
-                    className={cn(
-                      "min-h-9 rounded-sm px-3 text-sm font-bold transition-colors",
-                      draft.mode === mode
-                        ? "bg-background text-foreground shadow-xs"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                    onClick={() =>
-                      setDrafts((current) =>
-                        current.map((item) =>
-                          item.key === draft.key
-                            ? {
-                                ...item,
-                                mode,
-                                sourceOfferId:
-                                  mode === "new" ? "" : item.sourceOfferId,
-                              }
-                            : item,
-                        ),
-                      )
-                    }
-                  >
-                    {mode === "existing" ? "Oferta existente" : newLabel}
-                  </button>
-                ))}
+              <div className="grid gap-2">
+                <div className="inline-flex rounded-md border border-border bg-secondary/50 p-1">
+                  {(["existing", "new"] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      className={cn(
+                        "min-h-9 rounded-sm px-3 text-sm font-bold transition-colors",
+                        draft.mode === mode
+                          ? "bg-background text-foreground shadow-xs"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                      onClick={() =>
+                        setDrafts((current) =>
+                          current.map((item) =>
+                            item.key === draft.key
+                              ? {
+                                  ...item,
+                                  mode,
+                                  sourceOfferId:
+                                    mode === "new" ? "" : item.sourceOfferId,
+                                }
+                              : item,
+                          ),
+                        )
+                      }
+                    >
+                      {mode === "existing" ? "Oferta existente" : newLabel}
+                    </button>
+                  ))}
+                </div>
+                {highlightedDraftKey === draft.key && (
+                  <span className="justify-self-start rounded-sm bg-primary/10 px-2 py-0.5 text-xs font-bold text-primary">
+                    Editando esta oferta
+                  </span>
+                )}
               </div>
               <Button
                 type="button"
@@ -671,7 +701,7 @@ function OfferRows({
                     }
                     className="size-4 accent-primary"
                   />
-                  Criar item no catálogo da empresa (opcional)
+                  Salvar também no catálogo da empresa
                 </label>
               </div>
             )}
@@ -691,17 +721,7 @@ function OfferRows({
         onClick={() =>
           setDrafts((current) => [
             ...current,
-            {
-              key: crypto.randomUUID(),
-              mode: options.length > 0 ? "existing" : "new",
-              sourceOfferId: "",
-              supplierId: "",
-              itemId: "",
-              purchaseUnitId: defaultUnitId(measurementUnits),
-              conversionToBase: "1,000000",
-              price: "",
-              saveToCatalog: false,
-            },
+            createBlankOfferDraft(options, measurementUnits),
           ])
         }
       >
@@ -779,6 +799,11 @@ export function ProjectDetail({
   const [materialDirty, setMaterialDirty] = React.useState(false);
   const [paymentDirty, setPaymentDirty] = React.useState(false);
   const [activeTab, setActiveTab] = React.useState<ProjectTab>("planning");
+  const [fuelDialogIntent, setFuelDialogIntent] = React.useState<
+    "add" | "edit"
+  >("add");
+  const [highlightedFuelDraftKey, setHighlightedFuelDraftKey] =
+    React.useState<string | null>(null);
   const [openModal, setOpenModal] = React.useState<
     | "accountability"
     | "team"
@@ -819,6 +844,8 @@ export function ProjectDetail({
     setFuelDirty(false);
     setMaterialDirty(false);
     setPaymentDirty(false);
+    setFuelDialogIntent("add");
+    setHighlightedFuelDraftKey(null);
   }, [project, readinessForm]);
 
   const modalOptions = React.useMemo<ProjectWizardOptions>(
@@ -1088,6 +1115,7 @@ export function ProjectDetail({
     }
     savePatch({ fuelOffers }, "Combustível salvo.", () => {
       setFuelDirty(false);
+      setHighlightedFuelDraftKey(null);
       setOpenModal(null);
     });
   };
@@ -1225,9 +1253,31 @@ export function ProjectDetail({
       setter(value);
     };
 
+  const openAddFuelModal = () => {
+    const nextDraft = createBlankOfferDraft(
+      fuelOptions,
+      options.measurementUnits,
+    );
+    setFuelDrafts([...offerInitialState(project.fuelOffers), nextDraft]);
+    setFuelDialogIntent("add");
+    setHighlightedFuelDraftKey(nextDraft.key);
+    setFuelDirty(true);
+    setOpenModal("fuel");
+  };
+
+  const openEditFuelModal = (offerId: string) => {
+    setFuelDrafts(offerInitialState(project.fuelOffers));
+    setFuelDialogIntent("edit");
+    setHighlightedFuelDraftKey(offerId);
+    setFuelDirty(false);
+    setOpenModal("fuel");
+  };
+
   const closeFuelModal = () => {
     setFuelDrafts(offerInitialState(project.fuelOffers));
     setFuelDirty(false);
+    setFuelDialogIntent("add");
+    setHighlightedFuelDraftKey(null);
     setOpenModal(null);
   };
 
@@ -1516,10 +1566,10 @@ export function ProjectDetail({
                     type="button"
                     variant="outline"
                     className="min-h-10"
-                    onClick={() => setOpenModal("fuel")}
+                    onClick={openAddFuelModal}
                   >
-                    <Pencil className="size-4" />
-                    Editar
+                    <Plus className="size-4" />
+                    Adicionar combustível
                   </Button>
                 )
               }
@@ -1529,22 +1579,69 @@ export function ProjectDetail({
                   project.fuelOffers.map((offer) => (
                     <div
                       key={offer.id}
-                      className="rounded-md border border-border bg-background px-3 py-2"
+                      className="grid gap-3 rounded-md border border-border bg-background px-3 py-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
                     >
-                      <p className="font-bold">
-                        {offer.item?.name ?? "Item não encontrado"}
-                      </p>
-                      <p className="text-muted-foreground">
-                        {offer.supplier?.name ?? "Fornecedor não encontrado"} ·{" "}
-                        {offer.purchaseUnit?.code ?? "un."} ·{" "}
-                        {formatMoney(offer.price, 4)}
-                      </p>
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="min-w-0 font-bold">
+                            {offer.item?.name ?? "Item não encontrado"}
+                          </p>
+                          <span
+                            className={cn(
+                              "inline-flex min-h-6 items-center rounded-sm px-2 text-xs font-bold",
+                              offer.sourceOfferId
+                                ? "bg-secondary text-secondary-foreground"
+                                : "bg-primary/10 text-primary",
+                            )}
+                          >
+                            {offer.sourceOfferId
+                              ? "Catálogo"
+                              : "Exclusiva da obra"}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-muted-foreground">
+                          {offer.supplier?.name ?? "Fornecedor não encontrado"}{" "}
+                          · {offer.purchaseUnit?.code ?? "un."} ·{" "}
+                          {formatMoney(offer.price, 4)}
+                        </p>
+                      </div>
+                      {isEditable && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="min-h-10 justify-self-start md:justify-self-end"
+                          onClick={() => openEditFuelModal(offer.id)}
+                        >
+                          <Pencil className="size-4" />
+                          Editar oferta
+                        </Button>
+                      )}
                     </div>
                   ))
                 ) : (
-                  <p className="text-muted-foreground">
-                    Nenhum combustível confirmado.
-                  </p>
+                  <div className="grid gap-3 rounded-md border border-dashed border-border bg-background px-4 py-5 text-center">
+                    <div>
+                      <p className="text-sm font-bold text-foreground">
+                        Nenhum combustível confirmado.
+                      </p>
+                      <p className="mt-1 text-sm leading-5 text-muted-foreground">
+                        Adicione uma oferta existente ou crie uma oferta
+                        exclusiva para esta obra.
+                      </p>
+                    </div>
+                    {isEditable && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="min-h-10 justify-self-center"
+                        onClick={openAddFuelModal}
+                      >
+                        <Plus className="size-4" />
+                        Adicionar combustível
+                      </Button>
+                    )}
+                  </div>
                 )}
               </div>
             </Section>
@@ -1776,8 +1873,16 @@ export function ProjectDetail({
           if (!open && !isPending) closeFuelModal();
         }}
         size="xl"
-        title="Editar combustível"
-        description="Use uma oferta já cadastrada no fornecedor e confirme o preço específico desta obra."
+        title={
+          fuelDialogIntent === "add"
+            ? "Adicionar combustível"
+            : "Editar combustível"
+        }
+        description={
+          fuelDialogIntent === "add"
+            ? "Adicione uma oferta existente, crie uma oferta exclusiva desta obra ou salve a nova oferta também no catálogo da empresa."
+            : "Altere a oferta selecionada, confirme o preço da obra ou remova o combustível se necessário."
+        }
         footer={
           <>
             <Button type="button" variant="outline" onClick={closeFuelModal}>
@@ -1793,6 +1898,7 @@ export function ProjectDetail({
         <OfferRows
           drafts={fuelDrafts}
           emptyText="Nenhuma oferta de combustível selecionada."
+          highlightedDraftKey={highlightedFuelDraftKey}
           kind="fuel"
           options={fuelOptions}
           suppliers={options.suppliers}
