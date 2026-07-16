@@ -103,7 +103,7 @@ const statusLabels: Record<ProjectDetailSnapshot["status"], string> = {
   cancelled: "Cancelada",
 };
 
-type OfferDraft = {
+export type OfferDraft = {
   key: string;
   mode: "existing" | "new";
   sourceOfferId: string;
@@ -114,6 +114,27 @@ type OfferDraft = {
   price: string;
   saveToCatalog: boolean;
 };
+
+export type FuelDraft = Omit<OfferDraft, "saveToCatalog"> & {
+  customQuantityEnabled: boolean;
+  defaultConversionToBase: string;
+};
+
+export type ReadinessOfferCommand =
+  | {
+      mode: "existing";
+      sourceOfferId: string;
+      conversionToBase?: string;
+      price: string;
+    }
+  | {
+      mode: "projectOnly" | "companyCatalog";
+      supplierId: string;
+      itemId: string;
+      purchaseUnitId: string;
+      conversionToBase: string;
+      price: string;
+    };
 
 type ProjectTab =
   | "planning"
@@ -171,17 +192,7 @@ function metricInitialState(project: ProjectDetailSnapshot) {
 }
 
 function offerInitialState(offers: ProjectOfferSnapshot[]): OfferDraft[] {
-  return offers.map((offer) => ({
-    key: offer.id,
-    mode: offer.sourceOfferId ? "existing" : "new",
-    sourceOfferId: offer.sourceOfferId ?? "",
-    supplierId: offer.supplier?.id ?? "",
-    itemId: offer.item?.id ?? "",
-    purchaseUnitId: offer.purchaseUnit?.id ?? "",
-    conversionToBase: canonicalDecimalToBrazilian(offer.conversionToBase, 6),
-    price: canonicalDecimalToBrazilian(offer.price, 4),
-    saveToCatalog: Boolean(offer.sourceOfferId),
-  }));
+  return offers.map(offerToDraft);
 }
 
 function paymentInitialState(project: ProjectDetailSnapshot) {
@@ -427,7 +438,570 @@ function createBlankOfferDraft(
   };
 }
 
-function OfferRows({
+function pickFuelOptions(options: SupplierOfferOption[]) {
+  const candidates = options.filter((offer) => offer.isFuelCandidate);
+  return candidates.length ? candidates : options;
+}
+
+function offerToDraft(offer: ProjectOfferSnapshot): OfferDraft {
+  return {
+    key: offer.id,
+    mode: offer.sourceOfferId ? "existing" : "new",
+    sourceOfferId: offer.sourceOfferId ?? "",
+    supplierId: offer.supplier?.id ?? "",
+    itemId: offer.item?.id ?? "",
+    purchaseUnitId: offer.purchaseUnit?.id ?? "",
+    conversionToBase: canonicalDecimalToBrazilian(offer.conversionToBase, 6),
+    price: canonicalDecimalToBrazilian(offer.price, 4),
+    saveToCatalog: Boolean(offer.sourceOfferId),
+  };
+}
+
+export function createBlankFuelDraft(
+  options: SupplierOfferOption[],
+  measurementUnits: ProjectReadinessOptions["measurementUnits"],
+): FuelDraft {
+  const blankDraft = createBlankOfferDraft(options, measurementUnits);
+  return {
+    key: blankDraft.key,
+    mode: blankDraft.mode,
+    sourceOfferId: blankDraft.sourceOfferId,
+    supplierId: blankDraft.supplierId,
+    itemId: blankDraft.itemId,
+    purchaseUnitId: blankDraft.purchaseUnitId,
+    conversionToBase: blankDraft.conversionToBase,
+    price: blankDraft.price,
+    customQuantityEnabled: false,
+    defaultConversionToBase: "1,000000",
+  };
+}
+
+function createFuelDraftFromOffer(offer: ProjectOfferSnapshot): FuelDraft {
+  const base = offerToDraft(offer);
+  return {
+    key: base.key,
+    mode: base.mode,
+    sourceOfferId: base.sourceOfferId,
+    supplierId: base.supplierId,
+    itemId: base.itemId,
+    purchaseUnitId: base.purchaseUnitId,
+    conversionToBase: base.conversionToBase,
+    price: base.price,
+    customQuantityEnabled: false,
+    defaultConversionToBase: base.conversionToBase,
+  };
+}
+
+function projectOfferToCommand(
+  offer: ProjectOfferSnapshot,
+): ReadinessOfferCommand | null {
+  if (offer.sourceOfferId) {
+    return {
+      mode: "existing",
+      sourceOfferId: offer.sourceOfferId,
+      conversionToBase: offer.conversionToBase,
+      price: offer.price,
+    };
+  }
+  if (!offer.supplier?.id || !offer.item?.id || !offer.purchaseUnit?.id)
+    return null;
+  return {
+    mode: "projectOnly",
+    supplierId: offer.supplier.id,
+    itemId: offer.item.id,
+    purchaseUnitId: offer.purchaseUnit.id,
+    conversionToBase: offer.conversionToBase,
+    price: offer.price,
+  };
+}
+
+function draftToMaterialCommand(draft: OfferDraft): ReadinessOfferCommand {
+  const price = decimalInputToCanonical(draft.price, 4);
+  if (draft.mode === "existing") {
+    return {
+      mode: "existing",
+      sourceOfferId: draft.sourceOfferId,
+      conversionToBase: decimalInputToCanonical(draft.conversionToBase, 6),
+      price,
+    };
+  }
+  return {
+    mode: draft.saveToCatalog ? "companyCatalog" : "projectOnly",
+    supplierId: draft.supplierId,
+    itemId: draft.itemId,
+    purchaseUnitId: draft.purchaseUnitId,
+    conversionToBase: decimalInputToCanonical(draft.conversionToBase, 6),
+    price,
+  };
+}
+
+export function draftToFuelCommand(draft: FuelDraft): ReadinessOfferCommand {
+  const price = decimalInputToCanonical(draft.price, 4);
+  if (draft.mode === "existing") {
+    return {
+      mode: "existing",
+      sourceOfferId: draft.sourceOfferId,
+      conversionToBase: decimalInputToCanonical(draft.conversionToBase, 6),
+      price,
+    };
+  }
+  return {
+    mode: "projectOnly",
+    supplierId: draft.supplierId,
+    itemId: draft.itemId,
+    purchaseUnitId: draft.purchaseUnitId,
+    conversionToBase: decimalInputToCanonical(draft.conversionToBase, 6),
+    price,
+  };
+}
+
+function isOfferCommandComplete(command: ReadinessOfferCommand) {
+  if (!command.price || command.price === "0.0000") return false;
+  if (command.mode === "existing") return Boolean(command.sourceOfferId);
+  return (
+    Boolean(command.supplierId) &&
+    Boolean(command.itemId) &&
+    Boolean(command.purchaseUnitId) &&
+    Boolean(command.conversionToBase) &&
+    command.conversionToBase !== "0.000000"
+  );
+}
+
+function ReadonlyField({
+  label,
+  value,
+}: {
+  label: string;
+  value: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-md border border-border bg-background px-3 py-2.5">
+      <p className="text-xs font-bold text-muted-foreground">{label}</p>
+      <p className="mt-1 min-w-0 break-words text-sm font-semibold text-foreground">
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function DraftModeControl({
+  mode,
+  newLabel,
+  onChange,
+}: {
+  mode: "existing" | "new";
+  newLabel: string;
+  onChange: (mode: "existing" | "new") => void;
+}) {
+  return (
+    <div className="inline-flex rounded-md border border-border bg-secondary/50 p-1">
+      {(["existing", "new"] as const).map((value) => (
+        <button
+          key={value}
+          type="button"
+          className={cn(
+            "min-h-9 rounded-sm px-3 text-sm font-bold transition-colors",
+            mode === value
+              ? "bg-background text-foreground shadow-xs"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+          onClick={() => onChange(value)}
+        >
+          {value === "existing" ? "Oferta existente" : newLabel}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function QuantityEditor({
+  checked,
+  label,
+  helperText,
+  value,
+  onCheckedChange,
+  onValueChange,
+}: {
+  checked: boolean;
+  label: string;
+  helperText: string;
+  value: string;
+  onCheckedChange: (checked: boolean) => void;
+  onValueChange: (value: string) => void;
+}) {
+  return (
+    <div className="grid gap-3">
+      <label className="flex min-h-11 items-center gap-3 rounded-md border border-border bg-secondary/40 px-3 text-sm font-semibold">
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={(event) => onCheckedChange(event.target.checked)}
+          className="size-4 accent-primary"
+        />
+        {label}
+      </label>
+      <p className="text-xs font-semibold text-muted-foreground">
+        {helperText}
+      </p>
+      {checked && (
+        <label className="grid gap-1.5 text-sm font-semibold">
+          <span>Quantidade</span>
+          <Input
+            className="h-11"
+            inputMode="decimal"
+            value={value}
+            onChange={(event) =>
+              onValueChange(
+                formatBrazilianDecimalInput(event.target.value, 6),
+              )
+            }
+          />
+        </label>
+      )}
+    </div>
+  );
+}
+
+export function FuelAddEditor({
+  draft,
+  fuelOptions,
+  suppliers,
+  suppliedItems,
+  measurementUnits,
+  setDraft,
+}: {
+  draft: FuelDraft;
+  fuelOptions: SupplierOfferOption[];
+  suppliers: ProjectReadinessOptions["suppliers"];
+  suppliedItems: ProjectReadinessOptions["suppliedItems"];
+  measurementUnits: ProjectReadinessOptions["measurementUnits"];
+  setDraft: React.Dispatch<React.SetStateAction<FuelDraft | null>>;
+}) {
+  const selected = fuelOptions.find((option) => option.id === draft.sourceOfferId);
+  const quantityHelper =
+    draft.mode === "existing"
+      ? selected
+        ? `Quantidade padrão da oferta: ${canonicalDecimalToBrazilian(selected.conversionToBase, 6)}`
+        : "Selecione uma oferta para usar a quantidade padrão do catálogo."
+      : `Quantidade padrão desta nova oferta: ${draft.defaultConversionToBase}`;
+
+  return (
+    <div className="grid gap-4">
+      <DraftModeControl
+        mode={draft.mode}
+        newLabel="Nova oferta"
+        onChange={(mode) =>
+          setDraft({
+            ...createBlankFuelDraft(fuelOptions, measurementUnits),
+            mode,
+          })
+        }
+      />
+
+      {draft.mode === "existing" ? (
+        <div className="grid gap-4">
+          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_10rem] md:items-end">
+            <label className="grid gap-1.5 text-sm font-semibold">
+              <span>Oferta do fornecedor</span>
+              <select
+                className={controlClass}
+                value={draft.sourceOfferId}
+                onChange={(event) => {
+                  const nextOffer = fuelOptions.find(
+                    (option) => option.id === event.target.value,
+                  );
+                  const nextQuantity = nextOffer
+                    ? canonicalDecimalToBrazilian(nextOffer.conversionToBase, 6)
+                    : "1,000000";
+                  setDraft((current) =>
+                    current
+                      ? {
+                          ...current,
+                          sourceOfferId: event.target.value,
+                          supplierId: nextOffer?.supplier.id ?? "",
+                          itemId: nextOffer?.item.id ?? "",
+                          purchaseUnitId: nextOffer?.purchaseUnit.id ?? "",
+                          conversionToBase: nextQuantity,
+                          defaultConversionToBase: nextQuantity,
+                          customQuantityEnabled: false,
+                          price: nextOffer
+                            ? canonicalDecimalToBrazilian(
+                                nextOffer.currentPrice.price,
+                                4,
+                              )
+                            : "",
+                        }
+                      : current,
+                  );
+                }}
+              >
+                <option value="">Selecione</option>
+                {fuelOptions.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {optionLabel(option)} ·{" "}
+                    {formatMoney(option.currentPrice.price, 4)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1.5 text-sm font-semibold">
+              <span>Preço</span>
+              <Input
+                className="h-11"
+                inputMode="decimal"
+                value={draft.price}
+                onChange={(event) =>
+                  setDraft((current) =>
+                    current
+                      ? {
+                          ...current,
+                          price: formatBrazilianDecimalInput(
+                            event.target.value,
+                            4,
+                          ),
+                        }
+                      : current,
+                  )
+                }
+              />
+            </label>
+          </div>
+          <QuantityEditor
+            checked={draft.customQuantityEnabled}
+            label="Informar quantidade nesta obra"
+            helperText={quantityHelper}
+            value={draft.conversionToBase}
+            onCheckedChange={(checked) =>
+              setDraft((current) =>
+                current
+                  ? {
+                      ...current,
+                      customQuantityEnabled: checked,
+                      conversionToBase: checked
+                        ? current.conversionToBase
+                        : current.defaultConversionToBase,
+                    }
+                  : current,
+              )
+            }
+            onValueChange={(value) =>
+              setDraft((current) =>
+                current ? { ...current, conversionToBase: value } : current,
+              )
+            }
+          />
+        </div>
+      ) : (
+        <div className="grid gap-4">
+          <div className="grid gap-3 md:grid-cols-2">
+            <label className="grid gap-1.5 text-sm font-semibold">
+              <span>Fornecedor</span>
+              <select
+                className={controlClass}
+                value={draft.supplierId}
+                onChange={(event) =>
+                  setDraft((current) =>
+                    current
+                      ? { ...current, supplierId: event.target.value }
+                      : current,
+                  )
+                }
+              >
+                <option value="">Selecione</option>
+                {suppliers.map((supplier) => (
+                  <option key={supplier.id} value={supplier.id}>
+                    {supplier.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1.5 text-sm font-semibold">
+              <span>Item</span>
+              <select
+                className={controlClass}
+                value={draft.itemId}
+                onChange={(event) => {
+                  const nextItem = suppliedItems.find(
+                    (item) => item.id === event.target.value,
+                  );
+                  setDraft((current) =>
+                    current
+                      ? {
+                          ...current,
+                          itemId: event.target.value,
+                          purchaseUnitId: defaultUnitId(
+                            measurementUnits,
+                            nextItem,
+                          ),
+                        }
+                      : current,
+                  );
+                }}
+              >
+                <option value="">Selecione</option>
+                {suppliedItems.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_10rem] md:items-end">
+            <label className="grid gap-1.5 text-sm font-semibold">
+              <span>Unidade</span>
+              <select
+                className={controlClass}
+                value={draft.purchaseUnitId}
+                onChange={(event) =>
+                  setDraft((current) =>
+                    current
+                      ? { ...current, purchaseUnitId: event.target.value }
+                      : current,
+                  )
+                }
+              >
+                <option value="">Selecione</option>
+                {measurementUnits.map((unit) => (
+                  <option key={unit.id} value={unit.id}>
+                    {unit.code} - {unit.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1.5 text-sm font-semibold">
+              <span>Preço</span>
+              <Input
+                className="h-11"
+                inputMode="decimal"
+                value={draft.price}
+                onChange={(event) =>
+                  setDraft((current) =>
+                    current
+                      ? {
+                          ...current,
+                          price: formatBrazilianDecimalInput(
+                            event.target.value,
+                            4,
+                          ),
+                        }
+                      : current,
+                  )
+                }
+              />
+            </label>
+          </div>
+
+          <QuantityEditor
+            checked={draft.customQuantityEnabled}
+            label="Informar quantidade nesta obra"
+            helperText={quantityHelper}
+            value={draft.conversionToBase}
+            onCheckedChange={(checked) =>
+              setDraft((current) =>
+                current
+                  ? {
+                      ...current,
+                      customQuantityEnabled: checked,
+                      conversionToBase: checked
+                        ? current.conversionToBase
+                        : current.defaultConversionToBase,
+                    }
+                  : current,
+              )
+            }
+            onValueChange={(value) =>
+              setDraft((current) =>
+                current ? { ...current, conversionToBase: value } : current,
+              )
+            }
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function FuelEditEditor({
+  draft,
+  offer,
+  setDraft,
+}: {
+  draft: FuelDraft;
+  offer: ProjectOfferSnapshot;
+  setDraft: React.Dispatch<React.SetStateAction<FuelDraft | null>>;
+}) {
+  return (
+    <div className="grid gap-4">
+      <div className="grid gap-3 md:grid-cols-3">
+        <ReadonlyField
+          label="Fornecedor"
+          value={offer.supplier?.name ?? "Fornecedor não encontrado"}
+        />
+        <ReadonlyField
+          label="Item"
+          value={offer.item?.name ?? "Item não encontrado"}
+        />
+        <ReadonlyField
+          label="Unidade"
+          value={offer.purchaseUnit?.code ?? "Unidade não encontrada"}
+        />
+      </div>
+
+      <p className="text-sm font-semibold text-muted-foreground">
+        Para trocar fornecedor, item ou unidade, remova esta oferta e adicione
+        novamente.
+      </p>
+
+      <label className="grid gap-1.5 text-sm font-semibold">
+        <span>Preço</span>
+        <Input
+          className="h-11"
+          inputMode="decimal"
+          value={draft.price}
+          onChange={(event) =>
+            setDraft((current) =>
+              current
+                ? {
+                    ...current,
+                    price: formatBrazilianDecimalInput(event.target.value, 4),
+                  }
+                : current,
+            )
+          }
+        />
+      </label>
+
+      <QuantityEditor
+        checked={draft.customQuantityEnabled}
+        label="Alterar quantidade nesta obra"
+        helperText={`Quantidade atual nesta obra: ${draft.defaultConversionToBase}`}
+        value={draft.conversionToBase}
+        onCheckedChange={(checked) =>
+          setDraft((current) =>
+            current
+              ? {
+                  ...current,
+                  customQuantityEnabled: checked,
+                  conversionToBase: checked
+                    ? current.conversionToBase
+                    : current.defaultConversionToBase,
+                }
+              : current,
+          )
+        }
+        onValueChange={(value) =>
+          setDraft((current) =>
+            current ? { ...current, conversionToBase: value } : current,
+          )
+        }
+      />
+    </div>
+  );
+}
+
+export function OfferRows({
   drafts,
   emptyText,
   highlightedDraftKey,
@@ -455,9 +1029,6 @@ function OfferRows({
         const selected = options.find(
           (option) => option.id === draft.sourceOfferId,
         );
-        const selectedItem = suppliedItems.find(
-          (item) => item.id === draft.itemId,
-        );
         return (
           <div
             key={draft.key}
@@ -469,36 +1040,24 @@ function OfferRows({
           >
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div className="grid gap-2">
-                <div className="inline-flex rounded-md border border-border bg-secondary/50 p-1">
-                  {(["existing", "new"] as const).map((mode) => (
-                    <button
-                      key={mode}
-                      type="button"
-                      className={cn(
-                        "min-h-9 rounded-sm px-3 text-sm font-bold transition-colors",
-                        draft.mode === mode
-                          ? "bg-background text-foreground shadow-xs"
-                          : "text-muted-foreground hover:text-foreground",
-                      )}
-                      onClick={() =>
-                        setDrafts((current) =>
-                          current.map((item) =>
-                            item.key === draft.key
-                              ? {
-                                  ...item,
-                                  mode,
-                                  sourceOfferId:
-                                    mode === "new" ? "" : item.sourceOfferId,
-                                }
-                              : item,
-                          ),
-                        )
-                      }
-                    >
-                      {mode === "existing" ? "Oferta existente" : newLabel}
-                    </button>
-                  ))}
-                </div>
+                <DraftModeControl
+                  mode={draft.mode}
+                  newLabel={newLabel}
+                  onChange={(mode) =>
+                    setDrafts((current) =>
+                      current.map((item) =>
+                        item.key === draft.key
+                          ? {
+                              ...item,
+                              mode,
+                              sourceOfferId:
+                                mode === "new" ? "" : item.sourceOfferId,
+                            }
+                          : item,
+                      ),
+                    )
+                  }
+                />
                 {highlightedDraftKey === draft.key && (
                   <span className="justify-self-start rounded-sm bg-primary/10 px-2 py-0.5 text-xs font-bold text-primary">
                     Editando esta oferta
@@ -571,7 +1130,8 @@ function OfferRows({
                   </select>
                   {selected && (
                     <span className="text-xs font-medium text-muted-foreground">
-                      Conversão {selected.conversionToBase} para unidade base.
+                      Quantidade padrão da oferta:{" "}
+                      {canonicalDecimalToBrazilian(selected.conversionToBase, 6)}
                     </span>
                   )}
                 </label>
@@ -662,7 +1222,7 @@ function OfferRows({
                     </select>
                   </label>
                   <label className="grid gap-1.5 text-sm font-semibold">
-                    <span>Conversão</span>
+                    <span>Quantidade</span>
                     <Input
                       className="h-11"
                       inputMode="decimal"
@@ -778,9 +1338,15 @@ export function ProjectDetail({
   const [metrics, setMetrics] = React.useState(() =>
     metricInitialState(project),
   );
-  const [fuelDrafts, setFuelDrafts] = React.useState(() =>
-    offerInitialState(project.fuelOffers),
+  const [fuelAddDraft, setFuelAddDraft] = React.useState<FuelDraft | null>(
+    null,
   );
+  const [fuelEditDraft, setFuelEditDraft] = React.useState<FuelDraft | null>(
+    null,
+  );
+  const [editingFuelOfferId, setEditingFuelOfferId] = React.useState<
+    string | null
+  >(null);
   const [materialDrafts, setMaterialDrafts] = React.useState(() =>
     offerInitialState(project.supplierOffers),
   );
@@ -799,16 +1365,12 @@ export function ProjectDetail({
   const [materialDirty, setMaterialDirty] = React.useState(false);
   const [paymentDirty, setPaymentDirty] = React.useState(false);
   const [activeTab, setActiveTab] = React.useState<ProjectTab>("planning");
-  const [fuelDialogIntent, setFuelDialogIntent] = React.useState<
-    "add" | "edit"
-  >("add");
-  const [highlightedFuelDraftKey, setHighlightedFuelDraftKey] =
-    React.useState<string | null>(null);
   const [openModal, setOpenModal] = React.useState<
     | "accountability"
     | "team"
     | "machines"
-    | "fuel"
+    | "fuelAdd"
+    | "fuelEdit"
     | "materials"
     | "payments"
     | null
@@ -837,15 +1399,15 @@ export function ProjectDetail({
     readinessForm.reset(projectToCommand(project));
     setPlannedEndDate(project.baseline?.plannedEndDate ?? "");
     setMetrics(metricInitialState(project));
-    setFuelDrafts(offerInitialState(project.fuelOffers));
+    setFuelAddDraft(null);
+    setFuelEditDraft(null);
+    setEditingFuelOfferId(null);
     setMaterialDrafts(offerInitialState(project.supplierOffers));
     setPaymentTerms(paymentInitialState(project));
     setPlanningDirty(false);
     setFuelDirty(false);
     setMaterialDirty(false);
     setPaymentDirty(false);
-    setFuelDialogIntent("add");
-    setHighlightedFuelDraftKey(null);
   }, [project, readinessForm]);
 
   const modalOptions = React.useMemo<ProjectWizardOptions>(
@@ -893,12 +1455,10 @@ export function ProjectDetail({
     ? apiBlockers
     : project.readiness.blockers;
   const isEditable = project.status === "planned";
-  const fuelOptions = React.useMemo(() => {
-    const candidates = options.supplierOffers.filter(
-      (offer) => offer.isFuelCandidate,
-    );
-    return candidates.length ? candidates : options.supplierOffers;
-  }, [options.supplierOffers]);
+  const fuelOptions = React.useMemo(
+    () => pickFuelOptions(options.supplierOffers),
+    [options.supplierOffers],
+  );
   const hasUnsavedChanges =
     planningDirty ||
     fuelDirty ||
@@ -936,6 +1496,9 @@ export function ProjectDetail({
     : fuelReady
       ? ({ label: "OK", tone: "ready" } as const)
       : ({ label: "Pendente", tone: "pending" } as const);
+  const currentEditingFuelOffer = editingFuelOfferId
+    ? project.fuelOffers.find((offer) => offer.id === editingFuelOfferId) ?? null
+    : null;
   const accountabilityStatus =
     readinessForm.formState.dirtyFields.clientId ||
     readinessForm.formState.dirtyFields.managerEmploymentId ||
@@ -1063,50 +1626,47 @@ export function ProjectDetail({
   };
 
   const buildOfferCommand = (drafts: OfferDraft[]) => {
-    const command = drafts.map((draft) => {
-      const price = decimalInputToCanonical(draft.price, 4);
-      if (draft.mode === "existing") {
-        return {
-          mode: "existing" as const,
-          sourceOfferId: draft.sourceOfferId,
-          price,
-        };
-      }
-      return {
-        mode: draft.saveToCatalog
-          ? ("companyCatalog" as const)
-          : ("projectOnly" as const),
-        supplierId: draft.supplierId,
-        itemId: draft.itemId,
-        purchaseUnitId: draft.purchaseUnitId,
-        conversionToBase: decimalInputToCanonical(draft.conversionToBase, 6),
-        price,
-      };
-    });
-    const hasIncompleteOffer = command.some((draft) => {
-      if (!draft.price || draft.price === "0.0000") return true;
-      if (draft.mode === "existing") return !draft.sourceOfferId;
-      return (
-        !draft.supplierId ||
-        !draft.itemId ||
-        !draft.purchaseUnitId ||
-        !draft.conversionToBase ||
-        draft.conversionToBase === "0.000000"
-      );
-    });
-    const offerKeys = command.map((draft) =>
-      draft.mode === "existing"
-        ? `existing:${draft.sourceOfferId}`
-        : `${draft.mode}:${draft.supplierId}:${draft.itemId}:${draft.purchaseUnitId}`,
+    const commands = drafts.map((draft) => draftToMaterialCommand(draft));
+    const hasIncompleteOffer = commands.some(
+      (command) => !isOfferCommandComplete(command),
+    );
+    const offerKeys = commands.map((command) =>
+      command.mode === "existing"
+        ? `existing:${command.sourceOfferId}`
+        : `${command.mode}:${command.supplierId}:${command.itemId}:${command.purchaseUnitId}`,
     );
     const hasDuplicateOffer = new Set(offerKeys).size !== offerKeys.length;
     if (hasIncompleteOffer || hasDuplicateOffer) return null;
-    return command;
+    return commands;
   };
 
-  const saveFuel = () => {
-    const fuelOffers = buildOfferCommand(fuelDrafts);
-    if (!fuelOffers || fuelOffers.length === 0) {
+  const getCurrentFuelCommands = () => {
+    const commands = project.fuelOffers.map(projectOfferToCommand);
+    if (commands.some((command) => !command)) return null;
+    return commands as ReadinessOfferCommand[];
+  };
+
+  const saveFuelAdd = () => {
+    if (!fuelAddDraft) return;
+    const currentFuelOffers = getCurrentFuelCommands();
+    const nextOffer = draftToFuelCommand(fuelAddDraft);
+    const fuelOffers = currentFuelOffers
+      ? [...currentFuelOffers, nextOffer]
+      : null;
+    const hasDuplicateOffer = fuelOffers
+      ? new Set(
+          fuelOffers.map((command) =>
+            command.mode === "existing"
+              ? `existing:${command.sourceOfferId}`
+              : `${command.mode}:${command.supplierId}:${command.itemId}:${command.purchaseUnitId}`,
+          ),
+        ).size !== fuelOffers.length
+      : false;
+    if (
+      !fuelOffers ||
+      !isOfferCommandComplete(nextOffer) ||
+      hasDuplicateOffer
+    ) {
       setNotice({
         tone: "warning",
         text: "Selecione ofertas de combustível sem duplicidade e com preço positivo.",
@@ -1115,9 +1675,68 @@ export function ProjectDetail({
     }
     savePatch({ fuelOffers }, "Combustível salvo.", () => {
       setFuelDirty(false);
-      setHighlightedFuelDraftKey(null);
+      setFuelAddDraft(null);
       setOpenModal(null);
     });
+  };
+
+  const saveFuelEdit = () => {
+    if (!fuelEditDraft || !editingFuelOfferId) return;
+    const nextOffer = draftToFuelCommand(fuelEditDraft);
+    const fuelOffers = project.fuelOffers
+      .map((offer) =>
+        offer.id === editingFuelOfferId ? nextOffer : projectOfferToCommand(offer),
+      )
+      .filter(Boolean) as ReadinessOfferCommand[];
+    const hasDuplicateOffer =
+      new Set(
+        fuelOffers.map((command) =>
+          command.mode === "existing"
+            ? `existing:${command.sourceOfferId}`
+            : `${command.mode}:${command.supplierId}:${command.itemId}:${command.purchaseUnitId}`,
+        ),
+      ).size !== fuelOffers.length;
+    if (
+      fuelOffers.length !== project.fuelOffers.length ||
+      !isOfferCommandComplete(nextOffer) ||
+      hasDuplicateOffer
+    ) {
+      setNotice({
+        tone: "warning",
+        text: "Revise preço, quantidade e possíveis duplicidades antes de salvar.",
+      });
+      return;
+    }
+    savePatch({ fuelOffers }, "Combustível atualizado.", () => {
+      setFuelDirty(false);
+      setFuelEditDraft(null);
+      setEditingFuelOfferId(null);
+      setOpenModal(null);
+    });
+  };
+
+  const removeFuelOffer = () => {
+    if (!editingFuelOfferId) return;
+    const fuelOffers = project.fuelOffers
+      .filter((offer) => offer.id !== editingFuelOfferId)
+      .map(projectOfferToCommand);
+    if (fuelOffers.some((command) => !command)) {
+      setNotice({
+        tone: "warning",
+        text: "Não foi possível remover esta oferta agora. Atualize a página e tente novamente.",
+      });
+      return;
+    }
+    savePatch(
+      { fuelOffers: fuelOffers as ReadinessOfferCommand[] },
+      "Combustível removido.",
+      () => {
+        setFuelDirty(false);
+        setFuelEditDraft(null);
+        setEditingFuelOfferId(null);
+        setOpenModal(null);
+      },
+    );
   };
 
   const saveMaterials = () => {
@@ -1253,31 +1872,42 @@ export function ProjectDetail({
       setter(value);
     };
 
+  const setFuelDraftWithDirty =
+    (
+      setter: React.Dispatch<React.SetStateAction<FuelDraft | null>>,
+    ): React.Dispatch<React.SetStateAction<FuelDraft | null>> =>
+    (value) => {
+      setFuelDirty(true);
+      setter(value);
+    };
+
   const openAddFuelModal = () => {
-    const nextDraft = createBlankOfferDraft(
+    const nextDraft = createBlankFuelDraft(
       fuelOptions,
       options.measurementUnits,
     );
-    setFuelDrafts([...offerInitialState(project.fuelOffers), nextDraft]);
-    setFuelDialogIntent("add");
-    setHighlightedFuelDraftKey(nextDraft.key);
-    setFuelDirty(true);
-    setOpenModal("fuel");
+    setFuelAddDraft(nextDraft);
+    setFuelEditDraft(null);
+    setEditingFuelOfferId(null);
+    setFuelDirty(false);
+    setOpenModal("fuelAdd");
   };
 
   const openEditFuelModal = (offerId: string) => {
-    setFuelDrafts(offerInitialState(project.fuelOffers));
-    setFuelDialogIntent("edit");
-    setHighlightedFuelDraftKey(offerId);
+    const offer = project.fuelOffers.find((item) => item.id === offerId);
+    if (!offer) return;
+    setFuelEditDraft(createFuelDraftFromOffer(offer));
+    setFuelAddDraft(null);
+    setEditingFuelOfferId(offerId);
     setFuelDirty(false);
-    setOpenModal("fuel");
+    setOpenModal("fuelEdit");
   };
 
   const closeFuelModal = () => {
-    setFuelDrafts(offerInitialState(project.fuelOffers));
+    setFuelAddDraft(null);
+    setFuelEditDraft(null);
+    setEditingFuelOfferId(null);
     setFuelDirty(false);
-    setFuelDialogIntent("add");
-    setHighlightedFuelDraftKey(null);
     setOpenModal(null);
   };
 
@@ -1868,44 +2498,83 @@ export function ProjectDetail({
 
       <OperationsModal
         icon={Fuel}
-        open={openModal === "fuel"}
+        open={openModal === "fuelAdd"}
         onOpenChange={(open) => {
           if (!open && !isPending) closeFuelModal();
         }}
         size="xl"
-        title={
-          fuelDialogIntent === "add"
-            ? "Adicionar combustível"
-            : "Editar combustível"
-        }
-        description={
-          fuelDialogIntent === "add"
-            ? "Adicione uma oferta existente, crie uma oferta exclusiva desta obra ou salve a nova oferta também no catálogo da empresa."
-            : "Altere a oferta selecionada, confirme o preço da obra ou remova o combustível se necessário."
-        }
+        title="Adicionar combustível"
+        description="Escolha uma oferta existente ou crie uma nova entrada exclusiva para esta obra."
         footer={
           <>
             <Button type="button" variant="outline" onClick={closeFuelModal}>
               Cancelar
             </Button>
-            <Button type="button" disabled={isPending} onClick={saveFuel}>
+            <Button
+              type="button"
+              disabled={isPending || !fuelAddDraft}
+              onClick={saveFuelAdd}
+            >
               <Check className="size-4" />
               Salvar combustível
             </Button>
           </>
         }
       >
-        <OfferRows
-          drafts={fuelDrafts}
-          emptyText="Nenhuma oferta de combustível selecionada."
-          highlightedDraftKey={highlightedFuelDraftKey}
-          kind="fuel"
-          options={fuelOptions}
-          suppliers={options.suppliers}
-          suppliedItems={options.suppliedItems}
-          measurementUnits={options.measurementUnits}
-          setDrafts={setOfferDrafts(setFuelDrafts, () => setFuelDirty(true))}
-        />
+        {fuelAddDraft && (
+          <FuelAddEditor
+            draft={fuelAddDraft}
+            fuelOptions={fuelOptions}
+            suppliers={options.suppliers}
+            suppliedItems={options.suppliedItems}
+            measurementUnits={options.measurementUnits}
+            setDraft={setFuelDraftWithDirty(setFuelAddDraft)}
+          />
+        )}
+      </OperationsModal>
+
+      <OperationsModal
+        icon={Fuel}
+        open={openModal === "fuelEdit"}
+        onOpenChange={(open) => {
+          if (!open && !isPending) closeFuelModal();
+        }}
+        size="lg"
+        title="Editar combustível"
+        description="Na edição, ajuste apenas o preço da obra e a quantidade específica desta oferta."
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={isPending || !currentEditingFuelOffer}
+              onClick={removeFuelOffer}
+            >
+              Remover oferta
+            </Button>
+            <div className="flex flex-col-reverse gap-2 sm:flex-row">
+              <Button type="button" variant="outline" onClick={closeFuelModal}>
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                disabled={isPending || !fuelEditDraft || !currentEditingFuelOffer}
+                onClick={saveFuelEdit}
+              >
+                <Check className="size-4" />
+                Salvar oferta
+              </Button>
+            </div>
+          </>
+        }
+      >
+        {fuelEditDraft && currentEditingFuelOffer && (
+          <FuelEditEditor
+            draft={fuelEditDraft}
+            offer={currentEditingFuelOffer}
+            setDraft={setFuelDraftWithDirty(setFuelEditDraft)}
+          />
+        )}
       </OperationsModal>
 
       <OperationsModal

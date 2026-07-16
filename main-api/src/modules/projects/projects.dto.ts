@@ -403,6 +403,7 @@ const projectReadinessExistingOfferSchema = z
   .object({
     mode: z.literal("existing").optional(),
     sourceOfferId: uuid,
+    conversionToBase: decimal(6, 12, true).optional(),
     price: decimal(4, 14, true),
   })
   .strict();
@@ -477,7 +478,7 @@ export const projectReadinessCommandSchema = z
       .min(1)
       .max(4)
       .optional(),
-    fuelOffers: z.array(projectReadinessOfferSchema).min(1).max(10).optional(),
+    fuelOffers: z.array(projectReadinessOfferSchema).max(10).optional(),
     materialOffers: z
       .array(projectReadinessOfferSchema)
       .max(50)

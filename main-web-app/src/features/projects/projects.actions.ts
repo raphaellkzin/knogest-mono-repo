@@ -102,6 +102,7 @@ const projectReadinessActionSchema = z
           z.object({
             mode: z.literal("existing").optional(),
             sourceOfferId: z.string().uuid(),
+            conversionToBase: readinessDecimal(6).optional(),
             price: readinessDecimal(4),
           }),
           z.object({
@@ -114,7 +115,6 @@ const projectReadinessActionSchema = z
           }),
         ]),
       )
-      .min(1)
       .max(10)
       .optional(),
     materialOffers: z
@@ -123,6 +123,7 @@ const projectReadinessActionSchema = z
           z.object({
             mode: z.literal("existing").optional(),
             sourceOfferId: z.string().uuid(),
+            conversionToBase: readinessDecimal(6).optional(),
             price: readinessDecimal(4),
           }),
           z.object({

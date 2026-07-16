@@ -134,7 +134,7 @@ describe("RegistryDetailPage supplier editing", () => {
 
     expect(screen.queryByRole("tab", { name: "Itens fornecidos" })).toBeNull();
     expect(screen.getByText("Unidade de medida")).toBeTruthy();
-    expect(screen.getByText("Conversão")).toBeTruthy();
+    expect(screen.getByText("Quantidade")).toBeTruthy();
     expect(screen.getByText("1,00000")).toBeTruthy();
     expect(screen.queryByText("Unidade-base")).toBeNull();
     expect(screen.queryByText("Compra")).toBeNull();
@@ -142,12 +142,12 @@ describe("RegistryDetailPage supplier editing", () => {
     await user.click(screen.getByRole("button", { name: "Nova oferta" }));
 
     expect(screen.getByLabelText("Unidade de medida")).toBeTruthy();
-    expect(screen.queryByLabelText("Conversão")).toBeNull();
-    await user.click(screen.getByLabelText("Informar conversão"));
-    expect((screen.getByLabelText("Conversão") as HTMLInputElement).value).toBe(
+    expect(screen.queryByLabelText("Quantidade")).toBeNull();
+    await user.click(screen.getByLabelText("Informar quantidade"));
+    expect((screen.getByLabelText("Quantidade") as HTMLInputElement).value).toBe(
       "1,00000",
     );
     expect(screen.queryByText("Unidade de compra")).toBeNull();
-    expect(screen.queryByText("Conversão para unidade-base")).toBeNull();
+    expect(screen.queryByText("Quantidade para unidade-base")).toBeNull();
   });
 });

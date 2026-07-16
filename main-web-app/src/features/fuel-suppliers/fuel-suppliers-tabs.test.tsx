@@ -341,14 +341,14 @@ describe("FuelSuppliersTabs", () => {
     expect(
       (screen.getByLabelText("Preço vigente") as HTMLInputElement).value,
     ).toBe("7,5000");
-    expect(screen.queryByLabelText("Conversão")).toBeNull();
+    expect(screen.queryByLabelText("Quantidade")).toBeNull();
     expect(
       screen.queryByLabelText(
-        "Propagar preço e conversão para ofertas ativas existentes deste item",
+        "Propagar preço e quantidade para ofertas ativas existentes deste item",
       ),
     ).toBeNull();
-    await user.click(screen.getByLabelText("Informar conversão"));
-    expect((screen.getByLabelText("Conversão") as HTMLInputElement).value).toBe(
+    await user.click(screen.getByLabelText("Informar quantidade"));
+    expect((screen.getByLabelText("Quantidade") as HTMLInputElement).value).toBe(
       "1,23456",
     );
 
@@ -549,8 +549,8 @@ describe("FuelSuppliersTabs", () => {
     await user.click(dialog.getAllByRole("button", { name: "Editar" })[0]!);
     await user.clear(dialog.getByLabelText("Preço vigente"));
     await user.type(dialog.getByLabelText("Preço vigente"), "8,2500");
-    await user.clear(dialog.getByLabelText("Conversão"));
-    await user.type(dialog.getByLabelText("Conversão"), "1,50000");
+    await user.clear(dialog.getByLabelText("Quantidade"));
+    await user.type(dialog.getByLabelText("Quantidade"), "1,50000");
     await user.click(dialog.getByRole("button", { name: "Salvar" }));
 
     await waitFor(() => expect(saveSupplierOfferAction).toHaveBeenCalled());

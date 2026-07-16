@@ -914,7 +914,7 @@ export function SuppliedItemsCatalog({
                     }
                     className="size-4 accent-primary"
                   />
-                  Informar conversão
+                  Informar quantidade
                 </label>
                 {!itemSupplierDraft.useConversion && (
                   <input
@@ -925,7 +925,7 @@ export function SuppliedItemsCatalog({
                 )}
                 {itemSupplierDraft.useConversion && (
                   <label className="grid gap-1.5 text-sm font-semibold">
-                    <span>Conversão</span>
+                    <span>Quantidade</span>
                     <Input
                       name="conversionToBase"
                       value={itemSupplierDraft.conversionToBase}
@@ -1096,7 +1096,7 @@ export function SuppliedItemsCatalog({
                         }
                       />
                       <Metric
-                        label="Conversão"
+                        label="Quantidade"
                         value={canonicalDecimalToBrazilian(
                           offer.conversionToBase,
                           5,
@@ -1190,7 +1190,7 @@ export function SuppliedItemsCatalog({
                             }
                             className="size-4 accent-primary"
                           />
-                          Informar conversão
+                          Informar quantidade
                         </label>
                         {!itemOfferDraft.useConversion && (
                           <input
@@ -1201,7 +1201,7 @@ export function SuppliedItemsCatalog({
                         )}
                         {itemOfferDraft.useConversion && (
                           <label className="grid gap-1.5 text-sm font-semibold">
-                            <span>Conversão</span>
+                            <span>Quantidade</span>
                             <Input
                               name="conversionToBase"
                               value={itemOfferDraft.conversionToBase}
@@ -1224,7 +1224,7 @@ export function SuppliedItemsCatalog({
                           saveItemOfferState.message && (
                             <FormErrorDeclaration
                               title="Não foi possível salvar a oferta."
-                              description="Revise preço e conversão antes de tentar novamente."
+                              description="Revise preço e quantidade antes de tentar novamente."
                               issues={[
                                 {
                                   location: "API",

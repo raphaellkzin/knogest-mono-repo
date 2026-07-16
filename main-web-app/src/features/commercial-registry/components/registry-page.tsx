@@ -738,7 +738,7 @@ export function RegistryPage({
                       Criar catálogo de itens
                     </span>
                     <span className="block text-muted-foreground">
-                      Registrar itens, unidades, conversão e preço.
+                      Registrar itens, unidades, quantidade e preço.
                     </span>
                   </span>
                 </button>

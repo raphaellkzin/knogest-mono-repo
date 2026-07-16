@@ -689,7 +689,7 @@ async function replaceProjectOffers(
         supplierId: source.supplierId,
         itemId: source.itemId,
         purchaseUnitId: source.purchaseUnitId,
-        conversionToBase: source.conversionToBase,
+        conversionToBase: offer.conversionToBase ?? source.conversionToBase,
         price: offer.price,
       });
       continue;

@@ -652,7 +652,7 @@ export function RegistryDetailPage({
             <div className="min-w-0">
               <h2 className="text-lg font-bold">Ofertas do fornecedor</h2>
               <p className="mt-1 text-sm font-medium text-muted-foreground">
-                Mantenha unidade de medida, conversão e preço vigente deste
+                Mantenha unidade de medida, quantidade e preço vigente deste
                 fornecedor.
               </p>
             </div>
@@ -669,7 +669,7 @@ export function RegistryDetailPage({
                   <tr className="border-y border-border">
                     <TableHead label="Item" />
                     <TableHead label="Unidade de medida" />
-                    <TableHead label="Conversão" />
+                    <TableHead label="Quantidade" />
                     <TableHead label="Preço vigente" />
                     <TableHead label="Atualização" />
                     <th className="px-4 py-3 text-right text-xs font-bold text-muted-foreground">
@@ -775,7 +775,7 @@ export function RegistryDetailPage({
           onOpenChange={setIsOfferModalOpen}
           size="lg"
           title={editingOffer ? "Editar oferta" : "Nova oferta"}
-          description="Defina o item, a unidade de medida, a conversão e o preço vigente para este fornecedor."
+          description="Defina o item, a unidade de medida, a quantidade e o preço vigente para este fornecedor."
           footer={
             <>
               <Button
@@ -947,14 +947,14 @@ export function RegistryDetailPage({
                   }
                   className="size-4 accent-primary"
                 />
-                Informar conversão
+                Informar quantidade
               </label>
               {!draft.useConversion && (
                 <input type="hidden" name="conversionToBase" value="1,00000" />
               )}
               {draft.useConversion && (
                 <label className="grid gap-1.5 text-sm font-semibold">
-                  <span>Conversão</span>
+                  <span>Quantidade</span>
                   <Input
                     name="conversionToBase"
                     value={draft.conversionToBase}
