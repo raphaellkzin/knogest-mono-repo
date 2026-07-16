@@ -481,14 +481,17 @@ export function SuppliedItemsCatalog({
       .map(([key, value]) => [key, value]);
   };
 
-  const hasChangedItemMirrorValues = (item: SuppliedItemCatalogItem) => {
+  const hasChangedItemMirrorValues = (
+    item: SuppliedItemCatalogItem,
+    draft: ItemDraft,
+  ) => {
     const nextBasePrice = decimalInputToCanonicalFixed(
-      itemDraft.basePrice,
+      draft.basePrice,
       4,
       4,
     );
-    const nextValueUnitQuantity = itemDraft.useValueUnit
-      ? decimalInputToCanonicalFixed(itemDraft.valueUnitQuantity, 6, 6)
+    const nextValueUnitQuantity = draft.useValueUnit
+      ? decimalInputToCanonicalFixed(draft.valueUnitQuantity, 6, 6)
       : "1.000000";
     if (!nextBasePrice || !nextValueUnitQuantity) return false;
     return (
@@ -500,21 +503,22 @@ export function SuppliedItemsCatalog({
   const handleItemSubmit: React.FormEventHandler<HTMLFormElement> = (
     event,
   ) => {
+    const formData = new FormData(event.currentTarget);
+    const submittedDraft = itemDraftFromFormData(formData, itemDraft);
+    setItemDraft(submittedDraft);
     const item = catalogItems.find(
-      (catalogItem) => catalogItem.id === itemDraft.id,
+      (catalogItem) => catalogItem.id === submittedDraft.id,
     );
     if (
       !item ||
       item.activeSupplierCount === 0 ||
-      !hasChangedItemMirrorValues(item)
+      !hasChangedItemMirrorValues(item, submittedDraft)
     ) {
       return;
     }
     event.preventDefault();
     setOtherOfferCount(item.activeSupplierCount);
-    setPendingItemFields(
-      stringFieldsFromForm(new FormData(event.currentTarget)),
-    );
+    setPendingItemFields(stringFieldsFromForm(formData));
     setIsPropagationModalOpen(true);
   };
 

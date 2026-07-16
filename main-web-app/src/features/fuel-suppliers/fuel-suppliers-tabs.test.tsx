@@ -158,6 +158,7 @@ function renderTabs({
   }),
   saveSupplierOfferAction = async () => initialState,
   saveSuppliedItemAction = async () => initialState,
+  supplierCatalog = catalog,
 }: {
   addSupplierToSuppliedItemAction?: ComponentProps<
     typeof FuelSuppliersTabs
@@ -178,6 +179,7 @@ function renderTabs({
   saveSuppliedItemAction?: ComponentProps<
     typeof FuelSuppliersTabs
   >["saveSuppliedItemAction"];
+  supplierCatalog?: ComponentProps<typeof FuelSuppliersTabs>["supplierCatalog"];
 } = {}) {
   return render(
     <FuelSuppliersTabs
@@ -199,7 +201,7 @@ function renderTabs({
       saveSupplierOfferAction={saveSupplierOfferAction}
       saveSuppliedItemAction={saveSuppliedItemAction}
       saveSuppliedItemCategoryAction={async () => initialState}
-      supplierCatalog={catalog}
+      supplierCatalog={supplierCatalog}
     />,
   );
 }
@@ -410,24 +412,46 @@ describe("FuelSuppliersTabs", () => {
 
   it("keeps the selected unit when item creation fails", async () => {
     const user = userEvent.setup();
+    const catalogWithHourFirst = {
+      ...catalog,
+      units: [
+        { id: "unit-hour", code: "H", name: "Hora" },
+        { id: "unit-1", code: "L", name: "Litro" },
+      ],
+    };
+    let submitted: FormData | null = null;
     const saveSuppliedItemAction: ComponentProps<
       typeof FuelSuppliersTabs
-    >["saveSuppliedItemAction"] = vi.fn(async () => ({
-      ok: false,
-      message: "Revise os dados informados e tente novamente. Campos: baseUnitId.",
-    }));
-    renderTabs({ saveSuppliedItemAction });
+    >["saveSuppliedItemAction"] = vi.fn(async (_state, formData) => {
+      submitted = formData;
+      return {
+        ok: false,
+        message:
+          "Revise os dados informados e tente novamente. Campos: baseUnitId.",
+      };
+    });
+    renderTabs({
+      saveSuppliedItemAction,
+      supplierCatalog: catalogWithHourFirst,
+    });
 
     await user.click(screen.getByRole("button", { name: "Criar item" }));
     const dialog = within(screen.getByRole("dialog"));
     await user.type(dialog.getByLabelText("Nome"), "Diesel S500");
-    await user.selectOptions(dialog.getByLabelText("Unidade de medida"), "unit-1");
+    await user.selectOptions(
+      dialog.getByLabelText("Unidade de medida"),
+      "unit-1",
+    );
     await user.click(dialog.getByRole("button", { name: "Salvar item" }));
 
     await waitFor(() => expect(saveSuppliedItemAction).toHaveBeenCalled());
     expect(
       (dialog.getByLabelText("Unidade de medida") as HTMLSelectElement).value,
     ).toBe("unit-1");
+    expect(submitted).not.toBeNull();
+    const submittedData = submitted as unknown as FormData;
+    expect(submittedData.get("baseUnitId")).toBe("unit-1");
+    expect(submittedData.get("propagateMirrorToExistingOffers")).toBeNull();
     expect(dialog.getByText(/Campos: baseUnitId/u)).toBeTruthy();
   });
 

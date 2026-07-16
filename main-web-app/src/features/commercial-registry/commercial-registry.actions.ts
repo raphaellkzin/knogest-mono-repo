@@ -119,24 +119,41 @@ function itemSupplierOfferPayload(formData: FormData) {
 }
 
 function validationFieldSummary(error: ApiClientError) {
-  const fields =
+  const details =
     error.data &&
     typeof error.data === "object" &&
     "details" in error.data &&
     error.data.details &&
-    typeof error.data.details === "object" &&
-    "fields" in error.data.details &&
-    Array.isArray(error.data.details.fields)
-      ? error.data.details.fields
-      : [];
-  const paths = fields
-    .map((field) =>
-      field && typeof field === "object" && "path" in field
-        ? String(field.path)
-        : "",
-    )
-    .filter(Boolean);
-  return paths.length ? ` Campos: ${paths.join(", ")}.` : "";
+    typeof error.data.details === "object"
+      ? error.data.details
+      : null;
+  if (!details) return "";
+
+  const paths = new Set<string>();
+  if (
+    "fields" in details &&
+    Array.isArray((details as { fields?: unknown }).fields)
+  ) {
+    for (const field of (details as { fields: unknown[] }).fields) {
+      if (field && typeof field === "object" && "path" in field) {
+        const path = String(field.path);
+        if (path) paths.add(path);
+      }
+    }
+  }
+
+  const fieldErrors =
+    "fieldErrors" in details &&
+    details.fieldErrors &&
+    typeof details.fieldErrors === "object"
+      ? details.fieldErrors
+      : details;
+  for (const [path, issues] of Object.entries(fieldErrors)) {
+    if (path === "fields" || path === "formErrors") continue;
+    if (Array.isArray(issues) && issues.length > 0) paths.add(path);
+  }
+
+  return paths.size ? ` Campos: ${Array.from(paths).join(", ")}.` : "";
 }
 
 function failureMessage(error: unknown) {

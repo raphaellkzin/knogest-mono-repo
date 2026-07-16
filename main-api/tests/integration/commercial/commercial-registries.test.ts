@@ -421,4 +421,45 @@ describe("commercial Client and Fuel Supplier registries", () => {
     });
     expect(inactivePatch.statusCode).toBe(404);
   });
+
+  it("creates supplied items with liter units and rejects update-only fields on create", async () => {
+    const pilot = await provision("supplied-items");
+    const authorization = await authFor({
+      corporationId: pilot.corporation.id,
+      userId: pilot.administrator.id,
+      companyId: pilot.companies[0].id,
+    });
+
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/v1/supplied-items",
+      headers: { authorization },
+      payload: {
+        name: "Diesel S10",
+        baseUnitId: "00000000-0000-4000-8000-00000000a001",
+        valueUnitQuantity: "1.000000",
+        basePrice: "7.2500",
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    expect(created.json().data).toMatchObject({
+      name: "Diesel S10",
+      baseUnitId: "00000000-0000-4000-8000-00000000a001",
+    });
+
+    const extraField = await app.inject({
+      method: "POST",
+      url: "/api/v1/supplied-items",
+      headers: { authorization },
+      payload: {
+        name: "Diesel S500",
+        baseUnitId: "00000000-0000-4000-8000-00000000a001",
+        valueUnitQuantity: "1.000000",
+        basePrice: "7.4000",
+        propagateMirrorToExistingOffers: false,
+      },
+    });
+    expect(extraField.statusCode).toBe(400);
+    expect(extraField.json()).toMatchObject({ code: "VALIDATION_ERROR" });
+  });
 });

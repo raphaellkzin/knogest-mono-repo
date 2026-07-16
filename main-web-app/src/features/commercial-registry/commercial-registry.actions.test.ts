@@ -30,12 +30,14 @@ describe("suppliedItemPayload", () => {
     formData.set("baseUnitId", "00000000-0000-4000-8000-00000000a010");
     formData.set("basePrice", "7,2500");
 
-    expect(suppliedItemPayload(formData)).toEqual({
+    const payload = suppliedItemPayload(formData);
+    expect(payload).toEqual({
       name: "Diesel S10",
       baseUnitId: "00000000-0000-4000-8000-00000000a010",
       categoryId: null,
       valueUnitQuantity: "1.000000",
       basePrice: "7.2500",
     });
+    expect("propagateMirrorToExistingOffers" in payload).toBe(false);
   });
 });

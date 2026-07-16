@@ -40,10 +40,7 @@ import {
   saveProjectReadinessAction,
   type ProjectReadinessActionInput,
 } from "../projects.actions";
-import {
-  emptyProjectCommand,
-  type ProjectCommand,
-} from "../projects-schema";
+import { emptyProjectCommand, type ProjectCommand } from "../projects-schema";
 import type {
   CompensationMode,
   ProductionMetricCode,
@@ -234,8 +231,7 @@ function projectToCommand(project: ProjectDetailSnapshot): ProjectCommand {
         employmentId: allocation.employment!.id,
         confirmedJobRoleName: allocation.jobRole,
         confirmedJobRolePeriodId: null,
-        expectedDailyWorkloadMinutes:
-          allocation.expectedDailyWorkloadMinutes,
+        expectedDailyWorkloadMinutes: allocation.expectedDailyWorkloadMinutes,
         compensationMode: allocation.compensationMode,
         compensationValue: allocation.compensationValue,
         overtimeRate: allocation.overtimeRate,
@@ -287,8 +283,7 @@ function Section({
                     "inline-flex min-h-6 items-center rounded-md px-2 text-xs font-bold",
                     status.tone === "ready" &&
                       "bg-emerald-100 text-emerald-900",
-                    status.tone === "pending" &&
-                      "bg-amber-100 text-amber-950",
+                    status.tone === "pending" && "bg-amber-100 text-amber-950",
                     status.tone === "dirty" && "bg-primary/10 text-primary",
                     status.tone === "neutral" &&
                       "bg-background text-muted-foreground",
@@ -409,7 +404,9 @@ function defaultUnitId(
   item?: ProjectReadinessOptions["suppliedItems"][number],
 ) {
   if (item?.baseUnitId) return item.baseUnitId;
-  const liter = units.find((unit) => unit.code.toLocaleLowerCase("pt-BR") === "l");
+  const liter = units.find(
+    (unit) => unit.code.toLocaleLowerCase("pt-BR") === "l",
+  );
   return liter?.id ?? units[0]?.id ?? "";
 }
 
@@ -439,7 +436,9 @@ function OfferRows({
         const selected = options.find(
           (option) => option.id === draft.sourceOfferId,
         );
-        const selectedItem = suppliedItems.find((item) => item.id === draft.itemId);
+        const selectedItem = suppliedItems.find(
+          (item) => item.id === draft.itemId,
+        );
         return (
           <div
             key={draft.key}
@@ -464,7 +463,8 @@ function OfferRows({
                             ? {
                                 ...item,
                                 mode,
-                                sourceOfferId: mode === "new" ? "" : item.sourceOfferId,
+                                sourceOfferId:
+                                  mode === "new" ? "" : item.sourceOfferId,
                               }
                             : item,
                         ),
@@ -507,10 +507,12 @@ function OfferRows({
                             ? {
                                 ...item,
                                 sourceOfferId: event.target.value,
-                                supplierId: nextOffer?.supplier.id ?? item.supplierId,
+                                supplierId:
+                                  nextOffer?.supplier.id ?? item.supplierId,
                                 itemId: nextOffer?.item.id ?? item.itemId,
                                 purchaseUnitId:
-                                  nextOffer?.purchaseUnit.id ?? item.purchaseUnitId,
+                                  nextOffer?.purchaseUnit.id ??
+                                  item.purchaseUnitId,
                                 conversionToBase: nextOffer
                                   ? canonicalDecimalToBrazilian(
                                       nextOffer.conversionToBase,
@@ -628,11 +630,6 @@ function OfferRows({
                         </option>
                       ))}
                     </select>
-                    {selectedItem && (
-                      <span className="text-xs font-medium text-muted-foreground">
-                        Unidade base do item usada como padrão.
-                      </span>
-                    )}
                   </label>
                   <label className="grid gap-1.5 text-sm font-semibold">
                     <span>Conversão</span>
@@ -674,16 +671,14 @@ function OfferRows({
                     }
                     className="size-4 accent-primary"
                   />
-                  Refletir no catálogo da empresa
+                  Criar item no catálogo da empresa (opcional)
                 </label>
               </div>
             )}
           </div>
         );
       })}
-      {drafts.length === 0 && (
-        <EmptyBlock>{emptyText}</EmptyBlock>
-      )}
+      {drafts.length === 0 && <EmptyBlock>{emptyText}</EmptyBlock>}
       <Button
         type="button"
         variant="outline"
@@ -859,8 +854,9 @@ export function ProjectDetail({
     () =>
       [
         ...new Set(
-          (watchedEmployeeAllocations ?? [])
-            .map((allocation) => allocation.compensationMode),
+          (watchedEmployeeAllocations ?? []).map(
+            (allocation) => allocation.compensationMode,
+          ),
         ),
       ].sort() as CompensationMode[],
     [watchedEmployeeAllocations],
@@ -886,8 +882,8 @@ export function ProjectDetail({
     apiBlockers.length > 0 || !project.readiness.canActivate;
   const accountabilityReady = Boolean(
     project.client &&
-      project.manager &&
-      project.technicalResponsibilities.length > 0,
+    project.manager &&
+    project.technicalResponsibilities.length > 0,
   );
   const planningReady = Boolean(
     project.baseline?.plannedEndDate && project.productionMetricTargets.length,
@@ -955,9 +951,7 @@ export function ProjectDetail({
       },
       {
         value: "accountability" as const,
-        label: (
-          <TabLabel label="Responsáveis" status={accountabilityStatus} />
-        ),
+        label: <TabLabel label="Responsáveis" status={accountabilityStatus} />,
       },
       {
         value: "team" as const,
@@ -1107,14 +1101,10 @@ export function ProjectDetail({
       });
       return;
     }
-    savePatch(
-      { materialOffers },
-      "Itens e fornecedores salvos.",
-      () => {
-        setMaterialDirty(false);
-        setOpenModal(null);
-      },
-    );
+    savePatch({ materialOffers }, "Itens e fornecedores salvos.", () => {
+      setMaterialDirty(false);
+      setOpenModal(null);
+    });
   };
 
   const saveAccountability = () => {
@@ -1189,14 +1179,10 @@ export function ProjectDetail({
       });
       return;
     }
-    savePatch(
-      { compensationPaymentTerms },
-      "Pagamentos salvos.",
-      () => {
-        setPaymentDirty(false);
-        setOpenModal(null);
-      },
-    );
+    savePatch({ compensationPaymentTerms }, "Pagamentos salvos.", () => {
+      setPaymentDirty(false);
+      setOpenModal(null);
+    });
   };
 
   const activateProject = () => {
@@ -1229,10 +1215,11 @@ export function ProjectDetail({
     });
   };
 
-  const setOfferDrafts = (
-    setter: React.Dispatch<React.SetStateAction<OfferDraft[]>>,
-    markDirty: () => void,
-  ): React.Dispatch<React.SetStateAction<OfferDraft[]>> =>
+  const setOfferDrafts =
+    (
+      setter: React.Dispatch<React.SetStateAction<OfferDraft[]>>,
+      markDirty: () => void,
+    ): React.Dispatch<React.SetStateAction<OfferDraft[]>> =>
     (value) => {
       markDirty();
       setter(value);
@@ -1399,385 +1386,385 @@ export function ProjectDetail({
         <div className="p-4">
           {activeTab === "planning" && (
             <div className="space-y-4">
-          <Section
-            icon={CalendarDays}
-            title="Datas planejadas"
-            description="A data final é obrigatória para liberar o início operacional."
-            status={planningStatus}
-            action={
-              isEditable && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="min-h-10"
-                  disabled={isPending || !planningDirty}
-                  onClick={savePlanning}
-                >
-                  <Save className="size-4" />
-                  Salvar datas/metas
-                </Button>
-              )
-            }
-          >
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="grid gap-1.5 text-sm font-semibold">
-                <span>Início planejado</span>
-                <Input
-                  className="h-11"
-                  value={project.baseline?.plannedStartDate ?? ""}
-                  disabled
-                />
-              </label>
-              <label className="grid gap-1.5 text-sm font-semibold">
-                <span>Fim previsto</span>
-                <Input
-                  className="h-11"
-                  type="date"
-                  value={plannedEndDate}
-                  disabled={!isEditable}
-                  onChange={(event) => {
-                    setPlannedEndDate(event.target.value);
-                    setPlanningDirty(true);
-                  }}
-                />
-              </label>
-            </div>
-          </Section>
-
-          <Section
-            icon={Gauge}
-            title="Métricas de produção"
-            description="Selecione as métricas usadas nesta obra e informe a meta total."
-            status={metricsStatus}
-          >
-            <div className="grid gap-3">
-              {metrics.map((metric, index) => (
-                <div
-                  key={metric.code}
-                  className={cn(
-                    "grid gap-3 rounded-md border border-border bg-background px-3 py-3 md:grid-cols-[minmax(0,1fr)_180px]",
-                    metric.enabled && "border-primary bg-primary/5",
-                  )}
-                >
-                  <label className="flex min-w-0 items-start gap-3">
-                    <input
-                      type="checkbox"
-                      className="mt-1 size-4 accent-primary"
-                      checked={metric.enabled}
-                      disabled={!isEditable}
-                      onChange={(event) => {
-                        setMetrics((current) =>
-                          current.map((item, itemIndex) =>
-                            itemIndex === index
-                              ? { ...item, enabled: event.target.checked }
-                              : item,
-                          ),
-                        );
-                        setPlanningDirty(true);
-                      }}
-                    />
-                    <span className="min-w-0">
-                      <span className="block text-sm font-bold">
-                        {metric.label}
-                      </span>
-                      <span className="mt-1 block text-sm leading-5 text-muted-foreground">
-                        {metric.description}
-                      </span>
-                    </span>
-                  </label>
+              <Section
+                icon={CalendarDays}
+                title="Datas planejadas"
+                description="A data final é obrigatória para liberar o início operacional."
+                status={planningStatus}
+                action={
+                  isEditable && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="min-h-10"
+                      disabled={isPending || !planningDirty}
+                      onClick={savePlanning}
+                    >
+                      <Save className="size-4" />
+                      Salvar datas/metas
+                    </Button>
+                  )
+                }
+              >
+                <div className="grid gap-3 sm:grid-cols-2">
                   <label className="grid gap-1.5 text-sm font-semibold">
-                    <span>Meta total ({metric.unit})</span>
+                    <span>Início planejado</span>
                     <Input
                       className="h-11"
-                      inputMode="decimal"
-                      value={metric.targetTotal}
-                      disabled={!isEditable || !metric.enabled}
+                      value={project.baseline?.plannedStartDate ?? ""}
+                      disabled
+                    />
+                  </label>
+                  <label className="grid gap-1.5 text-sm font-semibold">
+                    <span>Fim previsto</span>
+                    <Input
+                      className="h-11"
+                      type="date"
+                      value={plannedEndDate}
+                      disabled={!isEditable}
                       onChange={(event) => {
-                        setMetrics((current) =>
-                          current.map((item, itemIndex) =>
-                            itemIndex === index
-                              ? {
-                                  ...item,
-                                  targetTotal: formatBrazilianDecimalInput(
-                                    event.target.value,
-                                    2,
-                                  ),
-                                }
-                              : item,
-                          ),
-                        );
+                        setPlannedEndDate(event.target.value);
                         setPlanningDirty(true);
                       }}
                     />
                   </label>
                 </div>
-              ))}
-            </div>
-          </Section>
+              </Section>
+
+              <Section
+                icon={Gauge}
+                title="Métricas de produção"
+                description="Selecione as métricas usadas nesta obra e informe a meta total."
+                status={metricsStatus}
+              >
+                <div className="grid gap-3">
+                  {metrics.map((metric, index) => (
+                    <div
+                      key={metric.code}
+                      className={cn(
+                        "grid gap-3 rounded-md border border-border bg-background px-3 py-3 md:grid-cols-[minmax(0,1fr)_180px]",
+                        metric.enabled && "border-primary bg-primary/5",
+                      )}
+                    >
+                      <label className="flex min-w-0 items-start gap-3">
+                        <input
+                          type="checkbox"
+                          className="mt-1 size-4 accent-primary"
+                          checked={metric.enabled}
+                          disabled={!isEditable}
+                          onChange={(event) => {
+                            setMetrics((current) =>
+                              current.map((item, itemIndex) =>
+                                itemIndex === index
+                                  ? { ...item, enabled: event.target.checked }
+                                  : item,
+                              ),
+                            );
+                            setPlanningDirty(true);
+                          }}
+                        />
+                        <span className="min-w-0">
+                          <span className="block text-sm font-bold">
+                            {metric.label}
+                          </span>
+                          <span className="mt-1 block text-sm leading-5 text-muted-foreground">
+                            {metric.description}
+                          </span>
+                        </span>
+                      </label>
+                      <label className="grid gap-1.5 text-sm font-semibold">
+                        <span>Meta total ({metric.unit})</span>
+                        <Input
+                          className="h-11"
+                          inputMode="decimal"
+                          value={metric.targetTotal}
+                          disabled={!isEditable || !metric.enabled}
+                          onChange={(event) => {
+                            setMetrics((current) =>
+                              current.map((item, itemIndex) =>
+                                itemIndex === index
+                                  ? {
+                                      ...item,
+                                      targetTotal: formatBrazilianDecimalInput(
+                                        event.target.value,
+                                        2,
+                                      ),
+                                    }
+                                  : item,
+                              ),
+                            );
+                            setPlanningDirty(true);
+                          }}
+                        />
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              </Section>
             </div>
           )}
 
           {activeTab === "fuel" && (
-          <Section
-            icon={Fuel}
-            title="Combustível"
-            description="Selecione ofertas cadastradas no fornecedor e confirme o preço da obra."
-            status={fuelStatus}
-            action={
-              isEditable && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="min-h-10"
-                  onClick={() => setOpenModal("fuel")}
-                >
-                  <Pencil className="size-4" />
-                  Editar
-                </Button>
-              )
-            }
-          >
-            <div className="grid gap-2 text-sm">
-              {project.fuelOffers.length ? (
-                project.fuelOffers.map((offer) => (
-                  <div
-                    key={offer.id}
-                    className="rounded-md border border-border bg-background px-3 py-2"
+            <Section
+              icon={Fuel}
+              title="Combustível"
+              description="Selecione ofertas cadastradas no fornecedor e confirme o preço da obra."
+              status={fuelStatus}
+              action={
+                isEditable && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="min-h-10"
+                    onClick={() => setOpenModal("fuel")}
                   >
-                    <p className="font-bold">
-                      {offer.item?.name ?? "Item não encontrado"}
-                    </p>
-                    <p className="text-muted-foreground">
-                      {offer.supplier?.name ?? "Fornecedor não encontrado"} ·{" "}
-                      {offer.purchaseUnit?.code ?? "un."} ·{" "}
-                      {formatMoney(offer.price, 4)}
-                    </p>
-                  </div>
-                ))
-              ) : (
-                <p className="text-muted-foreground">
-                  Nenhum combustível confirmado.
-                </p>
-              )}
-            </div>
-          </Section>
-          )}
-
-          {activeTab === "accountability" && (
-          <Section
-            icon={HardHat}
-            title="Responsáveis da obra"
-            description="Cliente, gestor e responsabilidade técnica."
-            status={accountabilityStatus}
-            action={
-              isEditable && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="min-h-10"
-                  onClick={() => setOpenModal("accountability")}
-                >
-                  <Pencil className="size-4" />
-                  Editar
-                </Button>
-              )
-            }
-          >
-            <dl className="grid gap-2">
-              <DetailRow
-                label="Cliente"
-                value={project.client?.name ?? "Não informado"}
-              />
-              <DetailRow
-                label="Gestor"
-                value={project.manager?.name ?? "Não informado"}
-              />
-              <DetailRow
-                label="Responsáveis técnicos"
-                value={
-                  project.technicalResponsibilities.length
-                    ? project.technicalResponsibilities
-                        .map((person) => person.name)
-                        .join(", ")
-                    : "Não informado"
-                }
-              />
-            </dl>
-          </Section>
-          )}
-
-          {activeTab === "team" && (
-          <Section
-            icon={UsersRound}
-            title="Equipe operacional"
-            description="Funcionários mobilizados com função, jornada e remuneração."
-            status={teamStatus}
-            action={
-              isEditable && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="min-h-10"
-                  onClick={() => setOpenModal("team")}
-                >
-                  <Pencil className="size-4" />
-                  Editar
-                </Button>
-              )
-            }
-          >
-            {project.employeeAllocations.length ? (
+                    <Pencil className="size-4" />
+                    Editar
+                  </Button>
+                )
+              }
+            >
               <div className="grid gap-2 text-sm">
-                {project.employeeAllocations.slice(0, 4).map((allocation) => (
-                  <div
-                    key={allocation.id}
-                    className="rounded-md border border-border bg-background px-3 py-2"
-                  >
-                    <p className="font-bold">
-                      {allocation.employment?.name ?? "Funcionário"}
-                    </p>
-                    <p className="text-muted-foreground">
-                      {allocation.jobRole} ·{" "}
-                      {compensationLabels[allocation.compensationMode]}
-                    </p>
-                  </div>
-                ))}
-                {project.employeeAllocations.length > 4 && (
-                  <p className="text-sm font-semibold text-muted-foreground">
-                    +{project.employeeAllocations.length - 4} funcionário(s)
+                {project.fuelOffers.length ? (
+                  project.fuelOffers.map((offer) => (
+                    <div
+                      key={offer.id}
+                      className="rounded-md border border-border bg-background px-3 py-2"
+                    >
+                      <p className="font-bold">
+                        {offer.item?.name ?? "Item não encontrado"}
+                      </p>
+                      <p className="text-muted-foreground">
+                        {offer.supplier?.name ?? "Fornecedor não encontrado"} ·{" "}
+                        {offer.purchaseUnit?.code ?? "un."} ·{" "}
+                        {formatMoney(offer.price, 4)}
+                      </p>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-muted-foreground">
+                    Nenhum combustível confirmado.
                   </p>
                 )}
               </div>
-            ) : (
-              <EmptyBlock>Nenhum funcionário mobilizado.</EmptyBlock>
-            )}
-          </Section>
+            </Section>
+          )}
+
+          {activeTab === "accountability" && (
+            <Section
+              icon={HardHat}
+              title="Responsáveis da obra"
+              description="Cliente, gestor e responsabilidade técnica."
+              status={accountabilityStatus}
+              action={
+                isEditable && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="min-h-10"
+                    onClick={() => setOpenModal("accountability")}
+                  >
+                    <Pencil className="size-4" />
+                    Editar
+                  </Button>
+                )
+              }
+            >
+              <dl className="grid gap-2">
+                <DetailRow
+                  label="Cliente"
+                  value={project.client?.name ?? "Não informado"}
+                />
+                <DetailRow
+                  label="Gestor"
+                  value={project.manager?.name ?? "Não informado"}
+                />
+                <DetailRow
+                  label="Responsáveis técnicos"
+                  value={
+                    project.technicalResponsibilities.length
+                      ? project.technicalResponsibilities
+                          .map((person) => person.name)
+                          .join(", ")
+                      : "Não informado"
+                  }
+                />
+              </dl>
+            </Section>
+          )}
+
+          {activeTab === "team" && (
+            <Section
+              icon={UsersRound}
+              title="Equipe operacional"
+              description="Funcionários mobilizados com função, jornada e remuneração."
+              status={teamStatus}
+              action={
+                isEditable && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="min-h-10"
+                    onClick={() => setOpenModal("team")}
+                  >
+                    <Pencil className="size-4" />
+                    Editar
+                  </Button>
+                )
+              }
+            >
+              {project.employeeAllocations.length ? (
+                <div className="grid gap-2 text-sm">
+                  {project.employeeAllocations.slice(0, 4).map((allocation) => (
+                    <div
+                      key={allocation.id}
+                      className="rounded-md border border-border bg-background px-3 py-2"
+                    >
+                      <p className="font-bold">
+                        {allocation.employment?.name ?? "Funcionário"}
+                      </p>
+                      <p className="text-muted-foreground">
+                        {allocation.jobRole} ·{" "}
+                        {compensationLabels[allocation.compensationMode]}
+                      </p>
+                    </div>
+                  ))}
+                  {project.employeeAllocations.length > 4 && (
+                    <p className="text-sm font-semibold text-muted-foreground">
+                      +{project.employeeAllocations.length - 4} funcionário(s)
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <EmptyBlock>Nenhum funcionário mobilizado.</EmptyBlock>
+              )}
+            </Section>
           )}
 
           {activeTab === "machines" && (
-          <Section
-            icon={Truck}
-            title="Máquinas e operadores"
-            description="Cada máquina precisa de operador presente na equipe."
-            status={machinesStatus}
-            action={
-              isEditable && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="min-h-10"
-                  onClick={() => setOpenModal("machines")}
-                >
-                  <Pencil className="size-4" />
-                  Editar
-                </Button>
-              )
-            }
-          >
-            <div className="grid gap-2 text-sm">
-              {project.machineAllocations.length ? (
-                project.machineAllocations.map((allocation) => (
-                  <div
-                    key={allocation.id}
-                    className="rounded-md border border-border bg-background px-3 py-2"
+            <Section
+              icon={Truck}
+              title="Máquinas e operadores"
+              description="Cada máquina precisa de operador presente na equipe."
+              status={machinesStatus}
+              action={
+                isEditable && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="min-h-10"
+                    onClick={() => setOpenModal("machines")}
                   >
-                    <p className="font-bold">
-                      {allocation.machine?.name ?? "Máquina"}
-                    </p>
-                    <p className="text-muted-foreground">
-                      Operador: {allocation.operator?.name ?? "Não informado"}
-                    </p>
-                  </div>
-                ))
-              ) : (
-                <EmptyBlock>Nenhuma máquina alocada.</EmptyBlock>
-              )}
-            </div>
-          </Section>
+                    <Pencil className="size-4" />
+                    Editar
+                  </Button>
+                )
+              }
+            >
+              <div className="grid gap-2 text-sm">
+                {project.machineAllocations.length ? (
+                  project.machineAllocations.map((allocation) => (
+                    <div
+                      key={allocation.id}
+                      className="rounded-md border border-border bg-background px-3 py-2"
+                    >
+                      <p className="font-bold">
+                        {allocation.machine?.name ?? "Máquina"}
+                      </p>
+                      <p className="text-muted-foreground">
+                        Operador: {allocation.operator?.name ?? "Não informado"}
+                      </p>
+                    </div>
+                  ))
+                ) : (
+                  <EmptyBlock>Nenhuma máquina alocada.</EmptyBlock>
+                )}
+              </div>
+            </Section>
           )}
 
           {activeTab === "payments" && (
-          <Section
-            icon={WalletCards}
-            title="Pagamento por modalidade"
-            description="Dias após o fechamento do período de cada modalidade presente."
-            status={paymentsStatus}
-            action={
-              isEditable && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="min-h-10"
-                  onClick={() => setOpenModal("payments")}
-                >
-                  <Pencil className="size-4" />
-                  Editar
-                </Button>
-              )
-            }
-          >
-            {project.compensationPaymentTerms.length ? (
-              <div className="grid gap-2 text-sm">
-                {project.compensationPaymentTerms.map((term) => (
-                  <p
-                    key={term.compensationMode}
-                    className="rounded-md border border-border bg-background px-3 py-2"
+            <Section
+              icon={WalletCards}
+              title="Pagamento por modalidade"
+              description="Dias após o fechamento do período de cada modalidade presente."
+              status={paymentsStatus}
+              action={
+                isEditable && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="min-h-10"
+                    onClick={() => setOpenModal("payments")}
                   >
-                    <span className="font-bold">
-                      {compensationLabels[term.compensationMode]}:{" "}
-                    </span>
-                    {term.daysAfterPeriodEnd} dia(s)
-                  </p>
-                ))}
-              </div>
-            ) : (
-              <EmptyBlock>Nenhum prazo de pagamento confirmado.</EmptyBlock>
-            )}
-          </Section>
+                    <Pencil className="size-4" />
+                    Editar
+                  </Button>
+                )
+              }
+            >
+              {project.compensationPaymentTerms.length ? (
+                <div className="grid gap-2 text-sm">
+                  {project.compensationPaymentTerms.map((term) => (
+                    <p
+                      key={term.compensationMode}
+                      className="rounded-md border border-border bg-background px-3 py-2"
+                    >
+                      <span className="font-bold">
+                        {compensationLabels[term.compensationMode]}:{" "}
+                      </span>
+                      {term.daysAfterPeriodEnd} dia(s)
+                    </p>
+                  ))}
+                </div>
+              ) : (
+                <EmptyBlock>Nenhum prazo de pagamento confirmado.</EmptyBlock>
+              )}
+            </Section>
           )}
 
           {activeTab === "materials" && (
-          <Section
-            icon={PackageCheck}
-            title="Itens e fornecedores"
-            description="Ofertas não-combustível vinculadas à obra."
-            status={materialsStatus}
-            action={
-              isEditable && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="min-h-10"
-                  onClick={() => setOpenModal("materials")}
-                >
-                  <Pencil className="size-4" />
-                  Editar
-                </Button>
-              )
-            }
-          >
-            <div className="grid gap-2 text-sm">
-              {project.supplierOffers.length ? (
-                project.supplierOffers.map((offer) => (
-                  <div
-                    key={offer.id}
-                    className="rounded-md border border-border bg-background px-3 py-2"
+            <Section
+              icon={PackageCheck}
+              title="Itens e fornecedores"
+              description="Ofertas não-combustível vinculadas à obra."
+              status={materialsStatus}
+              action={
+                isEditable && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="min-h-10"
+                    onClick={() => setOpenModal("materials")}
                   >
-                    <p className="font-bold">
-                      {offer.item?.name ?? "Item não encontrado"}
-                    </p>
-                    <p className="text-muted-foreground">
-                      {offer.supplier?.name ?? "Fornecedor não encontrado"} ·{" "}
-                      {offer.purchaseUnit?.code ?? "un."} ·{" "}
-                      {formatMoney(offer.price, 4)}
-                    </p>
-                  </div>
-                ))
-              ) : (
-                <EmptyBlock>Nenhum item adicional configurado.</EmptyBlock>
-              )}
-            </div>
-          </Section>
+                    <Pencil className="size-4" />
+                    Editar
+                  </Button>
+                )
+              }
+            >
+              <div className="grid gap-2 text-sm">
+                {project.supplierOffers.length ? (
+                  project.supplierOffers.map((offer) => (
+                    <div
+                      key={offer.id}
+                      className="rounded-md border border-border bg-background px-3 py-2"
+                    >
+                      <p className="font-bold">
+                        {offer.item?.name ?? "Item não encontrado"}
+                      </p>
+                      <p className="text-muted-foreground">
+                        {offer.supplier?.name ?? "Fornecedor não encontrado"} ·{" "}
+                        {offer.purchaseUnit?.code ?? "un."} ·{" "}
+                        {formatMoney(offer.price, 4)}
+                      </p>
+                    </div>
+                  ))
+                ) : (
+                  <EmptyBlock>Nenhum item adicional configurado.</EmptyBlock>
+                )}
+              </div>
+            </Section>
           )}
         </div>
       </section>
@@ -1793,11 +1780,7 @@ export function ProjectDetail({
         description="Use uma oferta já cadastrada no fornecedor e confirme o preço específico desta obra."
         footer={
           <>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={closeFuelModal}
-            >
+            <Button type="button" variant="outline" onClick={closeFuelModal}>
               Cancelar
             </Button>
             <Button type="button" disabled={isPending} onClick={saveFuel}>

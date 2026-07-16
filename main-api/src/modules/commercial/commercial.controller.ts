@@ -1369,10 +1369,6 @@ export const v1CommercialController = async (app: FastifyInstance) => {
               pattern: "^\\d{1,12}\\.\\d{6}$",
             },
             basePrice: { type: "string", pattern: "^\\d{1,14}\\.\\d{4}$" },
-            propagateMirrorToExistingOffers: {
-              type: "boolean",
-              default: false,
-            },
           },
         },
         response: {
