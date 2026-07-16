@@ -1,8 +1,6 @@
 import "server-only";
 import { getApiV1Clients } from "@/generated/clients/getApiV1Clients";
 import { getApiV1Employees } from "@/generated/clients/getApiV1Employees";
-import { getApiV1FuelSuppliers } from "@/generated/clients/getApiV1FuelSuppliers";
-import { getApiV1FuelTypes } from "@/generated/clients/getApiV1FuelTypes";
 import { getApiV1JobRoles } from "@/generated/clients/getApiV1JobRoles";
 import { getApiV1Machines } from "@/generated/clients/getApiV1Machines";
 import client from "@/lib/api/server-client";
@@ -83,30 +81,8 @@ export type ProjectDetailSnapshot = {
     startMeterReading: { id: string; value: string } | null;
     effectiveFrom: string;
   }[];
-  fuelAgreements: {
-    id: string;
-    fuelSupplier: FuelSupplierOption | null;
-    fuelTypes: {
-      fuelTypeId: "diesel-s10" | "diesel-s500";
-      name: string;
-      isActive: boolean;
-      pricePerLiter: string;
-    }[];
-  }[];
-  supplierOffers: {
-    id: string;
-    supplier: FuelSupplierOption | null;
-    item: { id: string; name: string; isActive: boolean } | null;
-    purchaseUnit: {
-      id: string;
-      code: string;
-      name: string;
-      isActive: boolean;
-    } | null;
-    conversionToBase: string;
-    price: string;
-    effectiveFrom: string;
-  }[];
+  fuelOffers: ProjectOfferSnapshot[];
+  supplierOffers: ProjectOfferSnapshot[];
   productionMetricTargets: {
     metricCode: ProductionMetricCode;
     targetTotal: string;
@@ -131,6 +107,24 @@ export type ProjectDetailSnapshot = {
   };
 };
 
+export type ProjectOfferSnapshot = {
+  id: string;
+  usageKind?: "fuel" | "material";
+  sourceOfferId: string | null;
+  sourceOfferIsActive?: boolean;
+  supplier: FuelSupplierOption | null;
+  item: { id: string; name: string; isActive: boolean } | null;
+  purchaseUnit: {
+    id: string;
+    code: string;
+    name: string;
+    isActive: boolean;
+  } | null;
+  conversionToBase: string;
+  price: string;
+  effectiveFrom: string;
+};
+
 export type ProjectEmployeeSummary = {
   id: string;
   name: string;
@@ -152,9 +146,30 @@ export type FuelSupplierOption = {
   document: { documentType: string; maskedDocument: string };
   isActive?: boolean;
 };
+export type ProjectOption = {
+  id: string;
+  label: string;
+  detail?: string | null;
+  readingId?: string | null;
+  jobRolePeriodId?: string | null;
+  jobRoleId?: string | null;
+  available?: boolean;
+};
+export type SupplierOfferOption = {
+  id: string;
+  supplier: FuelSupplierOption;
+  item: { id: string; name: string; baseUnitId: string };
+  purchaseUnit: { id: string; code: string; name: string };
+  conversionToBase: string;
+  currentPrice: { price: string; effectiveFrom: string };
+  isFuelCandidate: boolean;
+};
 export type ProjectReadinessOptions = {
-  fuelSuppliers: FuelSupplierOption[];
-  fuelTypes: { id: "diesel-s10" | "diesel-s500"; name: string }[];
+  clients: ProjectOption[];
+  employees: ProjectOption[];
+  machines: ProjectOption[];
+  jobRoles: ProjectOption[];
+  supplierOffers: SupplierOfferOption[];
 };
 
 export type ProjectRegistryPage = {
@@ -195,29 +210,17 @@ export async function getProjectDetail(projectId: string) {
   return response.data.data;
 }
 
-export async function getProjectReadinessOptions(): Promise<ProjectReadinessOptions> {
-  const [fuelSuppliers, fuelTypes] = await Promise.all([
-    getApiV1FuelSuppliers({
-      params: {
-        limit: 100,
-        sortBy: "name",
-        sortDirection: "asc",
-      },
-    }),
-    getApiV1FuelTypes(),
-  ]);
-  return {
-    fuelSuppliers: fuelSuppliers.data.data.map((item) => ({
-      id: item.id,
-      name: item.name,
-      tradeName: item.tradeName ?? null,
-      document: item.document,
-    })),
-    fuelTypes: fuelTypes.data.map((item) => ({
-      id: item.id as "diesel-s10" | "diesel-s500",
-      name: item.name,
-    })),
-  };
+export async function getProjectReadinessOptions(
+  projectId: string,
+): Promise<ProjectReadinessOptions> {
+  const response = await client<{
+    success: true;
+    data: ProjectReadinessOptions;
+  }>({
+    url: `/api/v1/projects/${projectId}/readiness-options`,
+    method: "GET",
+  });
+  return response.data.data;
 }
 
 export async function getProjectWizardOptions() {

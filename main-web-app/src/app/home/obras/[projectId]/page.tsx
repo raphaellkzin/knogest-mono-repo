@@ -20,7 +20,7 @@ export default async function Page({
   try {
     [project, options] = await Promise.all([
       getProjectDetail(projectId),
-      getProjectReadinessOptions(),
+      getProjectReadinessOptions(projectId),
     ]);
   } catch {
     notFound();

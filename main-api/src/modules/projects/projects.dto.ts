@@ -399,35 +399,55 @@ export const projectListQuerySchema = z
   })
   .strict();
 
-const projectFuelAgreementReadinessSchema = z
+const projectReadinessOfferSchema = z
   .object({
-    fuelSupplierId: uuid,
-    fuelTypes: z
-      .array(
-        z
-          .object({
-            fuelTypeId: z.enum(["diesel-s10", "diesel-s500"]),
-            pricePerLiter: decimal(4, 14, true),
-          })
-          .strict(),
-      )
-      .min(1)
-      .max(2),
+    sourceOfferId: uuid,
+    price: decimal(4, 14, true),
+  })
+  .strict();
+
+const projectEmployeeReadinessSchema = z
+  .object({
+    employmentId: uuid,
+    confirmedJobRoleId: uuid.optional(),
+    confirmedJobRolePeriodId: uuid.nullable().optional(),
+    confirmedJobRoleName: optionalNullableText(120).optional(),
+    expectedDailyWorkloadMinutes: z.number().int().min(1).max(1440),
+    compensationMode: compensationModeSchema,
+    compensationValue: decimal(2, 16),
+    overtimeRate: decimal(2, 16),
   })
   .strict()
-  .superRefine((agreement, context) => {
-    const fuelTypeIds = agreement.fuelTypes.map((item) => item.fuelTypeId);
-    if (new Set(fuelTypeIds).size !== fuelTypeIds.length)
+  .superRefine((allocation, context) => {
+    const hasExistingRole = Boolean(
+      allocation.confirmedJobRoleId || allocation.confirmedJobRolePeriodId,
+    );
+    const hasTemporaryRole = Boolean(allocation.confirmedJobRoleName);
+    if (!hasExistingRole && !hasTemporaryRole)
       context.addIssue({
         code: "custom",
-        path: ["fuelTypes"],
-        message: "Duplicate fuel type",
+        path: ["confirmedJobRoleId"],
+        message: "A job role must be confirmed",
+      });
+    if (hasExistingRole && hasTemporaryRole)
+      context.addIssue({
+        code: "custom",
+        path: ["confirmedJobRoleName"],
+        message: "A temporary job role cannot be mixed with an id",
       });
   });
 
+const projectMachineReadinessSchema = z
+  .object({
+    machineId: uuid,
+    startMeterReadingId: uuid,
+    operatorEmploymentId: uuid,
+  })
+  .strict();
+
 export const projectReadinessCommandSchema = z
   .object({
-    plannedEndDate: z.iso.date(),
+    plannedEndDate: z.iso.date().optional(),
     productionMetricTargets: z
       .array(
         z
@@ -438,11 +458,29 @@ export const projectReadinessCommandSchema = z
           .strict(),
       )
       .min(1)
-      .max(4),
-    fuelAgreements: z
-      .array(projectFuelAgreementReadinessSchema)
-      .min(1)
-      .max(10),
+      .max(4)
+      .optional(),
+    fuelOffers: z.array(projectReadinessOfferSchema).min(1).max(10).optional(),
+    materialOffers: z
+      .array(projectReadinessOfferSchema)
+      .max(50)
+      .optional(),
+    accountability: z
+      .object({
+        clientId: uuid,
+        managerEmploymentId: uuid,
+        technicalResponsibilityEmploymentIds: z.array(uuid).min(1).max(20),
+      })
+      .strict()
+      .optional(),
+    employeeAllocations: z
+      .array(projectEmployeeReadinessSchema)
+      .max(200)
+      .optional(),
+    machineAllocations: z
+      .array(projectMachineReadinessSchema)
+      .max(100)
+      .optional(),
     compensationPaymentTerms: z
       .array(
         z
@@ -452,11 +490,26 @@ export const projectReadinessCommandSchema = z
           })
           .strict(),
       )
-      .max(5),
+      .max(5)
+      .optional(),
   })
   .strict()
   .superRefine((command, context) => {
-    const metrics = command.productionMetricTargets.map(
+    if (
+      command.plannedEndDate === undefined &&
+      command.productionMetricTargets === undefined &&
+      command.fuelOffers === undefined &&
+      command.materialOffers === undefined &&
+      command.accountability === undefined &&
+      command.employeeAllocations === undefined &&
+      command.machineAllocations === undefined &&
+      command.compensationPaymentTerms === undefined
+    )
+      context.addIssue({
+        code: "custom",
+        message: "At least one readiness section is required",
+      });
+    const metrics = (command.productionMetricTargets ?? []).map(
       (item) => item.metricCode,
     );
     if (new Set(metrics).size !== metrics.length)
@@ -465,16 +518,56 @@ export const projectReadinessCommandSchema = z
         path: ["productionMetricTargets"],
         message: "Duplicate production metric",
       });
-    const suppliers = command.fuelAgreements.map(
-      (item) => item.fuelSupplierId,
+    for (const [path, ids] of [
+      ["fuelOffers", (command.fuelOffers ?? []).map((item) => item.sourceOfferId)],
+      [
+        "materialOffers",
+        (command.materialOffers ?? []).map((item) => item.sourceOfferId),
+      ],
+      [
+        "employeeAllocations",
+        (command.employeeAllocations ?? []).map((item) => item.employmentId),
+      ],
+      [
+        "machineAllocations",
+        (command.machineAllocations ?? []).map((item) => item.machineId),
+      ],
+      [
+        "technicalResponsibilityEmploymentIds",
+        command.accountability?.technicalResponsibilityEmploymentIds ?? [],
+      ],
+    ] as const) {
+      if (new Set(ids).size !== ids.length)
+        context.addIssue({
+          code: "custom",
+          path: [path],
+          message: "Duplicate ids",
+        });
+    }
+    const teamEmploymentIds = new Set(
+      (command.employeeAllocations ?? []).map((item) => item.employmentId),
     );
-    if (new Set(suppliers).size !== suppliers.length)
+    const machineOperatorIds = (command.machineAllocations ?? []).map(
+      (item) => item.operatorEmploymentId,
+    );
+    if (
+      new Set(machineOperatorIds).size !== machineOperatorIds.length
+    )
       context.addIssue({
         code: "custom",
-        path: ["fuelAgreements"],
-        message: "Duplicate fuel supplier",
+        path: ["machineAllocations"],
+        message: "Machine operator cannot be assigned to multiple machines",
       });
-    const paymentModes = command.compensationPaymentTerms.map(
+    if (command.employeeAllocations && command.machineAllocations)
+      command.machineAllocations.forEach((allocation, index) => {
+        if (!teamEmploymentIds.has(allocation.operatorEmploymentId))
+          context.addIssue({
+            code: "custom",
+            path: ["machineAllocations", index, "operatorEmploymentId"],
+            message: "Machine operator must be part of the Project team",
+          });
+      });
+    const paymentModes = (command.compensationPaymentTerms ?? []).map(
       (item) => item.compensationMode,
     );
     if (new Set(paymentModes).size !== paymentModes.length)
@@ -519,7 +612,8 @@ export const projectResourceDetailSchema = z
       "schedule",
       "employees",
       "machines",
-      "fuelAgreements",
+      "fuelOffers",
+      "materialOffers",
       "supplierOffers",
     ]),
     reason: z.enum([

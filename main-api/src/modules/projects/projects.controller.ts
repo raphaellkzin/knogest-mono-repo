@@ -234,12 +234,6 @@ const projectCommandOpenApiSchema = {
 const projectReadinessCommandOpenApiSchema = {
   type: "object",
   additionalProperties: false,
-  required: [
-    "plannedEndDate",
-    "productionMetricTargets",
-    "fuelAgreements",
-    "compensationPaymentTerms",
-  ],
   properties: {
     plannedEndDate: { type: "string", format: "date" },
     productionMetricTargets: {
@@ -256,33 +250,54 @@ const projectReadinessCommandOpenApiSchema = {
         },
       },
     },
-    fuelAgreements: {
+    fuelOffers: {
       type: "array",
       minItems: 1,
       maxItems: 10,
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["fuelSupplierId", "fuelTypes"],
+        required: ["sourceOfferId", "price"],
         properties: {
-          fuelSupplierId: uuid,
-          fuelTypes: {
-            type: "array",
-            minItems: 1,
-            maxItems: 2,
-            items: {
-              type: "object",
-              additionalProperties: false,
-              required: ["fuelTypeId", "pricePerLiter"],
-              properties: {
-                fuelTypeId: { enum: ["diesel-s10", "diesel-s500"] },
-                pricePerLiter: { type: "string" },
-              },
-            },
-          },
+          sourceOfferId: uuid,
+          price: { type: "string" },
         },
       },
     },
+    materialOffers: {
+      type: "array",
+      maxItems: 50,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["sourceOfferId", "price"],
+        properties: {
+          sourceOfferId: uuid,
+          price: { type: "string" },
+        },
+      },
+    },
+    accountability: {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "clientId",
+        "managerEmploymentId",
+        "technicalResponsibilityEmploymentIds",
+      ],
+      properties: {
+        clientId: uuid,
+        managerEmploymentId: uuid,
+        technicalResponsibilityEmploymentIds: {
+          type: "array",
+          minItems: 1,
+          maxItems: 20,
+          items: uuid,
+        },
+      },
+    },
+    employeeAllocations: projectCommandOpenApiSchema.properties.initialEmployeeAllocations,
+    machineAllocations: projectCommandOpenApiSchema.properties.initialMachineAllocations,
     compensationPaymentTerms: {
       type: "array",
       maxItems: 5,
@@ -349,6 +364,22 @@ const projectDetailSchema = {
         blockers: { type: "array", items: projectReadinessBlockerSchema },
       },
       additionalProperties: false,
+    },
+  },
+} as const;
+
+const projectReadinessOptionsSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["clients", "employees", "machines", "jobRoles", "supplierOffers"],
+  properties: {
+    clients: { type: "array", items: { type: "object", additionalProperties: true } },
+    employees: { type: "array", items: { type: "object", additionalProperties: true } },
+    machines: { type: "array", items: { type: "object", additionalProperties: true } },
+    jobRoles: { type: "array", items: { type: "object", additionalProperties: true } },
+    supplierOffers: {
+      type: "array",
+      items: { type: "object", additionalProperties: true },
     },
   },
 } as const;
@@ -563,6 +594,49 @@ export async function v1ProjectsController(app: FastifyInstance) {
         return jsonResponse.success({
           reply,
           data: await service.detail(scope(request), request.params.projectId),
+        });
+      } catch (error) {
+        return jsonResponse.fromError({ reply, error });
+      }
+    },
+  );
+
+  app.get<{ Params: { projectId: string } }>(
+    "/projects/:projectId/readiness-options",
+    {
+      preHandler: app.requireCompanyScope,
+      schema: {
+        tags: ["Projects"],
+        summary: "List Project readiness editor options",
+        security: [{ bearerAuth: [] }],
+        params: {
+          type: "object",
+          required: ["projectId"],
+          properties: { projectId: { type: "string", format: "uuid" } },
+        },
+        response: {
+          200: successSchema(projectReadinessOptionsSchema),
+          400: errorSchema,
+          404: errorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const parsedParams = projectParamsSchema.safeParse(request.params);
+      if (!parsedParams.success)
+        return jsonResponse.error({
+          reply,
+          statusCode: 400,
+          code: "VALIDATION_ERROR",
+          message: "Invalid Project params",
+        });
+      try {
+        return jsonResponse.success({
+          reply,
+          data: await service.readinessOptions(
+            scope(request),
+            parsedParams.data.projectId,
+          ),
         });
       } catch (error) {
         return jsonResponse.fromError({ reply, error });

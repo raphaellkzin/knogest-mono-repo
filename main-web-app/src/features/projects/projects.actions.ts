@@ -41,7 +41,8 @@ const resourceSchema = z.object({
     "schedule",
     "employees",
     "machines",
-    "fuelAgreements",
+    "fuelOffers",
+    "materialOffers",
     "supplierOffers",
   ]),
   reason: z.string(),
@@ -84,7 +85,7 @@ const readinessDecimal = (scale: number) => {
 
 const projectReadinessActionSchema = z
   .object({
-    plannedEndDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u),
+    plannedEndDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u).optional(),
     productionMetricTargets: z
       .array(
         z.object({
@@ -93,24 +94,68 @@ const projectReadinessActionSchema = z
         }),
       )
       .min(1)
-      .max(4),
-    fuelAgreements: z
+      .max(4)
+      .optional(),
+    fuelOffers: z
       .array(
         z.object({
-          fuelSupplierId: z.string().uuid(),
-          fuelTypes: z
-            .array(
-              z.object({
-                fuelTypeId: z.enum(["diesel-s10", "diesel-s500"]),
-                pricePerLiter: readinessDecimal(4),
-              }),
-            )
-            .min(1)
-            .max(2),
+          sourceOfferId: z.string().uuid(),
+          price: readinessDecimal(4),
         }),
       )
       .min(1)
-      .max(10),
+      .max(10)
+      .optional(),
+    materialOffers: z
+      .array(
+        z.object({
+          sourceOfferId: z.string().uuid(),
+          price: readinessDecimal(4),
+        }),
+      )
+      .max(50)
+      .optional(),
+    accountability: z
+      .object({
+        clientId: z.string().uuid(),
+        managerEmploymentId: z.string().uuid(),
+        technicalResponsibilityEmploymentIds: z
+          .array(z.string().uuid())
+          .min(1)
+          .max(20),
+      })
+      .optional(),
+    employeeAllocations: z
+      .array(
+        z.object({
+          employmentId: z.string().uuid(),
+          confirmedJobRoleId: z.string().uuid().optional(),
+          confirmedJobRolePeriodId: z.string().uuid().nullable().optional(),
+          confirmedJobRoleName: z.string().min(1).max(120).nullable().optional(),
+          expectedDailyWorkloadMinutes: z.number().int().min(1).max(1440),
+          compensationMode: z.enum([
+            "daily",
+            "hourly",
+            "weekly",
+            "fortnightly",
+            "monthly",
+          ]),
+          compensationValue: readinessDecimal(2),
+          overtimeRate: readinessDecimal(2),
+        }),
+      )
+      .max(200)
+      .optional(),
+    machineAllocations: z
+      .array(
+        z.object({
+          machineId: z.string().uuid(),
+          startMeterReadingId: z.string().uuid(),
+          operatorEmploymentId: z.string().uuid(),
+        }),
+      )
+      .max(100)
+      .optional(),
     compensationPaymentTerms: z
       .array(
         z.object({
@@ -124,7 +169,8 @@ const projectReadinessActionSchema = z
           daysAfterPeriodEnd: z.number().int().min(0).max(60),
         }),
       )
-      .max(5),
+      .max(5)
+      .optional(),
   })
   .strict();
 

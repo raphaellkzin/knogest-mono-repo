@@ -13231,6 +13231,142 @@
         }
       }
     },
+    "/api/v1/projects/{projectId}/readiness-options": {
+      "get": {
+        "summary": "List Project readiness editor options",
+        "tags": ["Projects"],
+        "parameters": [
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "in": "path",
+            "name": "projectId",
+            "required": true
+          }
+        ],
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["success", "message", "data"],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [true] },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "clients",
+                        "employees",
+                        "machines",
+                        "jobRoles",
+                        "supplierOffers"
+                      ],
+                      "properties": {
+                        "clients": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": true
+                          }
+                        },
+                        "employees": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": true
+                          }
+                        },
+                        "machines": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": true
+                          }
+                        },
+                        "jobRoles": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": true
+                          }
+                        },
+                        "supplierOffers": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": true
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{projectId}/readiness": {
       "put": {
         "summary": "Save the operational readiness checklist for a planned Project",
@@ -13242,12 +13378,6 @@
               "schema": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": [
-                  "plannedEndDate",
-                  "productionMetricTargets",
-                  "fuelAgreements",
-                  "compensationPaymentTerms"
-                ],
                 "properties": {
                   "plannedEndDate": { "type": "string", "format": "date" },
                   "productionMetricTargets": {
@@ -13266,34 +13396,124 @@
                       }
                     }
                   },
-                  "fuelAgreements": {
+                  "fuelOffers": {
                     "type": "array",
                     "minItems": 1,
                     "maxItems": 10,
                     "items": {
                       "type": "object",
                       "additionalProperties": false,
-                      "required": ["fuelSupplierId", "fuelTypes"],
+                      "required": ["sourceOfferId", "price"],
                       "properties": {
-                        "fuelSupplierId": {
+                        "sourceOfferId": { "type": "string", "format": "uuid" },
+                        "price": { "type": "string" }
+                      }
+                    }
+                  },
+                  "materialOffers": {
+                    "type": "array",
+                    "maxItems": 50,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["sourceOfferId", "price"],
+                      "properties": {
+                        "sourceOfferId": { "type": "string", "format": "uuid" },
+                        "price": { "type": "string" }
+                      }
+                    }
+                  },
+                  "accountability": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "clientId",
+                      "managerEmploymentId",
+                      "technicalResponsibilityEmploymentIds"
+                    ],
+                    "properties": {
+                      "clientId": { "type": "string", "format": "uuid" },
+                      "managerEmploymentId": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "technicalResponsibilityEmploymentIds": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "items": { "type": "string", "format": "uuid" }
+                      }
+                    }
+                  },
+                  "employeeAllocations": {
+                    "type": "array",
+                    "maxItems": 200,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "employmentId",
+                        "expectedDailyWorkloadMinutes",
+                        "compensationMode",
+                        "compensationValue",
+                        "overtimeRate"
+                      ],
+                      "properties": {
+                        "employmentId": { "type": "string", "format": "uuid" },
+                        "confirmedJobRoleId": {
                           "type": "string",
                           "format": "uuid"
                         },
-                        "fuelTypes": {
-                          "type": "array",
-                          "minItems": 1,
-                          "maxItems": 2,
-                          "items": {
-                            "type": "object",
-                            "additionalProperties": false,
-                            "required": ["fuelTypeId", "pricePerLiter"],
-                            "properties": {
-                              "fuelTypeId": {
-                                "enum": ["diesel-s10", "diesel-s500"]
-                              },
-                              "pricePerLiter": { "type": "string" }
-                            }
-                          }
+                        "confirmedJobRolePeriodId": {
+                          "type": "string",
+                          "format": "uuid",
+                          "nullable": true
+                        },
+                        "confirmedJobRoleName": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 120,
+                          "nullable": true
+                        },
+                        "expectedDailyWorkloadMinutes": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 1440
+                        },
+                        "compensationMode": {
+                          "enum": [
+                            "daily",
+                            "hourly",
+                            "weekly",
+                            "fortnightly",
+                            "monthly"
+                          ]
+                        },
+                        "compensationValue": { "type": "string" },
+                        "overtimeRate": { "type": "string" }
+                      }
+                    }
+                  },
+                  "machineAllocations": {
+                    "type": "array",
+                    "maxItems": 100,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "machineId",
+                        "startMeterReadingId",
+                        "operatorEmploymentId"
+                      ],
+                      "properties": {
+                        "machineId": { "type": "string", "format": "uuid" },
+                        "startMeterReadingId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "operatorEmploymentId": {
+                          "type": "string",
+                          "format": "uuid"
                         }
                       }
                     }

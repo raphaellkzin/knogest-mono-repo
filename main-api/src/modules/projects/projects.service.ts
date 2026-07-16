@@ -35,6 +35,10 @@ export class ProjectsService {
     return this.handler.detail(scope, projectId);
   }
 
+  readinessOptions(scope: ProjectScope, projectId: string) {
+    return this.handler.readinessOptions(scope, projectId);
+  }
+
   saveReadiness(
     scope: ProjectScope,
     projectId: string,

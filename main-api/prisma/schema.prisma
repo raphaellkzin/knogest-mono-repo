@@ -840,6 +840,7 @@ model ProjectSupplierOffer {
   corporationId    String    @map("corporation_id") @db.Uuid
   companyId        String    @map("company_id") @db.Uuid
   projectId        String    @map("project_id") @db.Uuid
+  usageKind        String    @default("material") @map("usage_kind") @db.VarChar(16)
   supplierId       String    @map("supplier_id") @db.Uuid
   itemId           String    @map("item_id") @db.Uuid
   sourceOfferId    String?   @map("source_offer_id") @db.Uuid
