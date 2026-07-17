@@ -16,6 +16,7 @@ import {
   Plus,
   Save,
   Search,
+  Trash2,
   Truck,
   UsersRound,
   WalletCards,
@@ -24,6 +25,17 @@ import { useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
 
 import { FormErrorDeclaration } from "@/components/forms/form-error-declaration";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { OperationsModal } from "@/components/ui/operations-modal";
 import { Button } from "@/components/ui/button";
 import { FormSection } from "@/components/ui/form-section";
@@ -282,8 +294,7 @@ function paymentModeSort(a: CompensationMode, b: CompensationMode) {
 
 function paymentOptionsForMode(mode: CompensationMode) {
   if (mode === "monthly") return monthlyBusinessDayOptions;
-  if (mode === "weekly" || mode === "fortnightly")
-    return weekDayPaymentOptions;
+  if (mode === "weekly" || mode === "fortnightly") return weekDayPaymentOptions;
   return dailyPaymentOptions;
 }
 
@@ -1714,6 +1725,9 @@ export function ProjectDetail({
   const [editingFuelOfferId, setEditingFuelOfferId] = React.useState<
     string | null
   >(null);
+  const [confirmingFuelRemovalId, setConfirmingFuelRemovalId] = React.useState<
+    string | null
+  >(null);
   const [fuelOffers, setFuelOffers] = React.useState(project.fuelOffers);
   const [materialView, setMaterialView] = React.useState<
     "list" | "add" | "edit"
@@ -1780,6 +1794,7 @@ export function ProjectDetail({
     setFuelEditDraft(null);
     setFuelAddStep("source");
     setEditingFuelOfferId(null);
+    setConfirmingFuelRemovalId(null);
     setFuelOffers(project.fuelOffers);
     setMaterialView("list");
     setMaterialAddStep("source");
@@ -1824,19 +1839,16 @@ export function ProjectDetail({
     [options],
   );
 
-  const paymentModes = React.useMemo(
-    () => {
-      const modes = [
-        ...new Set(
-          (watchedEmployeeAllocations ?? []).map(
-            (allocation) => allocation.compensationMode,
-          ),
+  const paymentModes = React.useMemo(() => {
+    const modes = [
+      ...new Set(
+        (watchedEmployeeAllocations ?? []).map(
+          (allocation) => allocation.compensationMode,
         ),
-      ] as CompensationMode[];
-      return modes.sort(paymentModeSort);
-    },
-    [watchedEmployeeAllocations],
-  );
+      ),
+    ] as CompensationMode[];
+    return modes.sort(paymentModeSort);
+  }, [watchedEmployeeAllocations]);
 
   const isEditable = project.status === "planned";
   const fuelOptions = React.useMemo(
@@ -1862,7 +1874,8 @@ export function ProjectDetail({
   const teamReady = project.employeeAllocations.length > 0;
   const machinesReady = project.machineAllocations.length > 0;
   const paymentsReady =
-    paymentTermRows.length > 0 && paymentTermRows.length === paymentModes.length;
+    paymentTermRows.length > 0 &&
+    paymentTermRows.length === paymentModes.length;
   const fuelReady = fuelOffers.length > 0;
   const planningStatus = planningDirty
     ? ({ label: "Alterado", tone: "dirty" } as const)
@@ -2097,6 +2110,7 @@ export function ProjectDetail({
         setFuelDirty(false);
         setFuelEditDraft(null);
         setEditingFuelOfferId(null);
+        setConfirmingFuelRemovalId(null);
         setOpenModal(null);
       },
     );
@@ -2121,6 +2135,7 @@ export function ProjectDetail({
         setFuelDirty(false);
         setFuelEditDraft(null);
         setEditingFuelOfferId(null);
+        setConfirmingFuelRemovalId(null);
         setOpenModal(null);
       },
     );
@@ -2328,6 +2343,7 @@ export function ProjectDetail({
     setFuelEditDraft(null);
     setFuelAddStep("source");
     setEditingFuelOfferId(null);
+    setConfirmingFuelRemovalId(null);
     setFuelDirty(false);
     setOpenModal("fuelAdd");
   };
@@ -2338,6 +2354,7 @@ export function ProjectDetail({
     setFuelEditDraft(createFuelDraftFromOffer(offer));
     setFuelAddDraft(null);
     setEditingFuelOfferId(offerId);
+    setConfirmingFuelRemovalId(null);
     setFuelDirty(false);
     setOpenModal("fuelEdit");
   };
@@ -2347,6 +2364,7 @@ export function ProjectDetail({
     setFuelEditDraft(null);
     setFuelAddStep("source");
     setEditingFuelOfferId(null);
+    setConfirmingFuelRemovalId(null);
     setFuelDirty(false);
     setOpenModal(null);
   };
@@ -2866,18 +2884,18 @@ export function ProjectDetail({
                       paymentModeSort(a.compensationMode, b.compensationMode),
                     )
                     .map((term) => (
-                    <p
-                      key={term.compensationMode}
-                      className="rounded-md border border-border bg-background px-3 py-2"
-                    >
-                      <span className="font-bold">
-                        {compensationLabels[term.compensationMode]}:{" "}
-                      </span>
-                      {paymentTermSummary(
-                        term.compensationMode,
-                        term.daysAfterPeriodEnd,
-                      )}
-                    </p>
+                      <p
+                        key={term.compensationMode}
+                        className="rounded-md border border-border bg-background px-3 py-2"
+                      >
+                        <span className="font-bold">
+                          {compensationLabels[term.compensationMode]}:{" "}
+                        </span>
+                        {paymentTermSummary(
+                          term.compensationMode,
+                          term.daysAfterPeriodEnd,
+                        )}
+                      </p>
                     ))}
                 </div>
               ) : (
@@ -3022,14 +3040,56 @@ export function ProjectDetail({
         description="Na edição, ajuste apenas o preço da obra e a quantidade específica desta oferta."
         footer={
           <>
-            <Button
-              type="button"
-              variant="destructive"
-              disabled={isPending || !currentEditingFuelOffer}
-              onClick={removeFuelOffer}
+            <AlertDialog
+              open={Boolean(
+                currentEditingFuelOffer &&
+                confirmingFuelRemovalId === currentEditingFuelOffer.id,
+              )}
+              onOpenChange={(open) => {
+                if (isPending) return;
+                setConfirmingFuelRemovalId(
+                  open && currentEditingFuelOffer
+                    ? currentEditingFuelOffer.id
+                    : null,
+                );
+              }}
             >
-              Remover oferta
-            </Button>
+              <AlertDialogTrigger
+                render={
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    disabled={isPending || !currentEditingFuelOffer}
+                  />
+                }
+              >
+                <Trash2 className="size-4" />
+                Remover oferta
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>
+                    Remover oferta de combustível?
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    A oferta será desvinculada desta obra. O fornecedor, o item
+                    e o catálogo permanecem inalterados.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                  <AlertDialogAction
+                    variant="destructive"
+                    onClick={() => {
+                      setConfirmingFuelRemovalId(null);
+                      removeFuelOffer();
+                    }}
+                  >
+                    Remover oferta
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
             <div className="flex flex-col-reverse gap-2 sm:flex-row">
               <Button type="button" variant="outline" onClick={closeFuelModal}>
                 Cancelar

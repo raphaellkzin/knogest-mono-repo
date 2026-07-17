@@ -7,6 +7,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -38,6 +39,7 @@ import {
 
 afterEach(() => {
   cleanup();
+  vi.clearAllMocks();
   vi.useRealTimers();
 });
 
@@ -88,6 +90,19 @@ const fuelOfferSnapshot: ProjectOfferSnapshot = {
   purchaseUnit: { id: "unit-l", code: "L", name: "Litro", isActive: true },
   conversionToBase: "1.250000",
   price: "6.7000",
+  effectiveFrom: "2026-07-16T00:00:00.000Z",
+};
+
+const materialOfferSnapshot: ProjectOfferSnapshot = {
+  id: "project-material-offer-1",
+  usageKind: "material",
+  sourceOfferId: null,
+  sourceOfferIsActive: true,
+  supplier: suppliers[0],
+  item: { id: "material-item-1", name: "Pedra britada", isActive: true },
+  purchaseUnit: { id: "unit-l", code: "L", name: "Litro", isActive: true },
+  conversionToBase: "1.000000",
+  price: "120.0000",
   effectiveFrom: "2026-07-16T00:00:00.000Z",
 };
 
@@ -143,6 +158,21 @@ const projectOptions: ProjectReadinessOptions = {
   measurementUnits,
   supplierOffers: fuelOptions,
 };
+
+function renderProjectDetail(project: ProjectDetailSnapshot) {
+  return render(
+    <ProjectDetail
+      lookupSuppliedItemOfferSuppliersAction={
+        lookupSuppliedItemOfferSuppliersAction
+      }
+      lookupSuppliedItemOffersAction={lookupSuppliedItemOffersAction}
+      lookupSuppliedItemsAction={lookupSuppliedItemsAction}
+      lookupSuppliersAction={lookupSuppliersAction}
+      options={projectOptions}
+      project={project}
+    />,
+  );
+}
 
 const lookupSuppliedItemsAction: React.ComponentProps<
   typeof FuelAddEditor
@@ -335,18 +365,7 @@ describe("Project detail planning metrics", () => {
     });
     const user = userEvent.setup();
 
-    render(
-      <ProjectDetail
-        lookupSuppliedItemOfferSuppliersAction={
-          lookupSuppliedItemOfferSuppliersAction
-        }
-        lookupSuppliedItemOffersAction={lookupSuppliedItemOffersAction}
-        lookupSuppliedItemsAction={lookupSuppliedItemsAction}
-        lookupSuppliersAction={lookupSuppliersAction}
-        options={projectOptions}
-        project={projectSnapshot}
-      />,
-    );
+    renderProjectDetail(projectSnapshot);
 
     const targetInput = screen.getAllByLabelText(
       /Meta total/u,
@@ -370,5 +389,178 @@ describe("Project detail planning metrics", () => {
         ],
       }),
     );
+  });
+});
+
+describe("Project detail readiness tabs", () => {
+  it("confirms before removing the selected fuel offer", async () => {
+    const projectWithFuel: ProjectDetailSnapshot = {
+      ...projectSnapshot,
+      fuelOffers: [fuelOfferSnapshot],
+    };
+    const saveReadiness = vi.mocked(saveProjectReadinessAction);
+    saveReadiness.mockResolvedValue({
+      kind: "success",
+      project: { ...projectWithFuel, fuelOffers: [] },
+    });
+    const user = userEvent.setup();
+
+    renderProjectDetail(projectWithFuel);
+
+    await user.click(screen.getByRole("tab", { name: /Combustível/u }));
+    await user.click(screen.getByRole("button", { name: /Editar oferta/u }));
+    await user.click(screen.getByRole("button", { name: /Remover oferta/u }));
+
+    expect(saveReadiness).not.toHaveBeenCalled();
+    const dialog = screen.getByRole("alertdialog", {
+      name: /Remover oferta de combustível/u,
+    });
+    await user.click(
+      within(dialog).getByRole("button", { name: /Remover oferta/u }),
+    );
+
+    await waitFor(() =>
+      expect(saveReadiness).toHaveBeenCalledWith(projectWithFuel.id, {
+        fuelOffers: [],
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.getByText("Nenhum combustível confirmado.")).toBeTruthy(),
+    );
+  });
+
+  it("confirms before removing a supplied item offer", async () => {
+    const projectWithMaterial: ProjectDetailSnapshot = {
+      ...projectSnapshot,
+      supplierOffers: [materialOfferSnapshot],
+    };
+    const saveReadiness = vi.mocked(saveProjectReadinessAction);
+    saveReadiness.mockResolvedValue({
+      kind: "success",
+      project: { ...projectWithMaterial, supplierOffers: [] },
+    });
+    const user = userEvent.setup();
+
+    renderProjectDetail(projectWithMaterial);
+
+    await user.click(screen.getByRole("tab", { name: /Itens/u }));
+    await user.click(screen.getByRole("button", { name: /Editar/u }));
+    await user.click(screen.getByRole("button", { name: /^Remover$/u }));
+
+    expect(saveReadiness).not.toHaveBeenCalled();
+    const dialog = screen.getByRole("alertdialog", {
+      name: /Remover esta oferta/u,
+    });
+    await user.click(
+      within(dialog).getByRole("button", { name: /Remover oferta/u }),
+    );
+
+    await waitFor(() =>
+      expect(saveReadiness).toHaveBeenCalledWith(projectWithMaterial.id, {
+        materialOffers: [],
+      }),
+    );
+  });
+
+  it("saves payment rules from intuitive selectors", async () => {
+    const projectWithTeam: ProjectDetailSnapshot = {
+      ...projectSnapshot,
+      employeeAllocations: [
+        {
+          id: "allocation-daily",
+          employment: {
+            id: "employee-daily",
+            name: "Operador diária",
+            jobRole: null,
+            isActive: true,
+          },
+          jobRole: "Operador",
+          expectedDailyWorkloadMinutes: 480,
+          compensationMode: "daily",
+          compensationValue: "200.00",
+          overtimeRate: "25.00",
+          effectiveFrom: "2026-07-16T00:00:00.000Z",
+        },
+        {
+          id: "allocation-weekly",
+          employment: {
+            id: "employee-weekly",
+            name: "Operador semanal",
+            jobRole: null,
+            isActive: true,
+          },
+          jobRole: "Operador",
+          expectedDailyWorkloadMinutes: 480,
+          compensationMode: "weekly",
+          compensationValue: "1000.00",
+          overtimeRate: "25.00",
+          effectiveFrom: "2026-07-16T00:00:00.000Z",
+        },
+        {
+          id: "allocation-fortnightly",
+          employment: {
+            id: "employee-fortnightly",
+            name: "Operador quinzenal",
+            jobRole: null,
+            isActive: true,
+          },
+          jobRole: "Operador",
+          expectedDailyWorkloadMinutes: 480,
+          compensationMode: "fortnightly",
+          compensationValue: "2000.00",
+          overtimeRate: "25.00",
+          effectiveFrom: "2026-07-16T00:00:00.000Z",
+        },
+        {
+          id: "allocation-monthly",
+          employment: {
+            id: "employee-monthly",
+            name: "Operador mensal",
+            jobRole: null,
+            isActive: true,
+          },
+          jobRole: "Operador",
+          expectedDailyWorkloadMinutes: 480,
+          compensationMode: "monthly",
+          compensationValue: "4000.00",
+          overtimeRate: "25.00",
+          effectiveFrom: "2026-07-16T00:00:00.000Z",
+        },
+      ],
+    };
+    const compensationPaymentTerms = [
+      { compensationMode: "daily" as const, daysAfterPeriodEnd: 1 },
+      { compensationMode: "weekly" as const, daysAfterPeriodEnd: 5 },
+      { compensationMode: "fortnightly" as const, daysAfterPeriodEnd: 3 },
+      { compensationMode: "monthly" as const, daysAfterPeriodEnd: 10 },
+    ];
+    const saveReadiness = vi.mocked(saveProjectReadinessAction);
+    saveReadiness.mockResolvedValue({
+      kind: "success",
+      project: { ...projectWithTeam, compensationPaymentTerms },
+    });
+    const user = userEvent.setup();
+
+    renderProjectDetail(projectWithTeam);
+
+    await user.click(screen.getByRole("tab", { name: /Pagamentos/u }));
+    await user.click(screen.getByRole("button", { name: /Editar/u }));
+    await user.selectOptions(screen.getByLabelText(/Diária/u), "1");
+    await user.selectOptions(screen.getByLabelText(/Semanal/u), "5");
+    await user.selectOptions(screen.getByLabelText(/Quinzenal/u), "3");
+    await user.selectOptions(screen.getByLabelText(/Mensal/u), "10");
+    await user.click(
+      screen.getByRole("button", { name: /Salvar pagamentos/u }),
+    );
+
+    await waitFor(() =>
+      expect(saveReadiness).toHaveBeenCalledWith(projectWithTeam.id, {
+        compensationPaymentTerms,
+      }),
+    );
+    expect(screen.getByText(/No próximo dia útil/u)).toBeTruthy();
+    expect(screen.getByText(/Sexta-feira/u)).toBeTruthy();
+    expect(screen.getByText(/Quarta-feira/u)).toBeTruthy();
+    expect(screen.getByText(/10º dia útil do mês/u)).toBeTruthy();
   });
 });

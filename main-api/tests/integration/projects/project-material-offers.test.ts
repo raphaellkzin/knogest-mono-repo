@@ -9,6 +9,11 @@ import { resetIntegrationData } from "../reset-integration-data";
 import type { FastifyInstance } from "fastify";
 
 describe("project material offers readiness", () => {
+  const syntheticEmployeeCpfFixture = "111.444.777-35";
+  const syntheticClientCnpjFixture = "12.345.678/0001-95";
+  const syntheticCatalogSupplierCpfFixture = "529.982.247-25";
+  const syntheticExclusiveSupplierCnpjFixture = "11.222.333/0001-81";
+
   let app: FastifyInstance;
   let organization: OrganizationService;
 
@@ -65,7 +70,7 @@ describe("project material offers readiness", () => {
       url: "/api/v1/employees",
       headers: { authorization },
       payload: {
-        document: "111.444.777-35",
+        document: syntheticEmployeeCpfFixture,
         fullName: "Responsável técnico",
         companyRegistrationNumber: "ENG-001",
         admissionDate: "2026-07-01",
@@ -80,7 +85,7 @@ describe("project material offers readiness", () => {
       headers: { authorization },
       payload: {
         entityType: "legal_entity",
-        document: "12.345.678/0001-95",
+        document: syntheticClientCnpjFixture,
         legalName: "Cliente da obra Ltda",
       },
     });
@@ -179,11 +184,11 @@ describe("project material offers readiness", () => {
   it("creates, preserves, edits and removes catalog and project-only offers", async () => {
     const scope = await setup();
     const catalogSupplierId = await createSupplier(scope.authorization, {
-      document: "529.982.247-25",
+      document: syntheticCatalogSupplierCpfFixture,
       name: "Pedreira Catálogo",
     });
     const exclusiveSupplierId = await createSupplier(scope.authorization, {
-      document: "11.222.333/0001-81",
+      document: syntheticExclusiveSupplierCnpjFixture,
       name: "Pedreira Exclusiva Ltda",
       legal: true,
     });
@@ -291,5 +296,55 @@ describe("project material offers readiness", () => {
       payload: { materialOffers: [editedExclusive] },
     });
     expect(inactiveSupplier.statusCode).toBe(409);
+  });
+
+  it("allows removing every fuel offer from readiness", async () => {
+    const scope = await setup();
+    const supplierId = await createSupplier(scope.authorization, {
+      document: syntheticCatalogSupplierCpfFixture,
+      name: "Posto Catálogo",
+    });
+    const itemId = await createItem(scope.authorization, "Diesel S10");
+
+    const sourceOffer = await app.inject({
+      method: "POST",
+      url: `/api/v1/suppliers/${supplierId}/offers`,
+      headers: { authorization: scope.authorization },
+      payload: {
+        itemId,
+        baseUnitId: "00000000-0000-4000-8000-00000000a003",
+        purchaseUnitId: "00000000-0000-4000-8000-00000000a003",
+        conversionToBase: "1.000000",
+        price: "6.5000",
+      },
+    });
+    expect(sourceOffer.statusCode).toBe(201);
+
+    const sourceOfferId = sourceOffer.json().data.id as string;
+    const withFuel = await app.inject({
+      method: "PUT",
+      url: `/api/v1/projects/${scope.projectId}/readiness`,
+      headers: { authorization: scope.authorization },
+      payload: {
+        fuelOffers: [
+          {
+            mode: "existing",
+            sourceOfferId,
+            price: "6.7000",
+          },
+        ],
+      },
+    });
+    expect(withFuel.statusCode, withFuel.body).toBe(200);
+    expect(withFuel.json().data.fuelOffers).toHaveLength(1);
+
+    const withoutFuel = await app.inject({
+      method: "PUT",
+      url: `/api/v1/projects/${scope.projectId}/readiness`,
+      headers: { authorization: scope.authorization },
+      payload: { fuelOffers: [] },
+    });
+    expect(withoutFuel.statusCode, withoutFuel.body).toBe(200);
+    expect(withoutFuel.json().data.fuelOffers).toEqual([]);
   });
 });

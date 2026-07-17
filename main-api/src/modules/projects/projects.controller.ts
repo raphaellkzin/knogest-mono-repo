@@ -252,7 +252,6 @@ const projectReadinessCommandOpenApiSchema = {
     },
     fuelOffers: {
       type: "array",
-      minItems: 1,
       maxItems: 10,
       items: {
         oneOf: [
