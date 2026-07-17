@@ -8,6 +8,7 @@ import { configureZodPortugueseErrors } from "@/lib/zod-locale";
 import { projectCommandSchema, type ProjectCommand } from "./projects-schema";
 import type {
   FuelSupplierOption,
+  ProjectDetailSnapshot,
   ProjectSuppliedItemOffersPage,
   SuppliedItemSelectorPage,
 } from "./projects.types";
@@ -88,6 +89,8 @@ const readinessDecimal = (scale: number) => {
   return z.string().regex(pattern);
 };
 
+const readinessWholeDecimal = () => z.string().regex(/^\d{1,16}\.00$/u);
+
 const projectReadinessActionSchema = z
   .object({
     plannedEndDate: z
@@ -98,7 +101,7 @@ const projectReadinessActionSchema = z
       .array(
         z.object({
           metricCode: z.enum(["cut", "fill", "finishing", "top_soil"]),
-          targetTotal: readinessDecimal(2),
+          targetTotal: readinessWholeDecimal(),
         }),
       )
       .min(1)
@@ -215,7 +218,7 @@ export type ProjectReadinessActionInput = z.infer<
 >;
 
 export type ProjectReadinessMutationResult =
-  | { kind: "success" }
+  | { kind: "success"; project: ProjectDetailSnapshot }
   | {
       kind: "recoverable-conflict";
       code: string;
@@ -296,6 +299,23 @@ export async function lookupProjectSuppliedItemOfferSuppliersAction(input: {
     data: FuelSupplierOption[];
   }>({
     url: `/api/v1/supplied-items/${input.itemId}/offer-suppliers`,
+    method: "GET",
+    params: {
+      limit: 25,
+      search: input.search || undefined,
+    },
+  });
+  return response.data.data;
+}
+
+export async function lookupProjectSuppliersAction(input: {
+  search?: string;
+}): Promise<FuelSupplierOption[]> {
+  const response = await client<{
+    success: true;
+    data: FuelSupplierOption[];
+  }>({
+    url: "/api/v1/fuel-suppliers/selectors/active",
     method: "GET",
     params: {
       limit: 25,
@@ -423,7 +443,10 @@ export async function saveProjectReadinessAction(
   const id = z.string().uuid().parse(projectId);
   const command = projectReadinessActionSchema.parse(input);
   try {
-    await client({
+    const response = await client<{
+      success: true;
+      data: ProjectDetailSnapshot;
+    }>({
       url: `/api/v1/projects/${id}/readiness`,
       method: "PUT",
       data: command,
@@ -431,7 +454,7 @@ export async function saveProjectReadinessAction(
     });
     revalidatePath(`/home/obras/${id}`);
     revalidatePath("/home/obras");
-    return { kind: "success" };
+    return { kind: "success", project: response.data.data };
   } catch (error) {
     return parseProjectError(error);
   }
@@ -442,13 +465,16 @@ export async function activateProjectAction(
 ): Promise<ProjectReadinessMutationResult> {
   const id = z.string().uuid().parse(projectId);
   try {
-    await client({
+    const response = await client<{
+      success: true;
+      data: ProjectDetailSnapshot;
+    }>({
       url: `/api/v1/projects/${id}/activate`,
       method: "POST",
     });
     revalidatePath(`/home/obras/${id}`);
     revalidatePath("/home/obras");
-    return { kind: "success" };
+    return { kind: "success", project: response.data.data };
   } catch (error) {
     return parseProjectError(error);
   }

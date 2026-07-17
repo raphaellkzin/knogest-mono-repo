@@ -263,6 +263,7 @@ const projectReadinessCommandOpenApiSchema = {
             properties: {
               mode: { enum: ["existing"] },
               sourceOfferId: uuid,
+              conversionToBase: { type: "string" },
               price: { type: "string" },
             },
           },

@@ -16,7 +16,13 @@ vi.mock("../projects.actions", () => ({
   saveProjectReadinessAction: vi.fn(),
 }));
 
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: vi.fn() }),
+}));
+
+import { saveProjectReadinessAction } from "../projects.actions";
 import type {
+  ProjectDetailSnapshot,
   ProjectOfferSnapshot,
   ProjectReadinessOptions,
   SupplierOfferOption,
@@ -26,9 +32,8 @@ import {
   draftToFuelCommand,
   FuelAddEditor,
   FuelEditEditor,
-  OfferRows,
+  ProjectDetail,
   type FuelDraft,
-  type OfferDraft,
 } from "./project-detail";
 
 afterEach(() => {
@@ -86,6 +91,59 @@ const fuelOfferSnapshot: ProjectOfferSnapshot = {
   effectiveFrom: "2026-07-16T00:00:00.000Z",
 };
 
+const projectSnapshot: ProjectDetailSnapshot = {
+  id: "00000000-0000-4000-8000-000000000901",
+  name: "Obra Norte",
+  address: {
+    formatted: "Rua A, 10 - Fortaleza/CE",
+    postalCode: "60170000",
+    street: "Rua A",
+    number: "10",
+    complement: null,
+    neighborhood: "Meireles",
+    city: "Fortaleza",
+    state: "CE",
+  },
+  latitude: null,
+  longitude: null,
+  contractNumber: null,
+  status: "planned",
+  actualStartedAt: null,
+  createdAt: "2026-07-16T00:00:00.000Z",
+  baseline: {
+    approvedBudget: "100.00",
+    plannedStartDate: "2026-07-01",
+    plannedEndDate: "2026-08-01",
+    effectiveFrom: "2026-07-16T00:00:00.000Z",
+  },
+  client: null,
+  manager: null,
+  technicalResponsibilities: [],
+  schedule: { days: [], breakTemplates: [] },
+  employeeAllocations: [],
+  machineAllocations: [],
+  fuelOffers: [],
+  supplierOffers: [],
+  productionMetricTargets: [{ metricCode: "cut", targetTotal: "1234.00" }],
+  compensationPaymentTerms: [],
+  readiness: {
+    canActivate: false,
+    blockers: [{ section: "fuel", message: "Informe combustível." }],
+  },
+};
+
+const projectOptions: ProjectReadinessOptions = {
+  clients: [],
+  employees: [],
+  machines: [],
+  jobRoles: [],
+  suppliers,
+  suppliedItems,
+  suppliedItemCategories,
+  measurementUnits,
+  supplierOffers: fuelOptions,
+};
+
 const lookupSuppliedItemsAction: React.ComponentProps<
   typeof FuelAddEditor
 >["lookupSuppliedItemsAction"] = async () => ({
@@ -105,6 +163,10 @@ const lookupSuppliedItemsAction: React.ComponentProps<
 const lookupSuppliedItemOfferSuppliersAction: React.ComponentProps<
   typeof FuelAddEditor
 >["lookupSuppliedItemOfferSuppliersAction"] = async () => suppliers;
+
+const lookupSuppliersAction: React.ComponentProps<
+  typeof ProjectDetail
+>["lookupSuppliersAction"] = async () => suppliers;
 
 const lookupSuppliedItemOffersAction: React.ComponentProps<
   typeof FuelAddEditor
@@ -189,35 +251,6 @@ function FuelEditHarness() {
   );
 }
 
-function MaterialRowsHarness() {
-  const [drafts, setDrafts] = React.useState<OfferDraft[]>([
-    {
-      key: "material-1",
-      mode: "new",
-      sourceOfferId: "",
-      supplierId: "supplier-1",
-      itemId: "item-1",
-      purchaseUnitId: "unit-l",
-      conversionToBase: "1,000000",
-      price: "6,5000",
-      saveToCatalog: false,
-    },
-  ]);
-
-  return (
-    <OfferRows
-      drafts={drafts}
-      emptyText="Nenhum item"
-      kind="material"
-      options={fuelOptions}
-      suppliers={suppliers}
-      suppliedItems={suppliedItems}
-      measurementUnits={measurementUnits}
-      setDrafts={setDrafts}
-    />
-  );
-}
-
 describe("Project detail fuel editors", () => {
   it("starts the fuel add wizard at the source choice", () => {
     render(<FuelAddHarness step="source" />);
@@ -279,14 +312,6 @@ describe("Project detail fuel editors", () => {
     });
   });
 
-  it("keeps the catalog toggle available for material offers", () => {
-    render(<MaterialRowsHarness />);
-
-    expect(
-      screen.getByLabelText("Salvar também no catálogo da empresa"),
-    ).toBeTruthy();
-  });
-
   it("keeps supplier, item and unit locked in fuel editing and only reveals quantity on demand", async () => {
     const user = userEvent.setup();
     render(<FuelEditHarness />);
@@ -298,5 +323,52 @@ describe("Project detail fuel editors", () => {
     await user.click(screen.getByLabelText("Alterar quantidade nesta obra"));
 
     expect(screen.getByLabelText("Quantidade")).toBeTruthy();
+  });
+});
+
+describe("Project detail planning metrics", () => {
+  it("shows integer production metrics and saves them with canonical zero cents", async () => {
+    const saveReadiness = vi.mocked(saveProjectReadinessAction);
+    saveReadiness.mockResolvedValue({
+      kind: "success",
+      project: projectSnapshot,
+    });
+    const user = userEvent.setup();
+
+    render(
+      <ProjectDetail
+        lookupSuppliedItemOfferSuppliersAction={
+          lookupSuppliedItemOfferSuppliersAction
+        }
+        lookupSuppliedItemOffersAction={lookupSuppliedItemOffersAction}
+        lookupSuppliedItemsAction={lookupSuppliedItemsAction}
+        lookupSuppliersAction={lookupSuppliersAction}
+        options={projectOptions}
+        project={projectSnapshot}
+      />,
+    );
+
+    const targetInput = screen.getAllByLabelText(
+      /Meta total/u,
+    )[0] as HTMLInputElement;
+    expect(targetInput.value).toBe("1.234");
+    expect(targetInput.value).not.toBe("1.234,00");
+
+    await user.clear(targetInput);
+    await user.type(targetInput, "1234567");
+    expect(targetInput.value).toBe("1.234.567");
+
+    await user.click(
+      screen.getByRole("button", { name: /Salvar datas\/metas/u }),
+    );
+
+    await waitFor(() =>
+      expect(saveReadiness).toHaveBeenCalledWith(projectSnapshot.id, {
+        plannedEndDate: "2026-08-01",
+        productionMetricTargets: [
+          { metricCode: "cut", targetTotal: "1234567.00" },
+        ],
+      }),
+    );
   });
 });

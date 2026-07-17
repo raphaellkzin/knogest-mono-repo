@@ -2,12 +2,15 @@ import { describe, expect, it } from "vitest";
 
 import {
   canonicalDecimalToBrazilian,
+  canonicalDecimalToBrazilianInteger,
   decimalInputToCanonical,
   formatBrazilianDecimalInput,
+  formatBrazilianIntegerInput,
   formatBrazilianPhone,
   formatCep,
   formatCnpj,
   formatCpf,
+  integerInputToCanonicalDecimal,
 } from "./brazilian-input-mask";
 
 describe("Brazilian operational input masks", () => {
@@ -36,5 +39,15 @@ describe("Brazilian operational input masks", () => {
     expect(decimalInputToCanonical("1.234,56")).toBe("1234.56");
     expect(canonicalDecimalToBrazilian("1234.5")).toBe("1.234,50");
     expect(formatBrazilianDecimalInput("123456", 4)).toBe("12,3456");
+  });
+
+  it("formats and normalizes Brazilian integer metric input", () => {
+    expect(formatBrazilianIntegerInput("1234567")).toBe("1.234.567");
+    expect(formatBrazilianIntegerInput("R$ 1.234,56")).toBe("1.234");
+    expect(formatBrazilianIntegerInput("")).toBe("");
+    expect(integerInputToCanonicalDecimal("1.234.567")).toBe("1234567.00");
+    expect(integerInputToCanonicalDecimal("")).toBe("");
+    expect(integerInputToCanonicalDecimal("0")).toBe("0.00");
+    expect(canonicalDecimalToBrazilianInteger("1234.00")).toBe("1.234");
   });
 });

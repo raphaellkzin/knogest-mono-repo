@@ -334,6 +334,7 @@ const suppliedItemOfferSchema = {
     "id",
     "supplier",
     "baseUnit",
+    "purchaseUnit",
     "conversionToBase",
     "currentPrice",
     "priceHistory",
@@ -354,6 +355,17 @@ const suppliedItemOfferSchema = {
       additionalProperties: false,
     },
     baseUnit: {
+      type: "object",
+      nullable: true,
+      required: ["id", "code", "name"],
+      properties: {
+        id: { type: "string", format: "uuid" },
+        code: { type: "string" },
+        name: { type: "string" },
+      },
+      additionalProperties: false,
+    },
+    purchaseUnit: {
       type: "object",
       nullable: true,
       required: ["id", "code", "name"],

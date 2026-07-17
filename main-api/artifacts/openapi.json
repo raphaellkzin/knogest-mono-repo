@@ -5941,6 +5941,7 @@
                               "id",
                               "supplier",
                               "baseUnit",
+                              "purchaseUnit",
                               "conversionToBase",
                               "currentPrice",
                               "priceHistory",
@@ -5986,6 +5987,17 @@
                                 "additionalProperties": false
                               },
                               "baseUnit": {
+                                "type": "object",
+                                "nullable": true,
+                                "required": ["id", "code", "name"],
+                                "properties": {
+                                  "id": { "type": "string", "format": "uuid" },
+                                  "code": { "type": "string" },
+                                  "name": { "type": "string" }
+                                },
+                                "additionalProperties": false
+                              },
+                              "purchaseUnit": {
                                 "type": "object",
                                 "nullable": true,
                                 "required": ["id", "code", "name"],
@@ -13834,6 +13846,7 @@
                               "type": "string",
                               "format": "uuid"
                             },
+                            "conversionToBase": { "type": "string" },
                             "price": { "type": "string" }
                           }
                         },

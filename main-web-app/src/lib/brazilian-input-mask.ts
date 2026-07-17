@@ -69,6 +69,28 @@ export function decimalInputToCanonical(value: string, fractionDigits = 2) {
   return `${whole || "0"}.${fraction}`;
 }
 
+export function formatBrazilianIntegerInput(value: string) {
+  const valueDigits = integerDigits(value, 18);
+  if (!valueDigits) return "";
+  return formatThousands(valueDigits.replace(/^0+(?=\d)/u, "") || "0");
+}
+
+export function integerInputToCanonicalDecimal(
+  value: string,
+  fractionDigits = 2,
+) {
+  const valueDigits = integerDigits(value, 18);
+  if (!valueDigits) return "";
+  const whole = valueDigits.replace(/^0+(?=\d)/u, "") || "0";
+  return `${whole}.${"0".repeat(fractionDigits)}`;
+}
+
+export function canonicalDecimalToBrazilianInteger(value: string) {
+  if (!/^\d+(?:\.\d+)?$/u.test(value)) return value;
+  const [whole] = value.split(".");
+  return formatThousands(whole.replace(/^0+(?=\d)/u, "") || "0");
+}
+
 export function decimalInputToCanonicalFixed(
   value: string,
   inputFractionDigits = 2,
@@ -88,4 +110,8 @@ export function canonicalDecimalToBrazilian(value: string, fractionDigits = 2) {
 
 function formatThousands(value: string) {
   return value.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+}
+
+function integerDigits(value: string, limit: number) {
+  return onlyDigits(value.split(",")[0] ?? "", limit);
 }

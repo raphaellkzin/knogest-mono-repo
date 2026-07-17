@@ -6,6 +6,7 @@ import {
   lookupProjectSuppliedItemOfferSuppliersAction,
   lookupProjectSuppliedItemOffersAction,
   lookupProjectSuppliedItemsAction,
+  lookupProjectSuppliersAction,
 } from "@/features/projects/projects.actions";
 import {
   getProjectDetail,
@@ -43,6 +44,7 @@ export default async function Page({
         }
         lookupSuppliedItemOffersAction={lookupProjectSuppliedItemOffersAction}
         lookupSuppliedItemsAction={lookupProjectSuppliedItemsAction}
+        lookupSuppliersAction={lookupProjectSuppliersAction}
         options={options}
         project={project}
       />

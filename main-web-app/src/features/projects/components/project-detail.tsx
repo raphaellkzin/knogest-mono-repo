@@ -7,8 +7,6 @@ import {
   ArrowLeft,
   CalendarDays,
   Check,
-  CheckCircle2,
-  CircleAlert,
   Fuel,
   Gauge,
   HardHat,
@@ -18,12 +16,12 @@ import {
   Plus,
   Save,
   Search,
-  Trash2,
   Truck,
   UsersRound,
   WalletCards,
 } from "lucide-react";
 import { useForm, useWatch } from "react-hook-form";
+import { toast } from "sonner";
 
 import { FormErrorDeclaration } from "@/components/forms/form-error-declaration";
 import { OperationsModal } from "@/components/ui/operations-modal";
@@ -33,9 +31,12 @@ import { Input } from "@/components/ui/input";
 import { OperationTabs } from "@/components/ui/operation-tabs";
 import { useDebouncer } from "@/hooks/useDebouncer";
 import {
+  canonicalDecimalToBrazilianInteger,
   canonicalDecimalToBrazilian,
   decimalInputToCanonical,
   formatBrazilianDecimalInput,
+  formatBrazilianIntegerInput,
+  integerInputToCanonicalDecimal,
 } from "@/lib/brazilian-input-mask";
 import { cn } from "@/lib/utils";
 import {
@@ -62,6 +63,23 @@ import {
   MachineMobilization,
   type ProjectWizardOptions,
 } from "./project-wizard";
+import {
+  buildMaterialAddCommands,
+  buildMaterialEditCommands,
+  buildMaterialRemoveCommands,
+  canContinueMaterialStep,
+  createBlankMaterialDraft,
+  isMaterialDraftComplete,
+  MaterialAddEditor,
+  type MaterialAddStep,
+  type MaterialDraft,
+  MaterialEditEditor,
+  MaterialOfferList,
+  materialOfferToDraft,
+  nextMaterialStep,
+  previousMaterialStep,
+  type LookupMaterialSuppliersAction,
+} from "./project-material-offers";
 
 const metricDefinitions: Array<{
   code: ProductionMetricCode;
@@ -103,6 +121,34 @@ const compensationLabels: Record<CompensationMode, string> = {
   monthly: "Mensal",
 };
 
+const compensationModeOrder: CompensationMode[] = [
+  "hourly",
+  "daily",
+  "weekly",
+  "fortnightly",
+  "monthly",
+];
+
+const dailyPaymentOptions = [
+  { value: "0", label: "No fim do dia trabalhado" },
+  { value: "1", label: "No próximo dia útil" },
+];
+
+const weekDayPaymentOptions = [
+  { value: "1", label: "Segunda-feira" },
+  { value: "2", label: "Terça-feira" },
+  { value: "3", label: "Quarta-feira" },
+  { value: "4", label: "Quinta-feira" },
+  { value: "5", label: "Sexta-feira" },
+  { value: "6", label: "Sábado" },
+  { value: "7", label: "Domingo" },
+];
+
+const monthlyBusinessDayOptions = Array.from({ length: 22 }, (_, index) => ({
+  value: String(index + 1),
+  label: `${index + 1}º dia útil do mês`,
+}));
+
 const statusLabels: Record<ProjectDetailSnapshot["status"], string> = {
   planned: "Planejada",
   active: "Ativa",
@@ -111,7 +157,7 @@ const statusLabels: Record<ProjectDetailSnapshot["status"], string> = {
   cancelled: "Cancelada",
 };
 
-export type OfferDraft = {
+export type FuelDraft = {
   key: string;
   mode: "existing" | "new";
   sourceOfferId: string;
@@ -120,10 +166,6 @@ export type OfferDraft = {
   purchaseUnitId: string;
   conversionToBase: string;
   price: string;
-  saveToCatalog: boolean;
-};
-
-export type FuelDraft = Omit<OfferDraft, "saveToCatalog"> & {
   customQuantityEnabled: boolean;
   defaultConversionToBase: string;
 };
@@ -214,22 +256,53 @@ function metricInitialState(project: ProjectDetailSnapshot) {
     ...metric,
     enabled: existing.has(metric.code),
     targetTotal: existing.has(metric.code)
-      ? canonicalDecimalToBrazilian(existing.get(metric.code)!, 2)
+      ? canonicalDecimalToBrazilianInteger(existing.get(metric.code)!)
       : "",
   }));
 }
 
-function offerInitialState(offers: ProjectOfferSnapshot[]): OfferDraft[] {
-  return offers.map(offerToDraft);
-}
-
-function paymentInitialState(project: ProjectDetailSnapshot) {
+function paymentTermsToState(
+  terms: ProjectDetailSnapshot["compensationPaymentTerms"],
+) {
   return Object.fromEntries(
-    project.compensationPaymentTerms.map((term) => [
+    terms.map((term) => [
       term.compensationMode,
       String(term.daysAfterPeriodEnd),
     ]),
   ) as Partial<Record<CompensationMode, string>>;
+}
+
+function paymentInitialState(project: ProjectDetailSnapshot) {
+  return paymentTermsToState(project.compensationPaymentTerms);
+}
+
+function paymentModeSort(a: CompensationMode, b: CompensationMode) {
+  return compensationModeOrder.indexOf(a) - compensationModeOrder.indexOf(b);
+}
+
+function paymentOptionsForMode(mode: CompensationMode) {
+  if (mode === "monthly") return monthlyBusinessDayOptions;
+  if (mode === "weekly" || mode === "fortnightly")
+    return weekDayPaymentOptions;
+  return dailyPaymentOptions;
+}
+
+function paymentPromptForMode(mode: CompensationMode) {
+  if (mode === "monthly") return "Escolha o dia útil do mês para pagamento.";
+  if (mode === "weekly") return "Escolha o dia da semana do pagamento.";
+  if (mode === "fortnightly")
+    return "Escolha o dia da semana do acerto quinzenal.";
+  if (mode === "daily")
+    return "Confirme se a diária fecha no mesmo dia ou no próximo dia útil.";
+  return "Confirme quando as horas apontadas serão pagas.";
+}
+
+function paymentTermSummary(mode: CompensationMode, value: number) {
+  const match = paymentOptionsForMode(mode).find(
+    (option) => Number(option.value) === value,
+  );
+  if (match) return match.label;
+  return `${value} dia(s) após o fechamento`;
 }
 
 function projectToCommand(project: ProjectDetailSnapshot): ProjectCommand {
@@ -416,26 +489,21 @@ function TabLabel({
   label: string;
   status: { label: string; tone: ReadinessTone };
 }) {
+  const isComplete = status.tone === "ready" || status.label === "Configurado";
   return (
     <span className="flex items-center gap-2">
       <span>{label}</span>
       <span
+        role="status"
+        aria-label={`${label}: ${status.label}`}
+        title={`${label}: ${status.label}`}
         className={cn(
-          "rounded-sm px-1.5 py-0.5 text-[11px] font-bold leading-4",
-          status.tone === "ready" && "bg-emerald-100 text-emerald-900",
-          status.tone === "pending" && "bg-amber-100 text-amber-950",
-          status.tone === "dirty" && "bg-primary/10 text-primary",
-          status.tone === "neutral" && "bg-background text-muted-foreground",
+          "size-2.5 shrink-0 rounded-full ring-2 ring-background",
+          isComplete ? "bg-emerald-500" : "bg-amber-500",
         )}
-      >
-        {status.label}
-      </span>
+      />
     </span>
   );
-}
-
-function optionLabel(option: SupplierOfferOption) {
-  return `${option.item.name} · ${option.supplier.name} · ${option.purchaseUnit.code}`;
 }
 
 function defaultUnitId(
@@ -449,10 +517,15 @@ function defaultUnitId(
   return liter?.id ?? units[0]?.id ?? "";
 }
 
-function createBlankOfferDraft(
+function pickFuelOptions(options: SupplierOfferOption[]) {
+  const candidates = options.filter((offer) => offer.isFuelCandidate);
+  return candidates.length ? candidates : options;
+}
+
+export function createBlankFuelDraft(
   options: SupplierOfferOption[],
   measurementUnits: ProjectReadinessOptions["measurementUnits"],
-): OfferDraft {
+): FuelDraft {
   return {
     key: crypto.randomUUID(),
     mode: options.length > 0 ? "existing" : "new",
@@ -462,16 +535,12 @@ function createBlankOfferDraft(
     purchaseUnitId: defaultUnitId(measurementUnits),
     conversionToBase: "1,000000",
     price: "",
-    saveToCatalog: false,
+    customQuantityEnabled: false,
+    defaultConversionToBase: "1,000000",
   };
 }
 
-function pickFuelOptions(options: SupplierOfferOption[]) {
-  const candidates = options.filter((offer) => offer.isFuelCandidate);
-  return candidates.length ? candidates : options;
-}
-
-function offerToDraft(offer: ProjectOfferSnapshot): OfferDraft {
+function createFuelDraftFromOffer(offer: ProjectOfferSnapshot): FuelDraft {
   return {
     key: offer.id,
     mode: offer.sourceOfferId ? "existing" : "new",
@@ -481,42 +550,11 @@ function offerToDraft(offer: ProjectOfferSnapshot): OfferDraft {
     purchaseUnitId: offer.purchaseUnit?.id ?? "",
     conversionToBase: canonicalDecimalToBrazilian(offer.conversionToBase, 6),
     price: canonicalDecimalToBrazilian(offer.price, 4),
-    saveToCatalog: Boolean(offer.sourceOfferId),
-  };
-}
-
-export function createBlankFuelDraft(
-  options: SupplierOfferOption[],
-  measurementUnits: ProjectReadinessOptions["measurementUnits"],
-): FuelDraft {
-  const blankDraft = createBlankOfferDraft(options, measurementUnits);
-  return {
-    key: blankDraft.key,
-    mode: blankDraft.mode,
-    sourceOfferId: blankDraft.sourceOfferId,
-    supplierId: blankDraft.supplierId,
-    itemId: blankDraft.itemId,
-    purchaseUnitId: blankDraft.purchaseUnitId,
-    conversionToBase: blankDraft.conversionToBase,
-    price: blankDraft.price,
     customQuantityEnabled: false,
-    defaultConversionToBase: "1,000000",
-  };
-}
-
-function createFuelDraftFromOffer(offer: ProjectOfferSnapshot): FuelDraft {
-  const base = offerToDraft(offer);
-  return {
-    key: base.key,
-    mode: base.mode,
-    sourceOfferId: base.sourceOfferId,
-    supplierId: base.supplierId,
-    itemId: base.itemId,
-    purchaseUnitId: base.purchaseUnitId,
-    conversionToBase: base.conversionToBase,
-    price: base.price,
-    customQuantityEnabled: false,
-    defaultConversionToBase: base.conversionToBase,
+    defaultConversionToBase: canonicalDecimalToBrazilian(
+      offer.conversionToBase,
+      6,
+    ),
   };
 }
 
@@ -540,26 +578,6 @@ function projectOfferToCommand(
     purchaseUnitId: offer.purchaseUnit.id,
     conversionToBase: offer.conversionToBase,
     price: offer.price,
-  };
-}
-
-function draftToMaterialCommand(draft: OfferDraft): ReadinessOfferCommand {
-  const price = decimalInputToCanonical(draft.price, 4);
-  if (draft.mode === "existing") {
-    return {
-      mode: "existing",
-      sourceOfferId: draft.sourceOfferId,
-      conversionToBase: decimalInputToCanonical(draft.conversionToBase, 6),
-      price,
-    };
-  }
-  return {
-    mode: draft.saveToCatalog ? "companyCatalog" : "projectOnly",
-    supplierId: draft.supplierId,
-    itemId: draft.itemId,
-    purchaseUnitId: draft.purchaseUnitId,
-    conversionToBase: decimalInputToCanonical(draft.conversionToBase, 6),
-    price,
   };
 }
 
@@ -686,36 +704,6 @@ function ReadonlyField({
       <p className="mt-1 min-w-0 break-words text-sm font-semibold text-foreground">
         {value}
       </p>
-    </div>
-  );
-}
-
-function DraftModeControl({
-  mode,
-  newLabel,
-  onChange,
-}: {
-  mode: "existing" | "new";
-  newLabel: string;
-  onChange: (mode: "existing" | "new") => void;
-}) {
-  return (
-    <div className="inline-flex rounded-md border border-border bg-secondary/50 p-1">
-      {(["existing", "new"] as const).map((value) => (
-        <button
-          key={value}
-          type="button"
-          className={cn(
-            "min-h-9 rounded-sm px-3 text-sm font-bold transition-colors",
-            mode === value
-              ? "bg-background text-foreground shadow-xs"
-              : "text-muted-foreground hover:text-foreground",
-          )}
-          onClick={() => onChange(value)}
-        >
-          {value === "existing" ? "Oferta existente" : newLabel}
-        </button>
-      ))}
     </div>
   );
 }
@@ -1693,332 +1681,18 @@ export function FuelEditEditor({
   );
 }
 
-export function OfferRows({
-  drafts,
-  emptyText,
-  highlightedDraftKey,
-  kind,
-  options,
-  suppliers,
-  suppliedItems,
-  measurementUnits,
-  setDrafts,
-}: {
-  drafts: OfferDraft[];
-  emptyText: string;
-  highlightedDraftKey?: string | null;
-  kind: "fuel" | "material";
-  options: SupplierOfferOption[];
-  suppliers: ProjectReadinessOptions["suppliers"];
-  suppliedItems: ProjectReadinessOptions["suppliedItems"];
-  measurementUnits: ProjectReadinessOptions["measurementUnits"];
-  setDrafts: React.Dispatch<React.SetStateAction<OfferDraft[]>>;
-}) {
-  const newLabel = kind === "fuel" ? "Novo combustível" : "Novo item";
-  return (
-    <div className="grid gap-3">
-      {drafts.map((draft) => {
-        const selected = options.find(
-          (option) => option.id === draft.sourceOfferId,
-        );
-        return (
-          <div
-            key={draft.key}
-            className={cn(
-              "grid gap-3 rounded-md border border-border bg-background p-3",
-              highlightedDraftKey === draft.key &&
-                "border-primary bg-primary/5 ring-1 ring-primary/20",
-            )}
-          >
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div className="grid gap-2">
-                <DraftModeControl
-                  mode={draft.mode}
-                  newLabel={newLabel}
-                  onChange={(mode) =>
-                    setDrafts((current) =>
-                      current.map((item) =>
-                        item.key === draft.key
-                          ? {
-                              ...item,
-                              mode,
-                              sourceOfferId:
-                                mode === "new" ? "" : item.sourceOfferId,
-                            }
-                          : item,
-                      ),
-                    )
-                  }
-                />
-                {highlightedDraftKey === draft.key && (
-                  <span className="justify-self-start rounded-sm bg-primary/10 px-2 py-0.5 text-xs font-bold text-primary">
-                    Editando esta oferta
-                  </span>
-                )}
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon-lg"
-                aria-label="Remover oferta"
-                onClick={() =>
-                  setDrafts((current) =>
-                    current.filter((item) => item.key !== draft.key),
-                  )
-                }
-              >
-                <Trash2 className="size-4" />
-              </Button>
-            </div>
-
-            {draft.mode === "existing" ? (
-              <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_9rem] md:items-end">
-                <label className="grid gap-1.5 text-sm font-semibold">
-                  <span>Oferta do fornecedor</span>
-                  <select
-                    className={controlClass}
-                    value={draft.sourceOfferId}
-                    onChange={(event) => {
-                      const nextOffer = options.find(
-                        (option) => option.id === event.target.value,
-                      );
-                      setDrafts((current) =>
-                        current.map((item) =>
-                          item.key === draft.key
-                            ? {
-                                ...item,
-                                sourceOfferId: event.target.value,
-                                supplierId:
-                                  nextOffer?.supplier.id ?? item.supplierId,
-                                itemId: nextOffer?.item.id ?? item.itemId,
-                                purchaseUnitId:
-                                  nextOffer?.purchaseUnit.id ??
-                                  item.purchaseUnitId,
-                                conversionToBase: nextOffer
-                                  ? canonicalDecimalToBrazilian(
-                                      nextOffer.conversionToBase,
-                                      6,
-                                    )
-                                  : item.conversionToBase,
-                                price: nextOffer
-                                  ? canonicalDecimalToBrazilian(
-                                      nextOffer.currentPrice.price,
-                                      4,
-                                    )
-                                  : item.price,
-                              }
-                            : item,
-                        ),
-                      );
-                    }}
-                  >
-                    <option value="">Selecione</option>
-                    {options.map((option) => (
-                      <option key={option.id} value={option.id}>
-                        {optionLabel(option)} ·{" "}
-                        {formatMoney(option.currentPrice.price, 4)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <OfferPriceInput draft={draft} setDrafts={setDrafts} />
-              </div>
-            ) : (
-              <div className="grid gap-3">
-                <div className="grid gap-3 md:grid-cols-2">
-                  <label className="grid gap-1.5 text-sm font-semibold">
-                    <span>Fornecedor</span>
-                    <select
-                      className={controlClass}
-                      value={draft.supplierId}
-                      onChange={(event) =>
-                        setDrafts((current) =>
-                          current.map((item) =>
-                            item.key === draft.key
-                              ? { ...item, supplierId: event.target.value }
-                              : item,
-                          ),
-                        )
-                      }
-                    >
-                      <option value="">Selecione</option>
-                      {suppliers.map((supplier) => (
-                        <option key={supplier.id} value={supplier.id}>
-                          {supplier.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="grid gap-1.5 text-sm font-semibold">
-                    <span>Item</span>
-                    <select
-                      className={controlClass}
-                      value={draft.itemId}
-                      onChange={(event) => {
-                        const nextItem = suppliedItems.find(
-                          (item) => item.id === event.target.value,
-                        );
-                        setDrafts((current) =>
-                          current.map((item) =>
-                            item.key === draft.key
-                              ? {
-                                  ...item,
-                                  itemId: event.target.value,
-                                  purchaseUnitId: defaultUnitId(
-                                    measurementUnits,
-                                    nextItem,
-                                  ),
-                                }
-                              : item,
-                          ),
-                        );
-                      }}
-                    >
-                      <option value="">Selecione</option>
-                      {suppliedItems.map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {item.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-                <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_9rem_9rem] md:items-end">
-                  <label className="grid gap-1.5 text-sm font-semibold">
-                    <span>Unidade</span>
-                    <select
-                      className={controlClass}
-                      value={draft.purchaseUnitId}
-                      onChange={(event) =>
-                        setDrafts((current) =>
-                          current.map((item) =>
-                            item.key === draft.key
-                              ? { ...item, purchaseUnitId: event.target.value }
-                              : item,
-                          ),
-                        )
-                      }
-                    >
-                      <option value="">Selecione</option>
-                      {measurementUnits.map((unit) => (
-                        <option key={unit.id} value={unit.id}>
-                          {unit.code} - {unit.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="grid gap-1.5 text-sm font-semibold">
-                    <span>Quantidade</span>
-                    <Input
-                      className="h-11"
-                      inputMode="decimal"
-                      value={draft.conversionToBase}
-                      onChange={(event) =>
-                        setDrafts((current) =>
-                          current.map((item) =>
-                            item.key === draft.key
-                              ? {
-                                  ...item,
-                                  conversionToBase: formatBrazilianDecimalInput(
-                                    event.target.value,
-                                    6,
-                                  ),
-                                }
-                              : item,
-                          ),
-                        )
-                      }
-                    />
-                  </label>
-                  <OfferPriceInput draft={draft} setDrafts={setDrafts} />
-                </div>
-                <label className="flex min-h-11 items-center gap-3 rounded-md border border-border bg-secondary/40 px-3 text-sm font-semibold">
-                  <input
-                    type="checkbox"
-                    checked={draft.saveToCatalog}
-                    onChange={(event) =>
-                      setDrafts((current) =>
-                        current.map((item) =>
-                          item.key === draft.key
-                            ? { ...item, saveToCatalog: event.target.checked }
-                            : item,
-                        ),
-                      )
-                    }
-                    className="size-4 accent-primary"
-                  />
-                  Salvar também no catálogo da empresa
-                </label>
-              </div>
-            )}
-          </div>
-        );
-      })}
-      {drafts.length === 0 && <EmptyBlock>{emptyText}</EmptyBlock>}
-      <Button
-        type="button"
-        variant="outline"
-        className="min-h-10 justify-self-start"
-        disabled={
-          suppliers.length === 0 ||
-          suppliedItems.length === 0 ||
-          measurementUnits.length === 0
-        }
-        onClick={() =>
-          setDrafts((current) => [
-            ...current,
-            createBlankOfferDraft(options, measurementUnits),
-          ])
-        }
-      >
-        <Plus className="size-4" />
-        Adicionar oferta
-      </Button>
-    </div>
-  );
-}
-
-function OfferPriceInput({
-  draft,
-  setDrafts,
-}: {
-  draft: OfferDraft;
-  setDrafts: React.Dispatch<React.SetStateAction<OfferDraft[]>>;
-}) {
-  return (
-    <label className="grid gap-1.5 text-sm font-semibold">
-      <span>Preço</span>
-      <Input
-        className="h-11"
-        inputMode="decimal"
-        value={draft.price}
-        onChange={(event) =>
-          setDrafts((current) =>
-            current.map((item) =>
-              item.key === draft.key
-                ? {
-                    ...item,
-                    price: formatBrazilianDecimalInput(event.target.value, 4),
-                  }
-                : item,
-            ),
-          )
-        }
-      />
-    </label>
-  );
-}
-
 export function ProjectDetail({
   lookupSuppliedItemOfferSuppliersAction,
   lookupSuppliedItemOffersAction,
   lookupSuppliedItemsAction,
+  lookupSuppliersAction,
   options,
   project,
 }: {
   lookupSuppliedItemOfferSuppliersAction: LookupSuppliedItemOfferSuppliersAction;
   lookupSuppliedItemOffersAction: LookupSuppliedItemOffersAction;
   lookupSuppliedItemsAction: LookupSuppliedItemsAction;
+  lookupSuppliersAction: LookupMaterialSuppliersAction;
   options: ProjectReadinessOptions;
   project: ProjectDetailSnapshot;
 }) {
@@ -2040,22 +1714,31 @@ export function ProjectDetail({
   const [editingFuelOfferId, setEditingFuelOfferId] = React.useState<
     string | null
   >(null);
-  const [materialDrafts, setMaterialDrafts] = React.useState(() =>
-    offerInitialState(project.supplierOffers),
+  const [fuelOffers, setFuelOffers] = React.useState(project.fuelOffers);
+  const [materialView, setMaterialView] = React.useState<
+    "list" | "add" | "edit"
+  >("list");
+  const [materialAddStep, setMaterialAddStep] =
+    React.useState<MaterialAddStep>("source");
+  const [materialDraft, setMaterialDraft] =
+    React.useState<MaterialDraft | null>(null);
+  const [editingMaterialOfferId, setEditingMaterialOfferId] = React.useState<
+    string | null
+  >(null);
+  const [materialOffers, setMaterialOffers] = React.useState(
+    project.supplierOffers,
+  );
+  const [materialIssues, setMaterialIssues] = React.useState<
+    React.ComponentProps<typeof FormErrorDeclaration>["issues"]
+  >([]);
+  const [paymentTermRows, setPaymentTermRows] = React.useState(
+    project.compensationPaymentTerms,
   );
   const [paymentTerms, setPaymentTerms] = React.useState(() =>
     paymentInitialState(project),
   );
-  const [notice, setNotice] = React.useState<{
-    tone: "success" | "warning" | "error";
-    text: string;
-  } | null>(null);
-  const [apiBlockers, setApiBlockers] = React.useState<
-    { section: string; message: string }[]
-  >([]);
   const [planningDirty, setPlanningDirty] = React.useState(false);
   const [fuelDirty, setFuelDirty] = React.useState(false);
-  const [materialDirty, setMaterialDirty] = React.useState(false);
   const [paymentDirty, setPaymentDirty] = React.useState(false);
   const [activeTab, setActiveTab] = React.useState<ProjectTab>("planning");
   const [openModal, setOpenModal] = React.useState<
@@ -2097,11 +1780,17 @@ export function ProjectDetail({
     setFuelEditDraft(null);
     setFuelAddStep("source");
     setEditingFuelOfferId(null);
-    setMaterialDrafts(offerInitialState(project.supplierOffers));
+    setFuelOffers(project.fuelOffers);
+    setMaterialView("list");
+    setMaterialAddStep("source");
+    setMaterialDraft(null);
+    setEditingMaterialOfferId(null);
+    setMaterialOffers(project.supplierOffers);
+    setMaterialIssues([]);
+    setPaymentTermRows(project.compensationPaymentTerms);
     setPaymentTerms(paymentInitialState(project));
     setPlanningDirty(false);
     setFuelDirty(false);
-    setMaterialDirty(false);
     setPaymentDirty(false);
   }, [project, readinessForm]);
   /* eslint-enable react-hooks/set-state-in-effect */
@@ -2136,33 +1825,32 @@ export function ProjectDetail({
   );
 
   const paymentModes = React.useMemo(
-    () =>
-      [
+    () => {
+      const modes = [
         ...new Set(
           (watchedEmployeeAllocations ?? []).map(
             (allocation) => allocation.compensationMode,
           ),
         ),
-      ].sort() as CompensationMode[],
+      ] as CompensationMode[];
+      return modes.sort(paymentModeSort);
+    },
     [watchedEmployeeAllocations],
   );
 
-  const allBlockers = apiBlockers.length
-    ? apiBlockers
-    : project.readiness.blockers;
   const isEditable = project.status === "planned";
   const fuelOptions = React.useMemo(
     () => pickFuelOptions(options.supplierOffers),
     [options.supplierOffers],
   );
+  const materialDirty = materialView !== "list";
   const hasUnsavedChanges =
     planningDirty ||
     fuelDirty ||
     materialDirty ||
     paymentDirty ||
     readinessForm.formState.isDirty;
-  const hasKnownBlockers =
-    apiBlockers.length > 0 || !project.readiness.canActivate;
+  const hasKnownBlockers = !project.readiness.canActivate;
   const accountabilityReady = Boolean(
     project.client &&
     project.manager &&
@@ -2174,9 +1862,8 @@ export function ProjectDetail({
   const teamReady = project.employeeAllocations.length > 0;
   const machinesReady = project.machineAllocations.length > 0;
   const paymentsReady =
-    project.compensationPaymentTerms.length > 0 &&
-    project.compensationPaymentTerms.length === paymentModes.length;
-  const fuelReady = project.fuelOffers.length > 0;
+    paymentTermRows.length > 0 && paymentTermRows.length === paymentModes.length;
+  const fuelReady = fuelOffers.length > 0;
   const planningStatus = planningDirty
     ? ({ label: "Alterado", tone: "dirty" } as const)
     : planningReady
@@ -2193,14 +1880,23 @@ export function ProjectDetail({
       ? ({ label: "OK", tone: "ready" } as const)
       : ({ label: "Pendente", tone: "pending" } as const);
   const currentEditingFuelOffer = editingFuelOfferId
-    ? (project.fuelOffers.find((offer) => offer.id === editingFuelOfferId) ??
-      null)
+    ? (fuelOffers.find((offer) => offer.id === editingFuelOfferId) ?? null)
     : null;
   const fuelAddCanContinue = canContinueFuelStep(fuelAddStep, fuelAddDraft);
   const isFuelAddReviewStep = fuelAddStep === "details";
   const fuelAddCanSave = fuelAddDraft
     ? isFuelAddReviewStep && isFuelDraftComplete(fuelAddDraft)
     : false;
+  const currentEditingMaterialOffer = editingMaterialOfferId
+    ? (materialOffers.find((offer) => offer.id === editingMaterialOfferId) ??
+      null)
+    : null;
+  const materialAddCanContinue = canContinueMaterialStep(
+    materialAddStep,
+    materialDraft,
+  );
+  const materialAddCanSave =
+    materialAddStep === "review" && isMaterialDraftComplete(materialDraft);
   const accountabilityStatus =
     readinessForm.formState.dirtyFields.clientId ||
     readinessForm.formState.dirtyFields.managerEmploymentId ||
@@ -2228,73 +1924,76 @@ export function ProjectDetail({
       : ({ label: "Pendente", tone: "pending" } as const);
   const materialsStatus = materialDirty
     ? ({ label: "Alterado", tone: "dirty" } as const)
-    : project.supplierOffers.length
+    : materialOffers.length
       ? ({ label: "Configurado", tone: "neutral" } as const)
       : ({ label: "Opcional", tone: "neutral" } as const);
-  const tabs = React.useMemo(
-    () => [
-      {
-        value: "planning" as const,
-        label: <TabLabel label="Planejamento" status={planningStatus} />,
-      },
-      {
-        value: "fuel" as const,
-        label: <TabLabel label="Combustível" status={fuelStatus} />,
-      },
-      {
-        value: "accountability" as const,
-        label: <TabLabel label="Responsáveis" status={accountabilityStatus} />,
-      },
-      {
-        value: "team" as const,
-        label: <TabLabel label="Equipe" status={teamStatus} />,
-      },
-      {
-        value: "machines" as const,
-        label: <TabLabel label="Máquinas" status={machinesStatus} />,
-      },
-      {
-        value: "payments" as const,
-        label: <TabLabel label="Pagamentos" status={paymentsStatus} />,
-      },
-      {
-        value: "materials" as const,
-        label: <TabLabel label="Itens" status={materialsStatus} />,
-      },
-    ],
-    [
-      accountabilityStatus,
-      fuelStatus,
-      machinesStatus,
-      materialsStatus,
-      paymentsStatus,
-      planningStatus,
-      teamStatus,
-    ],
-  );
+  const tabs = [
+    {
+      value: "planning" as const,
+      label: <TabLabel label="Planejamento" status={planningStatus} />,
+    },
+    {
+      value: "fuel" as const,
+      label: <TabLabel label="Combustível" status={fuelStatus} />,
+    },
+    {
+      value: "accountability" as const,
+      label: <TabLabel label="Responsáveis" status={accountabilityStatus} />,
+    },
+    {
+      value: "team" as const,
+      label: <TabLabel label="Equipe" status={teamStatus} />,
+    },
+    {
+      value: "machines" as const,
+      label: <TabLabel label="Máquinas" status={machinesStatus} />,
+    },
+    {
+      value: "payments" as const,
+      label: <TabLabel label="Pagamentos" status={paymentsStatus} />,
+    },
+    {
+      value: "materials" as const,
+      label: <TabLabel label="Itens" status={materialsStatus} />,
+    },
+  ];
 
   const savePatch = (
     command: ProjectReadinessActionInput,
     successText: string,
-    onSuccess?: () => void,
+    onSuccess?: (updatedProject: ProjectDetailSnapshot) => void,
+    onError?: (
+      issues: React.ComponentProps<typeof FormErrorDeclaration>["issues"],
+    ) => void,
   ) => {
-    setNotice(null);
-    setApiBlockers([]);
     startTransition(async () => {
       const result = await saveProjectReadinessAction(project.id, command);
       if (result.kind === "success") {
-        setNotice({ tone: "success", text: successText });
-        onSuccess?.();
+        toast.success(successText);
+        onSuccess?.(result.project);
         router.refresh();
         return;
       }
-      setNotice({
-        tone: result.kind === "recoverable-conflict" ? "warning" : "error",
-        text: "Não foi possível salvar esta seção. Revise as pendências.",
+      const issues =
+        result.kind === "recoverable-conflict" && result.blockers?.length
+          ? result.blockers.map((blocker) => ({
+              location: "Obra",
+              field: blocker.section,
+              message: blocker.message,
+            }))
+          : [
+              {
+                location: "Obra",
+                message: "Não foi possível salvar esta seção agora.",
+              },
+            ];
+      if (onError) {
+        onError(issues);
+        return;
+      }
+      toast.error("Não foi possível salvar esta seção.", {
+        description: issues.map((issue) => issue.message).join(" "),
       });
-      setApiBlockers(
-        result.kind === "recoverable-conflict" ? (result.blockers ?? []) : [],
-      );
     });
   };
 
@@ -2303,21 +2002,15 @@ export function ProjectDetail({
       .filter((metric) => metric.enabled)
       .map((metric) => ({
         metricCode: metric.code,
-        targetTotal: decimalInputToCanonical(metric.targetTotal, 2),
+        targetTotal: integerInputToCanonicalDecimal(metric.targetTotal),
       }))
       .filter((metric) => metric.targetTotal && metric.targetTotal !== "0.00");
     if (!plannedEndDate) {
-      setNotice({
-        tone: "warning",
-        text: "Informe a data prevista de fim antes de salvar.",
-      });
+      toast.warning("Informe a data prevista de fim antes de salvar.");
       return;
     }
     if (productionMetricTargets.length === 0) {
-      setNotice({
-        tone: "warning",
-        text: "Selecione ao menos uma métrica com meta total.",
-      });
+      toast.warning("Selecione ao menos uma métrica com meta total.");
       return;
     }
     savePatch(
@@ -2327,23 +2020,8 @@ export function ProjectDetail({
     );
   };
 
-  const buildOfferCommand = (drafts: OfferDraft[]) => {
-    const commands = drafts.map((draft) => draftToMaterialCommand(draft));
-    const hasIncompleteOffer = commands.some(
-      (command) => !isOfferCommandComplete(command),
-    );
-    const offerKeys = commands.map((command) =>
-      command.mode === "existing"
-        ? `existing:${command.sourceOfferId}`
-        : `${command.mode}:${command.supplierId}:${command.itemId}:${command.purchaseUnitId}`,
-    );
-    const hasDuplicateOffer = new Set(offerKeys).size !== offerKeys.length;
-    if (hasIncompleteOffer || hasDuplicateOffer) return null;
-    return commands;
-  };
-
   const getCurrentFuelCommands = () => {
-    const commands = project.fuelOffers.map(projectOfferToCommand);
+    const commands = fuelOffers.map(projectOfferToCommand);
     if (commands.some((command) => !command)) return null;
     return commands as ReadinessOfferCommand[];
   };
@@ -2369,13 +2047,13 @@ export function ProjectDetail({
       !isOfferCommandComplete(nextOffer) ||
       hasDuplicateOffer
     ) {
-      setNotice({
-        tone: "warning",
-        text: "Selecione ofertas de combustível sem duplicidade e com preço positivo.",
-      });
+      toast.warning(
+        "Selecione ofertas de combustível sem duplicidade e com preço positivo.",
+      );
       return;
     }
-    savePatch({ fuelOffers }, "Combustível salvo.", () => {
+    savePatch({ fuelOffers }, "Combustível salvo.", (updatedProject) => {
+      setFuelOffers(updatedProject.fuelOffers);
       setFuelDirty(false);
       setFuelAddDraft(null);
       setFuelAddStep("source");
@@ -2386,7 +2064,7 @@ export function ProjectDetail({
   const saveFuelEdit = () => {
     if (!fuelEditDraft || !editingFuelOfferId) return;
     const nextOffer = draftToFuelCommand(fuelEditDraft);
-    const fuelOffers = project.fuelOffers
+    const nextFuelOffers = fuelOffers
       .map((offer) =>
         offer.id === editingFuelOfferId
           ? nextOffer
@@ -2395,47 +2073,27 @@ export function ProjectDetail({
       .filter(Boolean) as ReadinessOfferCommand[];
     const hasDuplicateOffer =
       new Set(
-        fuelOffers.map((command) =>
+        nextFuelOffers.map((command) =>
           command.mode === "existing"
             ? `existing:${command.sourceOfferId}`
             : `${command.mode}:${command.supplierId}:${command.itemId}:${command.purchaseUnitId}`,
         ),
-      ).size !== fuelOffers.length;
+      ).size !== nextFuelOffers.length;
     if (
-      fuelOffers.length !== project.fuelOffers.length ||
+      nextFuelOffers.length !== fuelOffers.length ||
       !isOfferCommandComplete(nextOffer) ||
       hasDuplicateOffer
     ) {
-      setNotice({
-        tone: "warning",
-        text: "Revise preço, quantidade e possíveis duplicidades antes de salvar.",
-      });
-      return;
-    }
-    savePatch({ fuelOffers }, "Combustível atualizado.", () => {
-      setFuelDirty(false);
-      setFuelEditDraft(null);
-      setEditingFuelOfferId(null);
-      setOpenModal(null);
-    });
-  };
-
-  const removeFuelOffer = () => {
-    if (!editingFuelOfferId) return;
-    const fuelOffers = project.fuelOffers
-      .filter((offer) => offer.id !== editingFuelOfferId)
-      .map(projectOfferToCommand);
-    if (fuelOffers.some((command) => !command)) {
-      setNotice({
-        tone: "warning",
-        text: "Não foi possível remover esta oferta agora. Atualize a página e tente novamente.",
-      });
+      toast.warning(
+        "Revise preço, quantidade e possíveis duplicidades antes de salvar.",
+      );
       return;
     }
     savePatch(
-      { fuelOffers: fuelOffers as ReadinessOfferCommand[] },
-      "Combustível removido.",
-      () => {
+      { fuelOffers: nextFuelOffers },
+      "Combustível atualizado.",
+      (updatedProject) => {
+        setFuelOffers(updatedProject.fuelOffers);
         setFuelDirty(false);
         setFuelEditDraft(null);
         setEditingFuelOfferId(null);
@@ -2444,19 +2102,105 @@ export function ProjectDetail({
     );
   };
 
-  const saveMaterials = () => {
-    const materialOffers = buildOfferCommand(materialDrafts);
-    if (!materialOffers) {
-      setNotice({
-        tone: "warning",
-        text: "Revise ofertas incompletas, duplicadas ou sem preço positivo.",
-      });
+  const removeFuelOffer = () => {
+    if (!editingFuelOfferId) return;
+    const nextFuelOffers = fuelOffers
+      .filter((offer) => offer.id !== editingFuelOfferId)
+      .map(projectOfferToCommand);
+    if (nextFuelOffers.some((command) => !command)) {
+      toast.error(
+        "Não foi possível remover esta oferta agora. Atualize a página e tente novamente.",
+      );
       return;
     }
-    savePatch({ materialOffers }, "Itens e fornecedores salvos.", () => {
-      setMaterialDirty(false);
-      setOpenModal(null);
-    });
+    savePatch(
+      { fuelOffers: nextFuelOffers as ReadinessOfferCommand[] },
+      "Combustível removido.",
+      (updatedProject) => {
+        setFuelOffers(updatedProject.fuelOffers);
+        setFuelDirty(false);
+        setFuelEditDraft(null);
+        setEditingFuelOfferId(null);
+        setOpenModal(null);
+      },
+    );
+  };
+
+  const resetMaterialEditor = () => {
+    setMaterialView("list");
+    setMaterialAddStep("source");
+    setMaterialDraft(null);
+    setEditingMaterialOfferId(null);
+    setMaterialIssues([]);
+  };
+
+  const saveMaterialAdd = () => {
+    if (!materialDraft) return;
+    const commands = buildMaterialAddCommands(materialOffers, materialDraft);
+    if (!commands) {
+      setMaterialIssues([
+        {
+          location: "Oferta",
+          message:
+            "Revise os dados e confirme que esta oferta ainda não está vinculada à obra.",
+        },
+      ]);
+      return;
+    }
+    setMaterialIssues([]);
+    savePatch(
+      { materialOffers: commands },
+      "Oferta adicionada à obra.",
+      (updatedProject) => {
+        setMaterialOffers(updatedProject.supplierOffers);
+        resetMaterialEditor();
+      },
+      setMaterialIssues,
+    );
+  };
+
+  const saveMaterialEdit = () => {
+    if (!materialDraft || !editingMaterialOfferId) return;
+    const commands = buildMaterialEditCommands(
+      materialOffers,
+      editingMaterialOfferId,
+      materialDraft,
+    );
+    if (!commands) {
+      setMaterialIssues([
+        {
+          location: "Oferta",
+          message: "Informe preço e quantidade positivos, sem duplicidade.",
+        },
+      ]);
+      return;
+    }
+    setMaterialIssues([]);
+    savePatch(
+      { materialOffers: commands },
+      "Oferta atualizada.",
+      (updatedProject) => {
+        setMaterialOffers(updatedProject.supplierOffers);
+        resetMaterialEditor();
+      },
+      setMaterialIssues,
+    );
+  };
+
+  const removeMaterialOffer = (offerId: string) => {
+    const commands = buildMaterialRemoveCommands(materialOffers, offerId);
+    if (!commands) {
+      toast.error("Não foi possível preparar a remoção desta oferta.");
+      return;
+    }
+    savePatch(
+      { materialOffers: commands },
+      "Oferta removida da obra.",
+      (updatedProject) => {
+        setMaterialOffers(updatedProject.supplierOffers);
+        resetMaterialEditor();
+      },
+    );
   };
 
   const saveAccountability = () => {
@@ -2466,10 +2210,7 @@ export function ProjectDetail({
       !values.managerEmploymentId ||
       values.technicalResponsibilityEmploymentIds.length === 0
     ) {
-      setNotice({
-        tone: "warning",
-        text: "Confirme cliente, gestor e responsável técnico.",
-      });
+      toast.warning("Confirme cliente, gestor e responsável técnico.");
       return;
     }
     savePatch(
@@ -2498,6 +2239,7 @@ export function ProjectDetail({
       "Equipe operacional salva.",
       () => {
         readinessForm.reset(values);
+        setPaymentTermRows([]);
         setPaymentTerms({});
         setPaymentDirty(true);
         setOpenModal(null);
@@ -2525,57 +2267,48 @@ export function ProjectDetail({
       }))
       .filter((term) => Number.isInteger(term.daysAfterPeriodEnd));
     if (compensationPaymentTerms.length !== paymentModes.length) {
-      setNotice({
-        tone: "warning",
-        text: "Preencha o prazo de pagamento de todas as modalidades da equipe.",
-      });
+      toast.warning(
+        "Preencha o prazo de pagamento de todas as modalidades da equipe.",
+      );
       return;
     }
-    savePatch({ compensationPaymentTerms }, "Pagamentos salvos.", () => {
-      setPaymentDirty(false);
-      setOpenModal(null);
-    });
+    savePatch(
+      { compensationPaymentTerms },
+      "Pagamentos salvos.",
+      (updatedProject) => {
+        setPaymentTermRows(updatedProject.compensationPaymentTerms);
+        setPaymentTerms(paymentInitialState(updatedProject));
+        setPaymentDirty(false);
+        setOpenModal(null);
+      },
+    );
   };
 
   const activateProject = () => {
     if (hasUnsavedChanges) {
-      setNotice({
-        tone: "warning",
-        text: "Salve as alterações abertas antes de iniciar a obra.",
-      });
+      toast.warning("Salve as alterações abertas antes de iniciar a obra.");
       return;
     }
-    setNotice(null);
-    setApiBlockers([]);
     startTransition(async () => {
       const result = await activateProjectAction(project.id);
       if (result.kind === "success") {
-        setNotice({ tone: "success", text: "Obra iniciada." });
+        toast.success("Obra iniciada.");
         router.refresh();
         return;
       }
-      setNotice({
-        tone: result.kind === "recoverable-conflict" ? "warning" : "error",
-        text:
-          result.kind === "recoverable-conflict"
-            ? "A obra ainda tem pendências de início."
-            : "Não foi possível iniciar a obra.",
-      });
-      setApiBlockers(
-        result.kind === "recoverable-conflict" ? (result.blockers ?? []) : [],
+      toast.error(
+        result.kind === "recoverable-conflict"
+          ? "A obra ainda tem pendências de início."
+          : "Não foi possível iniciar a obra.",
+        {
+          description:
+            result.kind === "recoverable-conflict"
+              ? result.blockers?.map((blocker) => blocker.message).join(" ")
+              : undefined,
+        },
       );
     });
   };
-
-  const setOfferDrafts =
-    (
-      setter: React.Dispatch<React.SetStateAction<OfferDraft[]>>,
-      markDirty: () => void,
-    ): React.Dispatch<React.SetStateAction<OfferDraft[]>> =>
-    (value) => {
-      markDirty();
-      setter(value);
-    };
 
   const setFuelDraftWithDirty =
     (
@@ -2600,7 +2333,7 @@ export function ProjectDetail({
   };
 
   const openEditFuelModal = (offerId: string) => {
-    const offer = project.fuelOffers.find((item) => item.id === offerId);
+    const offer = fuelOffers.find((item) => item.id === offerId);
     if (!offer) return;
     setFuelEditDraft(createFuelDraftFromOffer(offer));
     setFuelAddDraft(null);
@@ -2618,9 +2351,30 @@ export function ProjectDetail({
     setOpenModal(null);
   };
 
+  const openMaterialsModal = () => {
+    resetMaterialEditor();
+    setOpenModal("materials");
+  };
+
+  const openMaterialAdd = () => {
+    setMaterialDraft(createBlankMaterialDraft());
+    setEditingMaterialOfferId(null);
+    setMaterialAddStep("source");
+    setMaterialIssues([]);
+    setMaterialView("add");
+  };
+
+  const openMaterialEdit = (offerId: string) => {
+    const offer = materialOffers.find((item) => item.id === offerId);
+    if (!offer) return;
+    setMaterialDraft(materialOfferToDraft(offer));
+    setEditingMaterialOfferId(offerId);
+    setMaterialIssues([]);
+    setMaterialView("edit");
+  };
+
   const closeMaterialsModal = () => {
-    setMaterialDrafts(offerInitialState(project.supplierOffers));
-    setMaterialDirty(false);
+    resetMaterialEditor();
     setOpenModal(null);
   };
 
@@ -2630,7 +2384,7 @@ export function ProjectDetail({
   };
 
   const closePaymentsModal = () => {
-    setPaymentTerms(paymentInitialState(project));
+    setPaymentTerms(paymentTermsToState(paymentTermRows));
     setPaymentDirty(false);
     setOpenModal(null);
   };
@@ -2727,37 +2481,6 @@ export function ProjectDetail({
           />
         </dl>
       </header>
-
-      {(notice || allBlockers.length > 0) && (
-        <section
-          className={cn(
-            "rounded-lg border px-4 py-3",
-            notice?.tone === "success"
-              ? "border-emerald-200 bg-emerald-50 text-emerald-950"
-              : "border-amber-200 bg-amber-50 text-amber-950",
-          )}
-        >
-          <div className="flex items-start gap-3">
-            {notice?.tone === "success" ? (
-              <CheckCircle2 className="mt-0.5 size-5 shrink-0" />
-            ) : (
-              <CircleAlert className="mt-0.5 size-5 shrink-0" />
-            )}
-            <div className="min-w-0">
-              {notice && <p className="text-sm font-bold">{notice.text}</p>}
-              {allBlockers.length > 0 && (
-                <ul className="mt-2 grid gap-1 text-sm font-semibold">
-                  {allBlockers.map((blocker, index) => (
-                    <li key={`${blocker.section}-${index}`}>
-                      {blocker.message}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </div>
-        </section>
-      )}
 
       <section className="overflow-hidden rounded-lg border border-border bg-card">
         <div className="border-b border-border bg-secondary/40 px-3 py-3">
@@ -2863,7 +2586,7 @@ export function ProjectDetail({
                         <span>Meta total ({metric.unit})</span>
                         <Input
                           className="h-11"
-                          inputMode="decimal"
+                          inputMode="numeric"
                           value={metric.targetTotal}
                           disabled={!isEditable || !metric.enabled}
                           onChange={(event) => {
@@ -2872,9 +2595,8 @@ export function ProjectDetail({
                                 itemIndex === index
                                   ? {
                                       ...item,
-                                      targetTotal: formatBrazilianDecimalInput(
+                                      targetTotal: formatBrazilianIntegerInput(
                                         event.target.value,
-                                        2,
                                       ),
                                     }
                                   : item,
@@ -2912,8 +2634,8 @@ export function ProjectDetail({
               }
             >
               <div className="grid gap-2 text-sm">
-                {project.fuelOffers.length ? (
-                  project.fuelOffers.map((offer) => (
+                {fuelOffers.length ? (
+                  fuelOffers.map((offer) => (
                     <div
                       key={offer.id}
                       className="grid gap-3 rounded-md border border-border bg-background px-3 py-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
@@ -3121,7 +2843,7 @@ export function ProjectDetail({
             <Section
               icon={WalletCards}
               title="Pagamento por modalidade"
-              description="Dias após o fechamento do período de cada modalidade presente."
+              description="Regra de pagamento para cada modalidade presente na equipe."
               status={paymentsStatus}
               action={
                 isEditable && (
@@ -3137,9 +2859,13 @@ export function ProjectDetail({
                 )
               }
             >
-              {project.compensationPaymentTerms.length ? (
+              {paymentTermRows.length ? (
                 <div className="grid gap-2 text-sm">
-                  {project.compensationPaymentTerms.map((term) => (
+                  {[...paymentTermRows]
+                    .sort((a, b) =>
+                      paymentModeSort(a.compensationMode, b.compensationMode),
+                    )
+                    .map((term) => (
                     <p
                       key={term.compensationMode}
                       className="rounded-md border border-border bg-background px-3 py-2"
@@ -3147,9 +2873,12 @@ export function ProjectDetail({
                       <span className="font-bold">
                         {compensationLabels[term.compensationMode]}:{" "}
                       </span>
-                      {term.daysAfterPeriodEnd} dia(s)
+                      {paymentTermSummary(
+                        term.compensationMode,
+                        term.daysAfterPeriodEnd,
+                      )}
                     </p>
-                  ))}
+                    ))}
                 </div>
               ) : (
                 <EmptyBlock>Nenhum prazo de pagamento confirmado.</EmptyBlock>
@@ -3169,7 +2898,7 @@ export function ProjectDetail({
                     type="button"
                     variant="outline"
                     className="min-h-10"
-                    onClick={() => setOpenModal("materials")}
+                    onClick={openMaterialsModal}
                   >
                     <Pencil className="size-4" />
                     Editar
@@ -3178,19 +2907,34 @@ export function ProjectDetail({
               }
             >
               <div className="grid gap-2 text-sm">
-                {project.supplierOffers.length ? (
-                  project.supplierOffers.map((offer) => (
+                {materialOffers.length ? (
+                  materialOffers.map((offer) => (
                     <div
                       key={offer.id}
                       className="rounded-md border border-border bg-background px-3 py-2"
                     >
-                      <p className="font-bold">
-                        {offer.item?.name ?? "Item não encontrado"}
-                      </p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-bold">
+                          {offer.item?.name ?? "Item não encontrado"}
+                        </p>
+                        <span
+                          className={cn(
+                            "inline-flex min-h-6 items-center rounded-sm px-2 text-xs font-bold",
+                            offer.sourceOfferId
+                              ? "bg-secondary text-secondary-foreground"
+                              : "bg-primary/10 text-primary",
+                          )}
+                        >
+                          {offer.sourceOfferId
+                            ? "Catálogo"
+                            : "Exclusiva da obra"}
+                        </span>
+                      </div>
                       <p className="text-muted-foreground">
                         {offer.supplier?.name ?? "Fornecedor não encontrado"} ·{" "}
-                        {offer.purchaseUnit?.code ?? "un."} ·{" "}
-                        {formatMoney(offer.price, 4)}
+                        {offer.purchaseUnit?.code ?? "un."} · Quantidade{" "}
+                        {canonicalDecimalToBrazilian(offer.conversionToBase, 6)}{" "}
+                        · {formatMoney(offer.price, 4)}
                       </p>
                     </div>
                   ))
@@ -3320,36 +3064,136 @@ export function ProjectDetail({
           if (!open && !isPending) closeMaterialsModal();
         }}
         size="xl"
-        title="Editar itens e fornecedores"
-        description="Adicione ou remova ofertas cadastradas no fornecedor e confirme o preço da obra."
+        title={
+          materialView === "add"
+            ? "Adicionar oferta"
+            : materialView === "edit"
+              ? "Editar oferta"
+              : "Editar itens e fornecedores"
+        }
+        description={
+          materialView === "add"
+            ? "Escolha a origem, o item e o fornecedor antes de confirmar preço e quantidade."
+            : materialView === "edit"
+              ? "Atualize a condição aplicada somente nesta obra."
+              : "Gerencie as ofertas de materiais vinculadas à obra."
+        }
         footer={
-          <>
+          materialView === "list" ? (
             <Button
               type="button"
               variant="outline"
+              className="min-h-11"
               onClick={closeMaterialsModal}
             >
-              Cancelar
+              Fechar
             </Button>
-            <Button type="button" disabled={isPending} onClick={saveMaterials}>
-              <Check className="size-4" />
-              Salvar itens
-            </Button>
-          </>
+          ) : materialView === "add" ? (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                className="min-h-11"
+                disabled={isPending}
+                onClick={resetMaterialEditor}
+              >
+                Cancelar
+              </Button>
+              <div className="flex flex-col-reverse gap-2 sm:flex-row">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="min-h-11"
+                  disabled={isPending || materialAddStep === "source"}
+                  onClick={() => {
+                    setMaterialIssues([]);
+                    setMaterialAddStep(previousMaterialStep(materialAddStep));
+                  }}
+                >
+                  Voltar
+                </Button>
+                {materialAddStep === "review" ? (
+                  <Button
+                    type="button"
+                    className="min-h-11"
+                    disabled={isPending || !materialAddCanSave}
+                    onClick={saveMaterialAdd}
+                  >
+                    <Check className="size-4" />
+                    Salvar oferta
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    className="min-h-11"
+                    disabled={isPending || !materialAddCanContinue}
+                    onClick={() => {
+                      setMaterialIssues([]);
+                      setMaterialAddStep(nextMaterialStep(materialAddStep));
+                    }}
+                  >
+                    Continuar
+                  </Button>
+                )}
+              </div>
+            </>
+          ) : (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                className="min-h-11"
+                disabled={isPending}
+                onClick={resetMaterialEditor}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                className="min-h-11"
+                disabled={isPending || !isMaterialDraftComplete(materialDraft)}
+                onClick={saveMaterialEdit}
+              >
+                <Check className="size-4" />
+                Salvar oferta
+              </Button>
+            </>
+          )
         }
       >
-        <OfferRows
-          drafts={materialDrafts}
-          emptyText="Nenhum item adicional selecionado."
-          kind="material"
-          options={options.supplierOffers}
-          suppliers={options.suppliers}
-          suppliedItems={options.suppliedItems}
-          measurementUnits={options.measurementUnits}
-          setDrafts={setOfferDrafts(setMaterialDrafts, () =>
-            setMaterialDirty(true),
+        {materialView === "list" && (
+          <MaterialOfferList
+            isPending={isPending}
+            offers={materialOffers}
+            onAdd={openMaterialAdd}
+            onEdit={openMaterialEdit}
+            onRemove={removeMaterialOffer}
+          />
+        )}
+        {materialView === "add" && materialDraft && (
+          <MaterialAddEditor
+            categories={options.suppliedItemCategories}
+            draft={materialDraft}
+            lookupItemsAction={lookupSuppliedItemsAction}
+            lookupOfferSuppliersAction={lookupSuppliedItemOfferSuppliersAction}
+            lookupOffersAction={lookupSuppliedItemOffersAction}
+            lookupSuppliersAction={lookupSuppliersAction}
+            measurementUnits={options.measurementUnits}
+            saveIssues={materialIssues}
+            setDraft={setMaterialDraft}
+            step={materialAddStep}
+          />
+        )}
+        {materialView === "edit" &&
+          materialDraft &&
+          currentEditingMaterialOffer && (
+            <MaterialEditEditor
+              draft={materialDraft}
+              issues={materialIssues}
+              offer={currentEditingMaterialOffer}
+              setDraft={setMaterialDraft}
+            />
           )}
-        />
       </OperationsModal>
 
       <OperationsModal
@@ -3548,7 +3392,7 @@ export function ProjectDetail({
         }}
         size="lg"
         title="Editar pagamentos"
-        description="Defina os dias após o fechamento para cada modalidade presente na equipe."
+        description="Registre a regra prática de pagamento para cada modalidade presente na equipe."
         footer={
           <>
             <Button
@@ -3568,13 +3412,16 @@ export function ProjectDetail({
         {paymentModes.length ? (
           <div className="grid gap-3">
             {paymentModes.map((mode) => (
-              <label key={mode} className="grid gap-1.5 text-sm font-semibold">
-                <span>{compensationLabels[mode]}</span>
-                <Input
-                  className="h-11"
-                  type="number"
-                  min={0}
-                  max={60}
+              <label
+                key={mode}
+                className="grid gap-2 rounded-md border border-border bg-background p-3 text-sm"
+              >
+                <span className="font-bold">{compensationLabels[mode]}</span>
+                <span className="text-sm leading-5 text-muted-foreground">
+                  {paymentPromptForMode(mode)}
+                </span>
+                <select
+                  className={controlClass}
                   value={paymentTerms[mode] ?? ""}
                   onChange={(event) => {
                     setPaymentTerms((current) => ({
@@ -3583,7 +3430,14 @@ export function ProjectDetail({
                     }));
                     setPaymentDirty(true);
                   }}
-                />
+                >
+                  <option value="">Selecione</option>
+                  {paymentOptionsForMode(mode).map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
               </label>
             ))}
           </div>

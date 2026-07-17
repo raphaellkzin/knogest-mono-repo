@@ -654,6 +654,14 @@ describe("commercial Client and Fuel Supplier registries", () => {
     expect(activeOffers.json().data.data).toHaveLength(1);
     expect(activeOffers.json().data.data[0]).toMatchObject({
       supplier: { id: activeSupplier.json().data.id },
+      baseUnit: {
+        id: "00000000-0000-4000-8000-00000000a001",
+        code: "L",
+      },
+      purchaseUnit: {
+        id: "00000000-0000-4000-8000-00000000a001",
+        code: "L",
+      },
       currentPrice: { price: "6.3000" },
     });
 

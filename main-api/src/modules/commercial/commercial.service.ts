@@ -356,7 +356,7 @@ async function suppliedItemOffersDto(
       isGlobal: true,
       isActive: true,
     },
-    select: { id: true },
+    select: { id: true, baseUnitId: true },
   });
   if (!item) {
     throw new AppError({
@@ -435,7 +435,14 @@ async function suppliedItemOffersDto(
       },
     }),
     store.measurementUnit.findMany({
-      where: { id: { in: pageOffers.map((offer) => offer.purchaseUnitId) } },
+      where: {
+        id: {
+          in: [
+            item.baseUnitId,
+            ...pageOffers.map((offer) => offer.purchaseUnitId),
+          ],
+        },
+      },
       select: { id: true, code: true, name: true },
     }),
     store.supplierOfferPrice.findMany({
@@ -468,6 +475,7 @@ async function suppliedItemOffersDto(
     .map((offer) => {
       const supplier = supplierById.get(offer.supplierId);
       if (!supplier) return null;
+      const baseUnit = unitById.get(item.baseUnitId);
       const purchaseUnit = unitById.get(offer.purchaseUnitId);
       const priceHistory = pricesByOfferId.get(offer.id) ?? [];
       const currentPrice = priceHistory.find((price) => !price.effectiveTo);
@@ -479,7 +487,14 @@ async function suppliedItemOffersDto(
           tradeName: supplier.tradeName,
           document: toMaskedDocumentDto(protectedDocument(supplier)),
         },
-        baseUnit: purchaseUnit
+        baseUnit: baseUnit
+          ? {
+              id: baseUnit.id,
+              code: baseUnit.code,
+              name: baseUnit.name,
+            }
+          : null,
+        purchaseUnit: purchaseUnit
           ? {
               id: purchaseUnit.id,
               code: purchaseUnit.code,
