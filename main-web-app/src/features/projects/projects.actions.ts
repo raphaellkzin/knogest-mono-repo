@@ -6,6 +6,11 @@ import { postApiV1Projects } from "@/generated/clients/postApiV1Projects";
 import client, { ApiClientError } from "@/lib/api/server-client";
 import { configureZodPortugueseErrors } from "@/lib/zod-locale";
 import { projectCommandSchema, type ProjectCommand } from "./projects-schema";
+import type {
+  FuelSupplierOption,
+  ProjectSuppliedItemOffersPage,
+  SuppliedItemSelectorPage,
+} from "./projects.types";
 
 const viaCepSchema = z
   .object({
@@ -85,7 +90,10 @@ const readinessDecimal = (scale: number) => {
 
 const projectReadinessActionSchema = z
   .object({
-    plannedEndDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u).optional(),
+    plannedEndDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/u)
+      .optional(),
     productionMetricTargets: z
       .array(
         z.object({
@@ -154,7 +162,12 @@ const projectReadinessActionSchema = z
           employmentId: z.string().uuid(),
           confirmedJobRoleId: z.string().uuid().optional(),
           confirmedJobRolePeriodId: z.string().uuid().nullable().optional(),
-          confirmedJobRoleName: z.string().min(1).max(120).nullable().optional(),
+          confirmedJobRoleName: z
+            .string()
+            .min(1)
+            .max(120)
+            .nullable()
+            .optional(),
           expectedDailyWorkloadMinutes: z.number().int().min(1).max(1440),
           compensationMode: z.enum([
             "daily",
@@ -248,6 +261,68 @@ export async function lookupProjectAddressByCepAction(
       message: "Não foi possível consultar o CEP agora.",
     };
   }
+}
+
+export async function lookupProjectSuppliedItemsAction(input: {
+  categoryId?: string | null;
+  cursor?: string | null;
+  onlyWithActiveOffers?: boolean;
+  search?: string;
+}): Promise<SuppliedItemSelectorPage> {
+  const response = await client<{
+    success: true;
+    data: SuppliedItemSelectorPage;
+  }>({
+    url: "/api/v1/supplied-items/selectors/active",
+    method: "GET",
+    params: {
+      limit: 20,
+      cursor: input.cursor ?? undefined,
+      search: input.search || undefined,
+      categoryId: input.categoryId || undefined,
+      includeDescendants: true,
+      onlyWithActiveOffers: input.onlyWithActiveOffers ?? false,
+    },
+  });
+  return response.data.data;
+}
+
+export async function lookupProjectSuppliedItemOfferSuppliersAction(input: {
+  itemId: string;
+  search?: string;
+}): Promise<FuelSupplierOption[]> {
+  const response = await client<{
+    success: true;
+    data: FuelSupplierOption[];
+  }>({
+    url: `/api/v1/supplied-items/${input.itemId}/offer-suppliers`,
+    method: "GET",
+    params: {
+      limit: 25,
+      search: input.search || undefined,
+    },
+  });
+  return response.data.data;
+}
+
+export async function lookupProjectSuppliedItemOffersAction(input: {
+  cursor?: string | null;
+  itemId: string;
+  supplierId?: string | null;
+}): Promise<ProjectSuppliedItemOffersPage> {
+  const response = await client<{
+    success: true;
+    data: ProjectSuppliedItemOffersPage;
+  }>({
+    url: `/api/v1/supplied-items/${input.itemId}/offers`,
+    method: "GET",
+    params: {
+      limit: 20,
+      cursor: input.cursor ?? undefined,
+      supplierId: input.supplierId || undefined,
+    },
+  });
+  return response.data.data;
 }
 
 export async function finalizeProjectAction(input: {

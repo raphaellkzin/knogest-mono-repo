@@ -1,15 +1,26 @@
 // @vitest-environment jsdom
 
 import * as React from "react";
-import { cleanup, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("../projects.actions", () => ({
+  activateProjectAction: vi.fn(),
+  saveProjectReadinessAction: vi.fn(),
+}));
 
 import type {
   ProjectOfferSnapshot,
   ProjectReadinessOptions,
   SupplierOfferOption,
-} from "../projects.server";
+} from "../projects.types";
 import {
   createBlankFuelDraft,
   draftToFuelCommand,
@@ -22,6 +33,7 @@ import {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
 });
 
 const measurementUnits: ProjectReadinessOptions["measurementUnits"] = [
@@ -43,6 +55,9 @@ const suppliedItems: ProjectReadinessOptions["suppliedItems"] = [
   { id: "item-1", name: "Diesel S10", baseUnitId: "unit-l" },
 ];
 
+const suppliedItemCategories: ProjectReadinessOptions["suppliedItemCategories"] =
+  [{ id: "category-1", name: "Combustíveis", parentId: null }];
+
 const fuelOptions: SupplierOfferOption[] = [
   {
     id: "offer-1",
@@ -50,7 +65,10 @@ const fuelOptions: SupplierOfferOption[] = [
     item: { id: "item-1", name: "Diesel S10", baseUnitId: "unit-l" },
     purchaseUnit: { id: "unit-l", code: "L", name: "Litro" },
     conversionToBase: "1.000000",
-    currentPrice: { price: "6.5000", effectiveFrom: "2026-07-16T00:00:00.000Z" },
+    currentPrice: {
+      price: "6.5000",
+      effectiveFrom: "2026-07-16T00:00:00.000Z",
+    },
     isFuelCandidate: true,
   },
 ];
@@ -68,7 +86,55 @@ const fuelOfferSnapshot: ProjectOfferSnapshot = {
   effectiveFrom: "2026-07-16T00:00:00.000Z",
 };
 
-function FuelAddHarness() {
+const lookupSuppliedItemsAction: React.ComponentProps<
+  typeof FuelAddEditor
+>["lookupSuppliedItemsAction"] = async () => ({
+  data: [
+    {
+      id: "item-1",
+      name: "Diesel S10",
+      baseUnitId: "unit-l",
+      categoryId: "category-1",
+      categoryPath: ["Combustíveis"],
+      activeSupplierCount: 1,
+    },
+  ],
+  pageInfo: { hasNextPage: false, nextCursor: null },
+});
+
+const lookupSuppliedItemOfferSuppliersAction: React.ComponentProps<
+  typeof FuelAddEditor
+>["lookupSuppliedItemOfferSuppliersAction"] = async () => suppliers;
+
+const lookupSuppliedItemOffersAction: React.ComponentProps<
+  typeof FuelAddEditor
+>["lookupSuppliedItemOffersAction"] = async () => ({
+  data: [
+    {
+      id: "offer-1",
+      supplier: suppliers[0],
+      baseUnit: { id: "unit-l", code: "L", name: "Litro" },
+      purchaseUnit: { id: "unit-l", code: "L", name: "Litro" },
+      conversionToBase: "1.000000",
+      currentPrice: {
+        id: "price-1",
+        price: "6.5000",
+        effectiveFrom: "2026-07-16T00:00:00.000Z",
+      },
+    },
+  ],
+  pageInfo: { hasNextPage: false, nextCursor: null },
+});
+
+function FuelAddHarness({
+  lookupItems = lookupSuppliedItemsAction,
+  step = "source",
+}: {
+  lookupItems?: React.ComponentProps<
+    typeof FuelAddEditor
+  >["lookupSuppliedItemsAction"];
+  step?: React.ComponentProps<typeof FuelAddEditor>["step"];
+}) {
   const [draft, setDraft] = React.useState<FuelDraft | null>({
     ...createBlankFuelDraft(fuelOptions, measurementUnits),
     mode: "new",
@@ -81,11 +147,18 @@ function FuelAddHarness() {
 
   return (
     <FuelAddEditor
+      categories={suppliedItemCategories}
       draft={draft}
       fuelOptions={fuelOptions}
+      lookupSuppliedItemOfferSuppliersAction={
+        lookupSuppliedItemOfferSuppliersAction
+      }
+      lookupSuppliedItemOffersAction={lookupSuppliedItemOffersAction}
+      lookupSuppliedItemsAction={lookupItems}
+      measurementUnits={measurementUnits}
       suppliers={suppliers}
       suppliedItems={suppliedItems}
-      measurementUnits={measurementUnits}
+      step={step}
       setDraft={setDraft}
     />
   );
@@ -146,13 +219,40 @@ function MaterialRowsHarness() {
 }
 
 describe("Project detail fuel editors", () => {
-  it("hides the catalog toggle when adding a new fuel offer", () => {
-    render(<FuelAddHarness />);
+  it("starts the fuel add wizard at the source choice", () => {
+    render(<FuelAddHarness step="source" />);
+
+    expect(screen.getByText("Oferta existente do catálogo")).toBeTruthy();
+    expect(screen.getByText("Oferta exclusiva da obra")).toBeTruthy();
+  });
+
+  it("hides the catalog toggle when adding a project-only fuel offer", () => {
+    render(<FuelAddHarness step="offer" />);
 
     expect(
       screen.queryByText("Salvar também no catálogo da empresa"),
     ).toBeNull();
-    expect(screen.getByLabelText("Fornecedor")).toBeTruthy();
+    expect(screen.getByLabelText("Buscar fornecedor")).toBeTruthy();
+  });
+
+  it("debounces item search before consulting the API", async () => {
+    const lookupItems = vi.fn(lookupSuppliedItemsAction);
+    render(<FuelAddHarness lookupItems={lookupItems} step="item" />);
+
+    await waitFor(() => expect(lookupItems).toHaveBeenCalledTimes(1));
+    lookupItems.mockClear();
+
+    fireEvent.change(screen.getByPlaceholderText("Diesel, gasolina..."), {
+      target: { value: "Diesel" },
+    });
+
+    expect(lookupItems).not.toHaveBeenCalled();
+
+    await waitFor(() =>
+      expect(lookupItems).toHaveBeenCalledWith(
+        expect.objectContaining({ search: "Diesel" }),
+      ),
+    );
   });
 
   it("always saves a new fuel offer as projectOnly", () => {

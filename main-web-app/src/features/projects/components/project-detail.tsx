@@ -17,6 +17,7 @@ import {
   Play,
   Plus,
   Save,
+  Search,
   Trash2,
   Truck,
   UsersRound,
@@ -24,11 +25,13 @@ import {
 } from "lucide-react";
 import { useForm, useWatch } from "react-hook-form";
 
+import { FormErrorDeclaration } from "@/components/forms/form-error-declaration";
 import { OperationsModal } from "@/components/ui/operations-modal";
 import { Button } from "@/components/ui/button";
 import { FormSection } from "@/components/ui/form-section";
 import { Input } from "@/components/ui/input";
 import { OperationTabs } from "@/components/ui/operation-tabs";
+import { useDebouncer } from "@/hooks/useDebouncer";
 import {
   canonicalDecimalToBrazilian,
   decimalInputToCanonical,
@@ -43,12 +46,17 @@ import {
 import { emptyProjectCommand, type ProjectCommand } from "../projects-schema";
 import type {
   CompensationMode,
+  FuelSupplierOption,
   ProductionMetricCode,
   ProjectDetailSnapshot,
   ProjectOfferSnapshot,
   ProjectReadinessOptions,
+  ProjectSuppliedItemOfferOption,
+  ProjectSuppliedItemOffersPage,
   SupplierOfferOption,
-} from "../projects.server";
+  SuppliedItemSelectorOption,
+  SuppliedItemSelectorPage,
+} from "../projects.types";
 import {
   EmployeeMobilization,
   MachineMobilization,
@@ -119,6 +127,26 @@ export type FuelDraft = Omit<OfferDraft, "saveToCatalog"> & {
   customQuantityEnabled: boolean;
   defaultConversionToBase: string;
 };
+
+type FuelAddStep = "source" | "item" | "offer" | "details";
+
+type LookupSuppliedItemsAction = (input: {
+  categoryId?: string | null;
+  cursor?: string | null;
+  onlyWithActiveOffers?: boolean;
+  search?: string;
+}) => Promise<SuppliedItemSelectorPage>;
+
+type LookupSuppliedItemOfferSuppliersAction = (input: {
+  itemId: string;
+  search?: string;
+}) => Promise<FuelSupplierOption[]>;
+
+type LookupSuppliedItemOffersAction = (input: {
+  cursor?: string | null;
+  itemId: string;
+  supplierId?: string | null;
+}) => Promise<ProjectSuppliedItemOffersPage>;
 
 export type ReadinessOfferCommand =
   | {
@@ -567,6 +595,84 @@ function isOfferCommandComplete(command: ReadinessOfferCommand) {
   );
 }
 
+function isPositiveDecimalInput(value: string, fractionDigits: number) {
+  const canonical = decimalInputToCanonical(value, fractionDigits);
+  return Boolean(canonical && !/^0+\.0+$/u.test(canonical));
+}
+
+function isFuelDraftComplete(draft: FuelDraft) {
+  const hasPrice = isPositiveDecimalInput(draft.price, 4);
+  const hasQuantity = isPositiveDecimalInput(draft.conversionToBase, 6);
+  if (draft.mode === "existing") {
+    return Boolean(
+      draft.sourceOfferId &&
+      draft.supplierId &&
+      draft.itemId &&
+      draft.purchaseUnitId &&
+      hasPrice &&
+      hasQuantity,
+    );
+  }
+  return Boolean(
+    draft.supplierId &&
+    draft.itemId &&
+    draft.purchaseUnitId &&
+    hasPrice &&
+    hasQuantity,
+  );
+}
+
+function canContinueFuelStep(step: FuelAddStep, draft: FuelDraft | null) {
+  if (!draft) return false;
+  if (step === "source")
+    return draft.mode === "existing" || draft.mode === "new";
+  if (step === "item") return Boolean(draft.itemId);
+  if (step === "offer") {
+    if (draft.mode === "existing") return Boolean(draft.sourceOfferId);
+    return Boolean(
+      draft.supplierId &&
+      draft.purchaseUnitId &&
+      isPositiveDecimalInput(draft.price, 4) &&
+      isPositiveDecimalInput(draft.conversionToBase, 6),
+    );
+  }
+  return isFuelDraftComplete(draft);
+}
+
+function previousFuelStep(step: FuelAddStep): FuelAddStep {
+  if (step === "details") return "offer";
+  if (step === "offer") return "item";
+  if (step === "item") return "source";
+  return "source";
+}
+
+function nextFuelStep(step: FuelAddStep): FuelAddStep {
+  if (step === "source") return "item";
+  if (step === "item") return "offer";
+  if (step === "offer") return "details";
+  return "details";
+}
+
+function categoryLabel(
+  categories: ProjectReadinessOptions["suppliedItemCategories"],
+  categoryId: string | null,
+) {
+  if (!categoryId) return "Sem categoria";
+  const byId = new Map(categories.map((category) => [category.id, category]));
+  const names: string[] = [];
+  const seen = new Set<string>();
+  let currentId: string | null = categoryId;
+  while (currentId) {
+    if (seen.has(currentId)) break;
+    seen.add(currentId);
+    const category = byId.get(currentId);
+    if (!category) break;
+    names.unshift(category.name);
+    currentId = category.parentId;
+  }
+  return names.length ? names.join(" / ") : "Categoria indisponível";
+}
+
 function ReadonlyField({
   label,
   value,
@@ -651,9 +757,7 @@ function QuantityEditor({
             inputMode="decimal"
             value={value}
             onChange={(event) =>
-              onValueChange(
-                formatBrazilianDecimalInput(event.target.value, 6),
-              )
+              onValueChange(formatBrazilianDecimalInput(event.target.value, 6))
             }
           />
         </label>
@@ -663,189 +767,618 @@ function QuantityEditor({
 }
 
 export function FuelAddEditor({
+  categories,
   draft,
   fuelOptions,
+  lookupSuppliedItemOfferSuppliersAction,
+  lookupSuppliedItemOffersAction,
+  lookupSuppliedItemsAction,
+  measurementUnits,
   suppliers,
   suppliedItems,
-  measurementUnits,
+  step,
   setDraft,
 }: {
+  categories: ProjectReadinessOptions["suppliedItemCategories"];
   draft: FuelDraft;
   fuelOptions: SupplierOfferOption[];
+  lookupSuppliedItemOfferSuppliersAction: LookupSuppliedItemOfferSuppliersAction;
+  lookupSuppliedItemOffersAction: LookupSuppliedItemOffersAction;
+  lookupSuppliedItemsAction: LookupSuppliedItemsAction;
+  measurementUnits: ProjectReadinessOptions["measurementUnits"];
   suppliers: ProjectReadinessOptions["suppliers"];
   suppliedItems: ProjectReadinessOptions["suppliedItems"];
-  measurementUnits: ProjectReadinessOptions["measurementUnits"];
+  step: FuelAddStep;
   setDraft: React.Dispatch<React.SetStateAction<FuelDraft | null>>;
 }) {
-  const selected = fuelOptions.find((option) => option.id === draft.sourceOfferId);
+  const [itemSearch, setItemSearch] = React.useState("");
+  const [categoryId, setCategoryId] = React.useState("");
+  const [items, setItems] = React.useState<SuppliedItemSelectorOption[]>([]);
+  const [itemPageInfo, setItemPageInfo] = React.useState<{
+    hasNextPage: boolean;
+    nextCursor: string | null;
+  }>({ hasNextPage: false, nextCursor: null });
+  const [selectedItem, setSelectedItem] =
+    React.useState<SuppliedItemSelectorOption | null>(null);
+  const [isItemLoading, setIsItemLoading] = React.useState(false);
+  const [itemError, setItemError] = React.useState<string | null>(null);
+  const [supplierSearch, setSupplierSearch] = React.useState("");
+  const [offerSuppliers, setOfferSuppliers] = React.useState<
+    FuelSupplierOption[]
+  >([]);
+  const [selectedOfferSupplierId, setSelectedOfferSupplierId] =
+    React.useState("");
+  const [isSupplierLoading, setIsSupplierLoading] = React.useState(false);
+  const [supplierError, setSupplierError] = React.useState<string | null>(null);
+  const [offers, setOffers] = React.useState<ProjectSuppliedItemOfferOption[]>(
+    [],
+  );
+  const [offerPageInfo, setOfferPageInfo] = React.useState<{
+    hasNextPage: boolean;
+    nextCursor: string | null;
+  }>({ hasNextPage: false, nextCursor: null });
+  const [isOfferLoading, setIsOfferLoading] = React.useState(false);
+  const [offerError, setOfferError] = React.useState<string | null>(null);
+  const [exclusiveSupplierSearch, setExclusiveSupplierSearch] =
+    React.useState("");
+  const debouncedItemSearch = useDebouncer(itemSearch, 300);
+  const debouncedSupplierSearch = useDebouncer(supplierSearch, 300);
+  const itemRequestId = React.useRef(0);
+  const supplierRequestId = React.useRef(0);
+  const offerRequestId = React.useRef(0);
+
+  const selectedOffer = offers.find(
+    (offer) => offer.id === draft.sourceOfferId,
+  );
+  const selectedSupplier =
+    draft.mode === "existing"
+      ? (selectedOffer?.supplier ??
+        offerSuppliers.find((supplier) => supplier.id === draft.supplierId))
+      : suppliers.find((supplier) => supplier.id === draft.supplierId);
+  const selectedUnit = measurementUnits.find(
+    (unit) => unit.id === draft.purchaseUnitId,
+  );
+
+  const resetSelections = React.useCallback(
+    (mode: FuelDraft["mode"]) => {
+      setSelectedItem(null);
+      setItemSearch("");
+      setCategoryId("");
+      setItems([]);
+      setSupplierSearch("");
+      setOfferSuppliers([]);
+      setOffers([]);
+      setSelectedOfferSupplierId("");
+      setExclusiveSupplierSearch("");
+      setItemError(null);
+      setSupplierError(null);
+      setOfferError(null);
+      setDraft({
+        ...createBlankFuelDraft(fuelOptions, measurementUnits),
+        mode,
+      });
+    },
+    [fuelOptions, measurementUnits, setDraft],
+  );
+
+  const loadItems = React.useCallback(
+    (cursor?: string | null, append = false) => {
+      const requestId = itemRequestId.current + 1;
+      itemRequestId.current = requestId;
+      setIsItemLoading(true);
+      setItemError(null);
+      void lookupSuppliedItemsAction({
+        categoryId: categoryId || null,
+        cursor,
+        onlyWithActiveOffers: draft.mode === "existing",
+        search: debouncedItemSearch,
+      })
+        .then((page) => {
+          if (itemRequestId.current !== requestId) return;
+          setItems((current) =>
+            append ? [...current, ...page.data] : page.data,
+          );
+          setItemPageInfo(page.pageInfo);
+        })
+        .catch(() => {
+          if (itemRequestId.current !== requestId) return;
+          setItems([]);
+          setItemPageInfo({ hasNextPage: false, nextCursor: null });
+          setItemError("Não foi possível consultar os itens agora.");
+        })
+        .finally(() => {
+          if (itemRequestId.current === requestId) setIsItemLoading(false);
+        });
+    },
+    [categoryId, debouncedItemSearch, draft.mode, lookupSuppliedItemsAction],
+  );
+
+  const loadOffers = React.useCallback(
+    (cursor?: string | null, append = false) => {
+      if (!draft.itemId || draft.mode !== "existing") return;
+      const requestId = offerRequestId.current + 1;
+      offerRequestId.current = requestId;
+      setIsOfferLoading(true);
+      setOfferError(null);
+      void lookupSuppliedItemOffersAction({
+        cursor,
+        itemId: draft.itemId,
+        supplierId: selectedOfferSupplierId || null,
+      })
+        .then((page) => {
+          if (offerRequestId.current !== requestId) return;
+          setOffers((current) =>
+            append ? [...current, ...page.data] : page.data,
+          );
+          setOfferPageInfo(page.pageInfo);
+        })
+        .catch(() => {
+          if (offerRequestId.current !== requestId) return;
+          setOffers([]);
+          setOfferPageInfo({ hasNextPage: false, nextCursor: null });
+          setOfferError("Não foi possível consultar as ofertas deste item.");
+        })
+        .finally(() => {
+          if (offerRequestId.current === requestId) setIsOfferLoading(false);
+        });
+    },
+    [
+      draft.itemId,
+      draft.mode,
+      lookupSuppliedItemOffersAction,
+      selectedOfferSupplierId,
+    ],
+  );
+
+  React.useEffect(() => {
+    if (step !== "item") return;
+    void Promise.resolve().then(() => loadItems(null, false));
+  }, [loadItems, step]);
+
+  React.useEffect(() => {
+    if (step !== "offer" || draft.mode !== "existing" || !draft.itemId) return;
+    void Promise.resolve().then(() => {
+      const requestId = supplierRequestId.current + 1;
+      supplierRequestId.current = requestId;
+      setIsSupplierLoading(true);
+      setSupplierError(null);
+      void lookupSuppliedItemOfferSuppliersAction({
+        itemId: draft.itemId,
+        search: debouncedSupplierSearch,
+      })
+        .then((data) => {
+          if (supplierRequestId.current !== requestId) return;
+          setOfferSuppliers(data);
+        })
+        .catch(() => {
+          if (supplierRequestId.current !== requestId) return;
+          setOfferSuppliers([]);
+          setSupplierError("Não foi possível consultar fornecedores do item.");
+        })
+        .finally(() => {
+          if (supplierRequestId.current === requestId)
+            setIsSupplierLoading(false);
+        });
+    });
+  }, [
+    debouncedSupplierSearch,
+    draft.itemId,
+    draft.mode,
+    lookupSuppliedItemOfferSuppliersAction,
+    step,
+  ]);
+
+  React.useEffect(() => {
+    if (step !== "offer" || draft.mode !== "existing" || !draft.itemId) return;
+    void Promise.resolve().then(() => loadOffers(null, false));
+  }, [draft.itemId, draft.mode, loadOffers, selectedOfferSupplierId, step]);
+
+  const selectItem = (item: SuppliedItemSelectorOption) => {
+    setSelectedItem(item);
+    setSelectedOfferSupplierId("");
+    setOfferSuppliers([]);
+    setOffers([]);
+    const defaultConversion = "1,000000";
+    setDraft((current) =>
+      current
+        ? {
+            ...current,
+            itemId: item.id,
+            sourceOfferId: "",
+            supplierId: "",
+            purchaseUnitId: defaultUnitId(measurementUnits, item),
+            conversionToBase: defaultConversion,
+            defaultConversionToBase: defaultConversion,
+            customQuantityEnabled: false,
+            price: "",
+          }
+        : current,
+    );
+  };
+
+  const selectOffer = (offer: ProjectSuppliedItemOfferOption) => {
+    if (!offer.currentPrice || !offer.purchaseUnit) return;
+    const currentPrice = offer.currentPrice;
+    const purchaseUnit = offer.purchaseUnit;
+    const nextQuantity = canonicalDecimalToBrazilian(offer.conversionToBase, 6);
+    setDraft((current) =>
+      current
+        ? {
+            ...current,
+            sourceOfferId: offer.id,
+            supplierId: offer.supplier.id,
+            purchaseUnitId: purchaseUnit.id,
+            conversionToBase: nextQuantity,
+            defaultConversionToBase: nextQuantity,
+            customQuantityEnabled: false,
+            price: canonicalDecimalToBrazilian(currentPrice.price, 4),
+          }
+        : current,
+    );
+  };
+
+  const filteredExclusiveSuppliers = suppliers.filter((supplier) => {
+    const search = exclusiveSupplierSearch.trim().toLocaleLowerCase("pt-BR");
+    if (!search) return true;
+    return [supplier.name, supplier.tradeName ?? ""].some((value) =>
+      value.toLocaleLowerCase("pt-BR").includes(search),
+    );
+  });
+
   const quantityHelper =
     draft.mode === "existing"
-      ? selected
-        ? `Quantidade padrão da oferta: ${canonicalDecimalToBrazilian(selected.conversionToBase, 6)}`
+      ? selectedOffer
+        ? `Quantidade padrão da oferta: ${canonicalDecimalToBrazilian(selectedOffer.conversionToBase, 6)}`
         : "Selecione uma oferta para usar a quantidade padrão do catálogo."
-      : `Quantidade padrão desta nova oferta: ${draft.defaultConversionToBase}`;
+      : `Quantidade padrão desta oferta exclusiva: ${draft.defaultConversionToBase}`;
 
   return (
     <div className="grid gap-4">
-      <DraftModeControl
-        mode={draft.mode}
-        newLabel="Nova oferta"
-        onChange={(mode) =>
-          setDraft({
-            ...createBlankFuelDraft(fuelOptions, measurementUnits),
-            mode,
-          })
-        }
-      />
+      <FuelWizardProgress step={step} />
 
-      {draft.mode === "existing" ? (
-        <div className="grid gap-4">
-          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_10rem] md:items-end">
+      {step === "source" && (
+        <FormSection
+          title="Origem da oferta"
+          description="Escolha se a obra vai usar uma oferta já cadastrada ou uma condição exclusiva."
+        >
+          <div className="grid gap-2">
+            <FuelSourceOption
+              checked={draft.mode === "existing"}
+              title="Oferta existente do catálogo"
+              description="Usa item, fornecedor, unidade e preço de uma oferta ativa, com ajuste opcional para esta obra."
+              onClick={() => resetSelections("existing")}
+            />
+            <FuelSourceOption
+              checked={draft.mode === "new"}
+              title="Oferta exclusiva da obra"
+              description="Registra fornecedor, item, unidade e preço apenas para esta obra, sem criar oferta no catálogo."
+              onClick={() => resetSelections("new")}
+            />
+          </div>
+        </FormSection>
+      )}
+
+      {step === "item" && (
+        <FormSection
+          title="Item de combustível"
+          description={
+            draft.mode === "existing"
+              ? "A listagem mostra apenas itens com fornecedor ativo e oferta ativa."
+              : "Selecione um item ativo do catálogo para criar uma condição exclusiva."
+          }
+        >
+          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_16rem]">
             <label className="grid gap-1.5 text-sm font-semibold">
-              <span>Oferta do fornecedor</span>
+              <span>Buscar por nome</span>
+              <span className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  className="h-11 pl-9"
+                  value={itemSearch}
+                  onChange={(event) => setItemSearch(event.target.value)}
+                  placeholder="Diesel, gasolina..."
+                />
+              </span>
+            </label>
+            <label className="grid gap-1.5 text-sm font-semibold">
+              <span>Categoria</span>
               <select
                 className={controlClass}
-                value={draft.sourceOfferId}
+                value={categoryId}
                 onChange={(event) => {
-                  const nextOffer = fuelOptions.find(
-                    (option) => option.id === event.target.value,
-                  );
-                  const nextQuantity = nextOffer
-                    ? canonicalDecimalToBrazilian(nextOffer.conversionToBase, 6)
-                    : "1,000000";
+                  setCategoryId(event.target.value);
+                  setSelectedItem(null);
                   setDraft((current) =>
                     current
                       ? {
                           ...current,
-                          sourceOfferId: event.target.value,
-                          supplierId: nextOffer?.supplier.id ?? "",
-                          itemId: nextOffer?.item.id ?? "",
-                          purchaseUnitId: nextOffer?.purchaseUnit.id ?? "",
-                          conversionToBase: nextQuantity,
-                          defaultConversionToBase: nextQuantity,
-                          customQuantityEnabled: false,
-                          price: nextOffer
-                            ? canonicalDecimalToBrazilian(
-                                nextOffer.currentPrice.price,
-                                4,
-                              )
-                            : "",
+                          itemId: "",
+                          sourceOfferId: "",
+                          supplierId: "",
+                          price: "",
                         }
                       : current,
                   );
                 }}
               >
-                <option value="">Selecione</option>
-                {fuelOptions.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {optionLabel(option)} ·{" "}
-                    {formatMoney(option.currentPrice.price, 4)}
+                <option value="">Todas as categorias</option>
+                {categories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {categoryLabel(categories, category.id)}
                   </option>
                 ))}
               </select>
             </label>
+          </div>
+
+          {itemError && (
+            <FormErrorDeclaration
+              title="Não foi possível carregar itens."
+              description="A consulta ao catálogo não foi concluída."
+              issues={[{ location: "Itens", message: itemError }]}
+            />
+          )}
+
+          <div className="grid gap-2">
+            {items.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                aria-pressed={draft.itemId === item.id}
+                className={cn(
+                  "min-h-16 rounded-md border border-border bg-background px-3 py-2 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/30",
+                  draft.itemId === item.id &&
+                    "border-primary bg-primary/5 ring-1 ring-primary/20",
+                )}
+                onClick={() => selectItem(item)}
+              >
+                <span className="flex flex-wrap items-center gap-2">
+                  <span className="font-bold">{item.name}</span>
+                  <span className="rounded-sm bg-secondary px-2 py-0.5 text-xs font-bold text-secondary-foreground">
+                    {item.activeSupplierCount} fornecedor(es)
+                  </span>
+                </span>
+                <span className="mt-1 block text-sm font-medium text-muted-foreground">
+                  {item.categoryPath.length
+                    ? item.categoryPath.join(" / ")
+                    : "Sem categoria"}
+                </span>
+              </button>
+            ))}
+
+            {isItemLoading && <LoadingRows />}
+
+            {!isItemLoading && !itemError && items.length === 0 && (
+              <p className="rounded-md border border-dashed border-border bg-background px-3 py-5 text-center text-sm font-semibold text-muted-foreground">
+                Nenhum item encontrado para os filtros atuais.
+              </p>
+            )}
+
+            {itemPageInfo.hasNextPage && (
+              <Button
+                type="button"
+                variant="outline"
+                className="min-h-10 justify-self-start"
+                disabled={isItemLoading}
+                onClick={() => loadItems(itemPageInfo.nextCursor, true)}
+              >
+                Carregar mais itens
+              </Button>
+            )}
+          </div>
+        </FormSection>
+      )}
+
+      {step === "offer" && draft.mode === "existing" && (
+        <FormSection
+          title="Oferta disponível"
+          description="Filtre por fornecedor ativo e selecione a oferta que será usada nesta obra."
+        >
+          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_16rem]">
+            <ReadonlyField
+              label="Item selecionado"
+              value={
+                selectedItem?.name ??
+                suppliedItems.find((item) => item.id === draft.itemId)?.name ??
+                "Item selecionado"
+              }
+            />
             <label className="grid gap-1.5 text-sm font-semibold">
-              <span>Preço</span>
+              <span>Filtrar fornecedor</span>
               <Input
                 className="h-11"
-                inputMode="decimal"
-                value={draft.price}
-                onChange={(event) =>
-                  setDraft((current) =>
-                    current
-                      ? {
-                          ...current,
-                          price: formatBrazilianDecimalInput(
-                            event.target.value,
-                            4,
-                          ),
-                        }
-                      : current,
-                  )
-                }
+                value={supplierSearch}
+                onChange={(event) => setSupplierSearch(event.target.value)}
+                placeholder="Nome do fornecedor"
               />
             </label>
           </div>
-          <QuantityEditor
-            checked={draft.customQuantityEnabled}
-            label="Informar quantidade nesta obra"
-            helperText={quantityHelper}
-            value={draft.conversionToBase}
-            onCheckedChange={(checked) =>
-              setDraft((current) =>
-                current
-                  ? {
-                      ...current,
-                      customQuantityEnabled: checked,
-                      conversionToBase: checked
-                        ? current.conversionToBase
-                        : current.defaultConversionToBase,
-                    }
-                  : current,
-              )
-            }
-            onValueChange={(value) =>
-              setDraft((current) =>
-                current ? { ...current, conversionToBase: value } : current,
-              )
-            }
-          />
-        </div>
-      ) : (
-        <div className="grid gap-4">
-          <div className="grid gap-3 md:grid-cols-2">
-            <label className="grid gap-1.5 text-sm font-semibold">
-              <span>Fornecedor</span>
-              <select
-                className={controlClass}
-                value={draft.supplierId}
-                onChange={(event) =>
-                  setDraft((current) =>
-                    current
-                      ? { ...current, supplierId: event.target.value }
-                      : current,
-                  )
+
+          {supplierError && (
+            <FormErrorDeclaration
+              title="Não foi possível carregar fornecedores."
+              description="A consulta aos fornecedores ativos não foi concluída."
+              issues={[{ location: "Fornecedores", message: supplierError }]}
+            />
+          )}
+
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant={selectedOfferSupplierId ? "outline" : "secondary"}
+              size="sm"
+              onClick={() => {
+                setSelectedOfferSupplierId("");
+                setDraft((current) =>
+                  current
+                    ? {
+                        ...current,
+                        sourceOfferId: "",
+                        supplierId: "",
+                        price: "",
+                      }
+                    : current,
+                );
+              }}
+            >
+              Todos
+            </Button>
+            {offerSuppliers.map((supplier) => (
+              <Button
+                key={supplier.id}
+                type="button"
+                variant={
+                  selectedOfferSupplierId === supplier.id
+                    ? "secondary"
+                    : "outline"
                 }
-              >
-                <option value="">Selecione</option>
-                {suppliers.map((supplier) => (
-                  <option key={supplier.id} value={supplier.id}>
-                    {supplier.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="grid gap-1.5 text-sm font-semibold">
-              <span>Item</span>
-              <select
-                className={controlClass}
-                value={draft.itemId}
-                onChange={(event) => {
-                  const nextItem = suppliedItems.find(
-                    (item) => item.id === event.target.value,
-                  );
+                size="sm"
+                onClick={() => {
+                  setSelectedOfferSupplierId(supplier.id);
                   setDraft((current) =>
                     current
                       ? {
                           ...current,
-                          itemId: event.target.value,
-                          purchaseUnitId: defaultUnitId(
-                            measurementUnits,
-                            nextItem,
-                          ),
+                          sourceOfferId: "",
+                          supplierId: supplier.id,
+                          price: "",
                         }
                       : current,
                   );
                 }}
               >
-                <option value="">Selecione</option>
-                {suppliedItems.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
+                {supplier.name}
+              </Button>
+            ))}
+          </div>
+
+          {isSupplierLoading && (
+            <p className="text-sm font-semibold text-muted-foreground">
+              Carregando fornecedores...
+            </p>
+          )}
+
+          {offerError && (
+            <FormErrorDeclaration
+              title="Não foi possível carregar ofertas."
+              description="A consulta às ofertas disponíveis não foi concluída."
+              issues={[{ location: "Ofertas", message: offerError }]}
+            />
+          )}
+
+          <div className="grid gap-2">
+            {offers.map((offer) => {
+              const isDisabled = !offer.currentPrice || !offer.purchaseUnit;
+              return (
+                <button
+                  key={offer.id}
+                  type="button"
+                  disabled={isDisabled}
+                  aria-pressed={draft.sourceOfferId === offer.id}
+                  className={cn(
+                    "min-h-16 rounded-md border border-border bg-background px-3 py-2 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-55",
+                    draft.sourceOfferId === offer.id &&
+                      "border-primary bg-primary/5 ring-1 ring-primary/20",
+                  )}
+                  onClick={() => selectOffer(offer)}
+                >
+                  <span className="flex flex-wrap items-center gap-2">
+                    <span className="font-bold">{offer.supplier.name}</span>
+                    <span className="rounded-sm bg-secondary px-2 py-0.5 text-xs font-bold text-secondary-foreground">
+                      {offer.purchaseUnit?.code ?? "sem un."}
+                    </span>
+                    <span className="rounded-sm bg-primary/10 px-2 py-0.5 text-xs font-bold text-primary">
+                      {offer.currentPrice
+                        ? formatMoney(offer.currentPrice.price, 4)
+                        : "Sem preço vigente"}
+                    </span>
+                  </span>
+                  <span className="mt-1 block text-sm font-medium text-muted-foreground">
+                    Quantidade:{" "}
+                    {canonicalDecimalToBrazilian(offer.conversionToBase, 6)}
+                  </span>
+                </button>
+              );
+            })}
+
+            {isOfferLoading && <LoadingRows />}
+
+            {!isOfferLoading && !offerError && offers.length === 0 && (
+              <p className="rounded-md border border-dashed border-border bg-background px-3 py-5 text-center text-sm font-semibold text-muted-foreground">
+                Nenhuma oferta ativa encontrada para este item.
+              </p>
+            )}
+
+            {offerPageInfo.hasNextPage && (
+              <Button
+                type="button"
+                variant="outline"
+                className="min-h-10 justify-self-start"
+                disabled={isOfferLoading}
+                onClick={() => loadOffers(offerPageInfo.nextCursor, true)}
+              >
+                Carregar mais ofertas
+              </Button>
+            )}
+          </div>
+        </FormSection>
+      )}
+
+      {step === "offer" && draft.mode === "new" && (
+        <FormSection
+          title="Condição exclusiva"
+          description="Escolha fornecedor, unidade, preço e quantidade para uso apenas nesta obra."
+        >
+          <div className="grid gap-3 md:grid-cols-2">
+            <ReadonlyField
+              label="Item selecionado"
+              value={
+                selectedItem?.name ??
+                suppliedItems.find((item) => item.id === draft.itemId)?.name ??
+                "Item selecionado"
+              }
+            />
+            <label className="grid gap-1.5 text-sm font-semibold">
+              <span>Buscar fornecedor</span>
+              <Input
+                className="h-11"
+                value={exclusiveSupplierSearch}
+                onChange={(event) =>
+                  setExclusiveSupplierSearch(event.target.value)
+                }
+                placeholder="Nome do fornecedor"
+              />
             </label>
+          </div>
+
+          <div className="grid max-h-56 gap-2 overflow-y-auto rounded-md border border-border bg-background p-2">
+            {filteredExclusiveSuppliers.map((supplier) => (
+              <button
+                key={supplier.id}
+                type="button"
+                aria-pressed={draft.supplierId === supplier.id}
+                className={cn(
+                  "min-h-11 rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/30",
+                  draft.supplierId === supplier.id &&
+                    "bg-primary/5 font-bold text-primary ring-1 ring-primary/20",
+                )}
+                onClick={() =>
+                  setDraft((current) =>
+                    current ? { ...current, supplierId: supplier.id } : current,
+                  )
+                }
+              >
+                <span className="block font-bold">{supplier.name}</span>
+                <span className="block text-xs font-semibold text-muted-foreground">
+                  {supplier.document.maskedDocument}
+                </span>
+              </button>
+            ))}
+            {filteredExclusiveSuppliers.length === 0 && (
+              <p className="px-3 py-4 text-center text-sm font-semibold text-muted-foreground">
+                Nenhum fornecedor ativo encontrado.
+              </p>
+            )}
           </div>
 
           <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_10rem] md:items-end">
@@ -917,8 +1450,167 @@ export function FuelAddEditor({
               )
             }
           />
-        </div>
+        </FormSection>
       )}
+
+      {step === "details" && (
+        <FormSection
+          title="Revisão"
+          description="Confira os dados antes de salvar o combustível na obra."
+        >
+          <div className="grid gap-3 md:grid-cols-2">
+            <ReadonlyField
+              label="Tipo"
+              value={
+                draft.mode === "existing"
+                  ? "Oferta existente do catálogo"
+                  : "Oferta exclusiva da obra"
+              }
+            />
+            <ReadonlyField
+              label="Item"
+              value={
+                selectedItem?.name ??
+                suppliedItems.find((item) => item.id === draft.itemId)?.name ??
+                "Item selecionado"
+              }
+            />
+            <ReadonlyField
+              label="Fornecedor"
+              value={selectedSupplier?.name ?? "Fornecedor selecionado"}
+            />
+            <ReadonlyField
+              label="Unidade"
+              value={
+                selectedUnit
+                  ? `${selectedUnit.code} - ${selectedUnit.name}`
+                  : "Unidade selecionada"
+              }
+            />
+            <ReadonlyField
+              label="Preço"
+              value={
+                isPositiveDecimalInput(draft.price, 4)
+                  ? formatMoney(decimalInputToCanonical(draft.price, 4), 4)
+                  : "Não informado"
+              }
+            />
+            <ReadonlyField
+              label="Quantidade"
+              value={draft.conversionToBase || "Não informada"}
+            />
+          </div>
+          {!isFuelDraftComplete(draft) && (
+            <FormErrorDeclaration
+              title="Dados incompletos."
+              description="Volte às etapas anteriores e complete a oferta."
+              issues={[
+                {
+                  location: "Combustível",
+                  message:
+                    "Fornecedor, item, unidade, preço e quantidade são obrigatórios.",
+                },
+              ]}
+            />
+          )}
+        </FormSection>
+      )}
+    </div>
+  );
+}
+
+function FuelWizardProgress({ step }: { step: FuelAddStep }) {
+  const steps: Array<{ key: FuelAddStep; label: string }> = [
+    { key: "source", label: "Origem" },
+    { key: "item", label: "Item" },
+    { key: "offer", label: "Oferta" },
+    { key: "details", label: "Revisão" },
+  ];
+  const activeIndex = steps.findIndex((item) => item.key === step);
+
+  return (
+    <div className="grid gap-2 rounded-md border border-border bg-secondary/30 px-3 py-3 sm:grid-cols-4">
+      {steps.map((item, index) => (
+        <div
+          key={item.key}
+          className={cn(
+            "flex min-h-9 items-center gap-2 rounded-md px-2 text-sm font-bold",
+            index === activeIndex && "bg-background text-primary",
+            index < activeIndex && "text-foreground",
+            index > activeIndex && "text-muted-foreground",
+          )}
+        >
+          <span
+            className={cn(
+              "flex size-6 shrink-0 items-center justify-center rounded-sm border border-border text-xs",
+              index <= activeIndex &&
+                "border-primary bg-primary text-primary-foreground",
+            )}
+          >
+            {index < activeIndex ? <Check className="size-3" /> : index + 1}
+          </span>
+          <span>{item.label}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function FuelSourceOption({
+  checked,
+  description,
+  onClick,
+  title,
+}: {
+  checked: boolean;
+  description: string;
+  onClick: () => void;
+  title: string;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={checked}
+      className={cn(
+        "min-h-20 rounded-md border border-border bg-background px-3 py-3 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/30",
+        checked && "border-primary bg-primary/5 ring-1 ring-primary/20",
+      )}
+      onClick={onClick}
+    >
+      <span className="flex items-start gap-3">
+        <span
+          className={cn(
+            "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border border-border",
+            checked && "border-primary bg-primary text-primary-foreground",
+          )}
+        >
+          {checked && <Check className="size-3" />}
+        </span>
+        <span className="min-w-0">
+          <span className="block text-sm font-bold text-foreground">
+            {title}
+          </span>
+          <span className="mt-1 block text-sm leading-5 text-muted-foreground">
+            {description}
+          </span>
+        </span>
+      </span>
+    </button>
+  );
+}
+
+function LoadingRows() {
+  return (
+    <div className="grid gap-2" aria-label="Carregando">
+      {[0, 1, 2].map((item) => (
+        <div
+          key={item}
+          className="min-h-14 rounded-md border border-border bg-muted/60 px-3 py-3"
+        >
+          <div className="h-3 w-2/5 rounded-sm bg-muted-foreground/20" />
+          <div className="mt-2 h-3 w-3/5 rounded-sm bg-muted-foreground/15" />
+        </div>
+      ))}
     </div>
   );
 }
@@ -1128,12 +1820,6 @@ export function OfferRows({
                       </option>
                     ))}
                   </select>
-                  {selected && (
-                    <span className="text-xs font-medium text-muted-foreground">
-                      Quantidade padrão da oferta:{" "}
-                      {canonicalDecimalToBrazilian(selected.conversionToBase, 6)}
-                    </span>
-                  )}
                 </label>
                 <OfferPriceInput draft={draft} setDrafts={setDrafts} />
               </div>
@@ -1324,9 +2010,15 @@ function OfferPriceInput({
 }
 
 export function ProjectDetail({
+  lookupSuppliedItemOfferSuppliersAction,
+  lookupSuppliedItemOffersAction,
+  lookupSuppliedItemsAction,
   options,
   project,
 }: {
+  lookupSuppliedItemOfferSuppliersAction: LookupSuppliedItemOfferSuppliersAction;
+  lookupSuppliedItemOffersAction: LookupSuppliedItemOffersAction;
+  lookupSuppliedItemsAction: LookupSuppliedItemsAction;
   options: ProjectReadinessOptions;
   project: ProjectDetailSnapshot;
 }) {
@@ -1344,6 +2036,7 @@ export function ProjectDetail({
   const [fuelEditDraft, setFuelEditDraft] = React.useState<FuelDraft | null>(
     null,
   );
+  const [fuelAddStep, setFuelAddStep] = React.useState<FuelAddStep>("source");
   const [editingFuelOfferId, setEditingFuelOfferId] = React.useState<
     string | null
   >(null);
@@ -1395,12 +2088,14 @@ export function ProjectDetail({
     name: "technicalResponsibilityEmploymentIds",
   });
 
+  /* eslint-disable react-hooks/set-state-in-effect -- ProjectDetail resets its edit buffers when the selected project snapshot changes. */
   React.useEffect(() => {
     readinessForm.reset(projectToCommand(project));
     setPlannedEndDate(project.baseline?.plannedEndDate ?? "");
     setMetrics(metricInitialState(project));
     setFuelAddDraft(null);
     setFuelEditDraft(null);
+    setFuelAddStep("source");
     setEditingFuelOfferId(null);
     setMaterialDrafts(offerInitialState(project.supplierOffers));
     setPaymentTerms(paymentInitialState(project));
@@ -1409,6 +2104,7 @@ export function ProjectDetail({
     setMaterialDirty(false);
     setPaymentDirty(false);
   }, [project, readinessForm]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const modalOptions = React.useMemo<ProjectWizardOptions>(
     () => ({
@@ -1497,8 +2193,14 @@ export function ProjectDetail({
       ? ({ label: "OK", tone: "ready" } as const)
       : ({ label: "Pendente", tone: "pending" } as const);
   const currentEditingFuelOffer = editingFuelOfferId
-    ? project.fuelOffers.find((offer) => offer.id === editingFuelOfferId) ?? null
+    ? (project.fuelOffers.find((offer) => offer.id === editingFuelOfferId) ??
+      null)
     : null;
+  const fuelAddCanContinue = canContinueFuelStep(fuelAddStep, fuelAddDraft);
+  const isFuelAddReviewStep = fuelAddStep === "details";
+  const fuelAddCanSave = fuelAddDraft
+    ? isFuelAddReviewStep && isFuelDraftComplete(fuelAddDraft)
+    : false;
   const accountabilityStatus =
     readinessForm.formState.dirtyFields.clientId ||
     readinessForm.formState.dirtyFields.managerEmploymentId ||
@@ -1676,6 +2378,7 @@ export function ProjectDetail({
     savePatch({ fuelOffers }, "Combustível salvo.", () => {
       setFuelDirty(false);
       setFuelAddDraft(null);
+      setFuelAddStep("source");
       setOpenModal(null);
     });
   };
@@ -1685,7 +2388,9 @@ export function ProjectDetail({
     const nextOffer = draftToFuelCommand(fuelEditDraft);
     const fuelOffers = project.fuelOffers
       .map((offer) =>
-        offer.id === editingFuelOfferId ? nextOffer : projectOfferToCommand(offer),
+        offer.id === editingFuelOfferId
+          ? nextOffer
+          : projectOfferToCommand(offer),
       )
       .filter(Boolean) as ReadinessOfferCommand[];
     const hasDuplicateOffer =
@@ -1888,6 +2593,7 @@ export function ProjectDetail({
     );
     setFuelAddDraft(nextDraft);
     setFuelEditDraft(null);
+    setFuelAddStep("source");
     setEditingFuelOfferId(null);
     setFuelDirty(false);
     setOpenModal("fuelAdd");
@@ -1906,6 +2612,7 @@ export function ProjectDetail({
   const closeFuelModal = () => {
     setFuelAddDraft(null);
     setFuelEditDraft(null);
+    setFuelAddStep("source");
     setEditingFuelOfferId(null);
     setFuelDirty(false);
     setOpenModal(null);
@@ -2510,24 +3217,51 @@ export function ProjectDetail({
             <Button type="button" variant="outline" onClick={closeFuelModal}>
               Cancelar
             </Button>
-            <Button
-              type="button"
-              disabled={isPending || !fuelAddDraft}
-              onClick={saveFuelAdd}
-            >
-              <Check className="size-4" />
-              Salvar combustível
-            </Button>
+            <div className="flex flex-col-reverse gap-2 sm:flex-row">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isPending || fuelAddStep === "source"}
+                onClick={() => setFuelAddStep(previousFuelStep(fuelAddStep))}
+              >
+                Voltar
+              </Button>
+              {isFuelAddReviewStep ? (
+                <Button
+                  type="button"
+                  disabled={isPending || !fuelAddCanSave}
+                  onClick={saveFuelAdd}
+                >
+                  <Check className="size-4" />
+                  Salvar combustível
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  disabled={isPending || !fuelAddCanContinue}
+                  onClick={() => setFuelAddStep(nextFuelStep(fuelAddStep))}
+                >
+                  Continuar
+                </Button>
+              )}
+            </div>
           </>
         }
       >
         {fuelAddDraft && (
           <FuelAddEditor
+            categories={options.suppliedItemCategories}
             draft={fuelAddDraft}
             fuelOptions={fuelOptions}
+            lookupSuppliedItemOfferSuppliersAction={
+              lookupSuppliedItemOfferSuppliersAction
+            }
+            lookupSuppliedItemOffersAction={lookupSuppliedItemOffersAction}
+            lookupSuppliedItemsAction={lookupSuppliedItemsAction}
+            measurementUnits={options.measurementUnits}
             suppliers={options.suppliers}
             suppliedItems={options.suppliedItems}
-            measurementUnits={options.measurementUnits}
+            step={fuelAddStep}
             setDraft={setFuelDraftWithDirty(setFuelAddDraft)}
           />
         )}
@@ -2558,7 +3292,9 @@ export function ProjectDetail({
               </Button>
               <Button
                 type="button"
-                disabled={isPending || !fuelEditDraft || !currentEditingFuelOffer}
+                disabled={
+                  isPending || !fuelEditDraft || !currentEditingFuelOffer
+                }
                 onClick={saveFuelEdit}
               >
                 <Check className="size-4" />

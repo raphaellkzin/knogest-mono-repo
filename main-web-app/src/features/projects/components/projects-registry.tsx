@@ -3,7 +3,7 @@ import { Search } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import type { ProjectLifecycleStatus } from "../projects.server";
+import type { ProjectLifecycleStatus } from "../projects.types";
 import { ProjectWizard, type ProjectWizardOptions } from "./project-wizard";
 
 type ProjectRow = {

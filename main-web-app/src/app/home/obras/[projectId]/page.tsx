@@ -3,6 +3,11 @@ import { AppShell } from "@/components/layout/app-shell";
 import { requireCompanyWorkspace } from "@/features/company-selection/company-selection.server";
 import { ProjectDetail } from "@/features/projects/components/project-detail";
 import {
+  lookupProjectSuppliedItemOfferSuppliersAction,
+  lookupProjectSuppliedItemOffersAction,
+  lookupProjectSuppliedItemsAction,
+} from "@/features/projects/projects.actions";
+import {
   getProjectDetail,
   getProjectReadinessOptions,
 } from "@/features/projects/projects.server";
@@ -32,7 +37,15 @@ export default async function Page({
       userId={session.user.id}
       currentArea="works"
     >
-      <ProjectDetail options={options} project={project} />
+      <ProjectDetail
+        lookupSuppliedItemOfferSuppliersAction={
+          lookupProjectSuppliedItemOfferSuppliersAction
+        }
+        lookupSuppliedItemOffersAction={lookupProjectSuppliedItemOffersAction}
+        lookupSuppliedItemsAction={lookupProjectSuppliedItemsAction}
+        options={options}
+        project={project}
+      />
     </AppShell>
   );
 }
