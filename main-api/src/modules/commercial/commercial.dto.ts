@@ -293,10 +293,31 @@ export const selectorQuerySchema = z
 
 export type SelectorQuery = z.infer<typeof selectorQuerySchema>;
 
+export const listSuppliedItemSelectorsQuerySchema = z
+  .object({
+    limit: z.coerce.number().int().min(1).max(100).default(25),
+    cursor: z.string().trim().min(1).max(2048).optional(),
+    search: z
+      .string()
+      .trim()
+      .max(120)
+      .optional()
+      .transform((value) => (value && value.length > 0 ? value : undefined)),
+    categoryId: uuid.optional(),
+    includeDescendants: z.coerce.boolean().default(true),
+    onlyWithActiveOffers: z.coerce.boolean().default(false),
+  })
+  .strict();
+
+export type ListSuppliedItemSelectorsQuery = z.infer<
+  typeof listSuppliedItemSelectorsQuerySchema
+>;
+
 export const listSuppliedItemOffersQuerySchema = z
   .object({
     limit: z.coerce.number().int().min(1).max(100).default(30),
     cursor: z.string().trim().min(1).max(2048).optional(),
+    supplierId: uuid.optional(),
   })
   .strict();
 

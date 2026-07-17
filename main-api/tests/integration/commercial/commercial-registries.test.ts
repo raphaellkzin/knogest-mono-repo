@@ -462,4 +462,207 @@ describe("commercial Client and Fuel Supplier registries", () => {
     expect(extraField.statusCode).toBe(400);
     expect(extraField.json()).toMatchObject({ code: "VALIDATION_ERROR" });
   });
+
+  it("searches supplied item selectors by name, category descendants, and active offers", async () => {
+    const pilot = await provision("supplied-item-selectors");
+    const authorization = await authFor({
+      corporationId: pilot.corporation.id,
+      userId: pilot.administrator.id,
+      companyId: pilot.companies[0].id,
+    });
+
+    const category = await app.inject({
+      method: "POST",
+      url: "/api/v1/supplied-item-categories",
+      headers: { authorization },
+      payload: { name: "Combustíveis" },
+    });
+    expect(category.statusCode).toBe(201);
+    const subcategory = await app.inject({
+      method: "POST",
+      url: "/api/v1/supplied-item-categories",
+      headers: { authorization },
+      payload: { name: "Diesel", parentId: category.json().data.id },
+    });
+    expect(subcategory.statusCode).toBe(201);
+
+    const diesel = await app.inject({
+      method: "POST",
+      url: "/api/v1/supplied-items",
+      headers: { authorization },
+      payload: {
+        name: "Diesel S10",
+        baseUnitId: "00000000-0000-4000-8000-00000000a001",
+        categoryId: subcategory.json().data.id,
+      },
+    });
+    expect(diesel.statusCode).toBe(201);
+    const grease = await app.inject({
+      method: "POST",
+      url: "/api/v1/supplied-items",
+      headers: { authorization },
+      payload: {
+        name: "Graxa",
+        baseUnitId: "00000000-0000-4000-8000-00000000a001",
+      },
+    });
+    expect(grease.statusCode).toBe(201);
+
+    const supplier = await app.inject({
+      method: "POST",
+      url: "/api/v1/suppliers",
+      headers: { authorization },
+      payload: {
+        entityType: "individual",
+        document: syntheticCpfFixture,
+        fullName: "Posto Serra Azul",
+      },
+    });
+    expect(supplier.statusCode).toBe(201);
+    const offer = await app.inject({
+      method: "POST",
+      url: `/api/v1/suppliers/${supplier.json().data.id}/offers`,
+      headers: { authorization },
+      payload: {
+        itemId: diesel.json().data.id,
+        baseUnitId: "00000000-0000-4000-8000-00000000a001",
+        purchaseUnitId: "00000000-0000-4000-8000-00000000a001",
+        conversionToBase: "1.000000",
+        price: "6.5000",
+      },
+    });
+    expect(offer.statusCode).toBe(201);
+
+    const matched = await app.inject({
+      method: "GET",
+      url: `/api/v1/supplied-items/selectors/active?search=Diesel&categoryId=${category.json().data.id}&onlyWithActiveOffers=true`,
+      headers: { authorization },
+    });
+    expect(matched.statusCode).toBe(200);
+    expect(matched.json().data.data).toEqual([
+      expect.objectContaining({
+        id: diesel.json().data.id,
+        name: "Diesel S10",
+        activeSupplierCount: 1,
+        categoryPath: ["Combustíveis", "Diesel"],
+      }),
+    ]);
+
+    const rootOnly = await app.inject({
+      method: "GET",
+      url: `/api/v1/supplied-items/selectors/active?categoryId=${category.json().data.id}&includeDescendants=false&onlyWithActiveOffers=true`,
+      headers: { authorization },
+    });
+    expect(rootOnly.statusCode).toBe(200);
+    expect(rootOnly.json().data.data).toEqual([]);
+
+    const withoutOffer = await app.inject({
+      method: "GET",
+      url: "/api/v1/supplied-items/selectors/active?search=Graxa&onlyWithActiveOffers=true",
+      headers: { authorization },
+    });
+    expect(withoutOffer.statusCode).toBe(200);
+    expect(withoutOffer.json().data.data).toEqual([]);
+  });
+
+  it("filters item offers and eligible suppliers by active supplier", async () => {
+    const pilot = await provision("item-offer-suppliers");
+    const authorization = await authFor({
+      corporationId: pilot.corporation.id,
+      userId: pilot.administrator.id,
+      companyId: pilot.companies[0].id,
+    });
+
+    const item = await app.inject({
+      method: "POST",
+      url: "/api/v1/supplied-items",
+      headers: { authorization },
+      payload: {
+        name: "Diesel S500",
+        baseUnitId: "00000000-0000-4000-8000-00000000a001",
+      },
+    });
+    expect(item.statusCode).toBe(201);
+
+    const activeSupplier = await app.inject({
+      method: "POST",
+      url: "/api/v1/suppliers",
+      headers: { authorization },
+      payload: {
+        entityType: "individual",
+        document: syntheticCpfFixture,
+        fullName: "Posto Ativo",
+      },
+    });
+    expect(activeSupplier.statusCode).toBe(201);
+    const inactiveSupplier = await app.inject({
+      method: "POST",
+      url: "/api/v1/suppliers",
+      headers: { authorization },
+      payload: {
+        entityType: "legal_entity",
+        document: syntheticCnpjFixture,
+        legalName: "Posto Inativo Ltda",
+      },
+    });
+    expect(inactiveSupplier.statusCode).toBe(201);
+
+    for (const supplierId of [
+      activeSupplier.json().data.id,
+      inactiveSupplier.json().data.id,
+    ]) {
+      const offer = await app.inject({
+        method: "POST",
+        url: `/api/v1/suppliers/${supplierId}/offers`,
+        headers: { authorization },
+        payload: {
+          itemId: item.json().data.id,
+          baseUnitId: "00000000-0000-4000-8000-00000000a001",
+          purchaseUnitId: "00000000-0000-4000-8000-00000000a001",
+          conversionToBase: "1.000000",
+          price:
+            supplierId === activeSupplier.json().data.id ? "6.3000" : "6.9000",
+        },
+      });
+      expect(offer.statusCode).toBe(201);
+    }
+
+    await app.prisma.fuelSupplier.update({
+      where: { id: inactiveSupplier.json().data.id },
+      data: { isActive: false, inactivatedAt: new Date() },
+    });
+
+    const suppliersResponse = await app.inject({
+      method: "GET",
+      url: `/api/v1/supplied-items/${item.json().data.id}/offer-suppliers?search=Posto`,
+      headers: { authorization },
+    });
+    expect(suppliersResponse.statusCode).toBe(200);
+    expect(suppliersResponse.json().data).toEqual([
+      expect.objectContaining({
+        id: activeSupplier.json().data.id,
+        name: "Posto Ativo",
+      }),
+    ]);
+
+    const activeOffers = await app.inject({
+      method: "GET",
+      url: `/api/v1/supplied-items/${item.json().data.id}/offers?supplierId=${activeSupplier.json().data.id}`,
+      headers: { authorization },
+    });
+    expect(activeOffers.statusCode).toBe(200);
+    expect(activeOffers.json().data.data).toHaveLength(1);
+    expect(activeOffers.json().data.data[0]).toMatchObject({
+      supplier: { id: activeSupplier.json().data.id },
+      currentPrice: { price: "6.3000" },
+    });
+
+    const inactiveOffers = await app.inject({
+      method: "GET",
+      url: `/api/v1/supplied-items/${item.json().data.id}/offers?supplierId=${inactiveSupplier.json().data.id}`,
+      headers: { authorization },
+    });
+    expect(inactiveOffers.statusCode).toBe(200);
+    expect(inactiveOffers.json().data.data).toEqual([]);
+  });
 });

@@ -19,6 +19,7 @@ import type {
   CreateSuppliedItemInput,
   CreateSupplierInput,
   ListCommercialRegistryQuery,
+  ListSuppliedItemSelectorsQuery,
   ListSuppliedItemOffersQuery,
   SelectorQuery,
   UpdateSuppliedItemCategoryInput,
@@ -190,6 +191,52 @@ async function categoryDepth(
   return depth;
 }
 
+type ItemCategorySummary = {
+  id: string;
+  name: string;
+  parentId: string | null;
+};
+
+function categoryDescendantIds(
+  categories: ItemCategorySummary[],
+  categoryId: string,
+) {
+  const ids = new Set<string>([categoryId]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const category of categories) {
+      if (
+        category.parentId &&
+        ids.has(category.parentId) &&
+        !ids.has(category.id)
+      ) {
+        ids.add(category.id);
+        changed = true;
+      }
+    }
+  }
+  return ids;
+}
+
+function categoryPath(
+  categoryById: Map<string, ItemCategorySummary>,
+  categoryId: string | null,
+) {
+  const path: string[] = [];
+  const seen = new Set<string>();
+  let currentId = categoryId;
+  while (currentId) {
+    if (seen.has(currentId)) break;
+    seen.add(currentId);
+    const category = categoryById.get(currentId);
+    if (!category) break;
+    path.unshift(category.name);
+    currentId = category.parentId;
+  }
+  return path;
+}
+
 async function supplierOffersDto(
   context: HandlerContext,
   scope: AuthenticatedCompanyScope,
@@ -319,7 +366,10 @@ async function suppliedItemOffersDto(
     });
   }
 
-  const normalizedQuery = suppliedItemOffersQueryForCursor(itemId);
+  const normalizedQuery = suppliedItemOffersQueryForCursor(
+    itemId,
+    query.supplierId,
+  );
   const boundary = parseBoundCursor({
     cursor: query.cursor,
     query: normalizedQuery,
@@ -333,6 +383,7 @@ async function suppliedItemOffersDto(
       corporationId: scope.corporationId,
       companyId: scope.companyId,
       itemId,
+      ...(query.supplierId ? { supplierId: query.supplierId } : {}),
       isActive: true,
       ...suppliedItemOffersBoundaryWhere(boundary),
     },
@@ -368,6 +419,8 @@ async function suppliedItemOffersDto(
         corporationId: scope.corporationId,
         companyId: scope.companyId,
         isActive: true,
+        removedAt: null,
+        isGlobal: true,
       },
       select: {
         id: true,
@@ -471,8 +524,33 @@ function scopeForCursor(scope: AuthenticatedCompanyScope) {
   };
 }
 
-function suppliedItemOffersQueryForCursor(itemId: string) {
-  return { itemId };
+function suppliedItemSelectorsQueryForCursor(
+  query: ListSuppliedItemSelectorsQuery,
+) {
+  return {
+    categoryId: query.categoryId ?? null,
+    includeDescendants: query.includeDescendants,
+    onlyWithActiveOffers: query.onlyWithActiveOffers,
+    search: query.search?.toLocaleLowerCase("pt-BR") ?? null,
+  };
+}
+
+function suppliedItemOffersQueryForCursor(itemId: string, supplierId?: string) {
+  return { itemId, supplierId: supplierId ?? null };
+}
+
+type SuppliedItemSelectorBoundaryWhere = {
+  OR: Array<{ name: { gt: string } } | { name: string; id: { gt: string } }>;
+};
+
+function suppliedItemSelectorBoundaryWhere(
+  boundary: CursorBoundary | null,
+): SuppliedItemSelectorBoundaryWhere | undefined {
+  if (!boundary) return undefined;
+  const name = String(boundary.value);
+  return {
+    OR: [{ name: { gt: name } }, { name, id: { gt: boundary.id } }],
+  };
 }
 
 type SuppliedItemOfferBoundaryWhere = {
@@ -1125,6 +1203,138 @@ export class CommercialService {
     });
   }
 
+  async listSuppliedItemSelectors(
+    scope: AuthenticatedCompanyScope,
+    query: ListSuppliedItemSelectorsQuery,
+  ) {
+    const store = commercialRegistryStore(this.context);
+    const categories = await store.suppliedItemCategory.findMany({
+      where: {
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        isActive: true,
+      },
+      orderBy: [{ name: "asc" }, { id: "asc" }],
+      select: { id: true, name: true, parentId: true },
+    });
+
+    let categoryIds: Set<string> | null = null;
+    if (query.categoryId) {
+      await categoryDepth(this.context, scope, query.categoryId);
+      categoryIds = query.includeDescendants
+        ? categoryDescendantIds(categories, query.categoryId)
+        : new Set([query.categoryId]);
+    }
+
+    const activeSuppliers = await store.fuelSupplier.findMany({
+      where: {
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        isActive: true,
+        removedAt: null,
+        isGlobal: true,
+      },
+      select: { id: true },
+    });
+    const activeSupplierIds = activeSuppliers.map((supplier) => supplier.id);
+
+    let itemIdsWithActiveOffers: Set<string> | null = null;
+    if (query.onlyWithActiveOffers) {
+      if (activeSupplierIds.length === 0) {
+        return { data: [], pageInfo: { hasNextPage: false, nextCursor: null } };
+      }
+      const activeOffers = await store.supplierOffer.findMany({
+        where: {
+          corporationId: scope.corporationId,
+          companyId: scope.companyId,
+          supplierId: { in: activeSupplierIds },
+          isActive: true,
+        },
+        select: { itemId: true },
+      });
+      itemIdsWithActiveOffers = new Set(
+        activeOffers.map((offer) => offer.itemId),
+      );
+      if (itemIdsWithActiveOffers.size === 0) {
+        return { data: [], pageInfo: { hasNextPage: false, nextCursor: null } };
+      }
+    }
+
+    const normalizedQuery = suppliedItemSelectorsQueryForCursor(query);
+    const boundary = parseBoundCursor({
+      cursor: query.cursor,
+      query: normalizedQuery,
+      resource: "supplied-item-selectors",
+      scope: scopeForCursor(scope),
+      sortBy: "name",
+      sortDirection: "asc",
+    });
+    const items = await store.suppliedItem.findMany({
+      where: {
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        isGlobal: true,
+        isActive: true,
+        ...(query.search
+          ? { name: { contains: query.search, mode: "insensitive" as const } }
+          : {}),
+        ...(categoryIds ? { categoryId: { in: [...categoryIds] } } : {}),
+        ...(itemIdsWithActiveOffers
+          ? { id: { in: [...itemIdsWithActiveOffers] } }
+          : {}),
+        ...suppliedItemSelectorBoundaryWhere(boundary),
+      },
+      orderBy: [{ name: "asc" }, { id: "asc" }],
+      take: query.limit + 1,
+      select: { id: true, name: true, baseUnitId: true, categoryId: true },
+    });
+    const page = buildCursorPage({
+      items,
+      limit: query.limit,
+      query: normalizedQuery,
+      resource: "supplied-item-selectors",
+      scope: scopeForCursor(scope),
+      sortBy: "name",
+      sortDirection: "asc",
+      getLast: (item) => ({ id: item.id, value: item.name }),
+    });
+    const pageItems = page.data;
+    const pageOffers =
+      pageItems.length && activeSupplierIds.length
+        ? await store.supplierOffer.findMany({
+            where: {
+              corporationId: scope.corporationId,
+              companyId: scope.companyId,
+              itemId: { in: pageItems.map((item) => item.id) },
+              supplierId: { in: activeSupplierIds },
+              isActive: true,
+            },
+            select: { itemId: true, supplierId: true },
+          })
+        : [];
+    const suppliersByItemId = new Map<string, Set<string>>();
+    for (const offer of pageOffers) {
+      const suppliers = suppliersByItemId.get(offer.itemId) ?? new Set();
+      suppliers.add(offer.supplierId);
+      suppliersByItemId.set(offer.itemId, suppliers);
+    }
+    const categoryById = new Map(
+      categories.map((category) => [category.id, category]),
+    );
+
+    return {
+      data: pageItems.map((item) => ({
+        id: item.id,
+        name: item.name,
+        baseUnitId: item.baseUnitId,
+        categoryId: item.categoryId,
+        categoryPath: categoryPath(categoryById, item.categoryId),
+        activeSupplierCount: suppliersByItemId.get(item.id)?.size ?? 0,
+      })),
+      pageInfo: page.pageInfo,
+    };
+  }
+
   async listSuppliedItems(scope: AuthenticatedCompanyScope) {
     const store = commercialRegistryStore(this.context);
     const items = await store.suppliedItem.findMany({
@@ -1249,6 +1459,91 @@ export class CommercialService {
     query: ListSuppliedItemOffersQuery,
   ) {
     return suppliedItemOffersDto(this.context, scope, itemId, query);
+  }
+
+  async listSuppliedItemOfferSuppliers(
+    scope: AuthenticatedCompanyScope,
+    itemId: string,
+    query: SelectorQuery,
+  ) {
+    const store = commercialRegistryStore(this.context);
+    const item = await store.suppliedItem.findFirst({
+      where: {
+        id: itemId,
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        isGlobal: true,
+        isActive: true,
+      },
+      select: { id: true },
+    });
+    if (!item) {
+      throw new AppError({
+        code: "SUPPLIED_ITEM_NOT_FOUND",
+        message: "Supplied item not found",
+        statusCode: 404,
+      });
+    }
+
+    const offers = await store.supplierOffer.findMany({
+      where: {
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        itemId,
+        isActive: true,
+      },
+      select: { supplierId: true },
+    });
+    const supplierIds = [...new Set(offers.map((offer) => offer.supplierId))];
+    if (supplierIds.length === 0) return [];
+
+    const suppliers = await store.fuelSupplier.findMany({
+      where: {
+        id: { in: supplierIds },
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        isActive: true,
+        removedAt: null,
+        isGlobal: true,
+        ...(query.search
+          ? {
+              OR: [
+                {
+                  displayName: {
+                    contains: query.search,
+                    mode: "insensitive" as const,
+                  },
+                },
+                {
+                  tradeName: {
+                    contains: query.search,
+                    mode: "insensitive" as const,
+                  },
+                },
+              ],
+            }
+          : {}),
+      },
+      orderBy: [{ displayName: "asc" }, { id: "asc" }],
+      take: query.limit,
+      select: {
+        id: true,
+        displayName: true,
+        tradeName: true,
+        documentType: true,
+        ciphertext: true,
+        iv: true,
+        authTag: true,
+        encryptionKeyVersion: true,
+      },
+    });
+
+    return suppliers.map((supplier) => ({
+      id: supplier.id,
+      name: supplier.displayName,
+      tradeName: supplier.tradeName,
+      document: toMaskedDocumentDto(protectedDocument(supplier)),
+    }));
   }
 
   async listSuppliedItemOfferSupplierIds(

@@ -4615,10 +4615,6 @@
                   "basePrice": {
                     "type": "string",
                     "pattern": "^\\d{1,14}\\.\\d{4}$"
-                  },
-                  "propagateMirrorToExistingOffers": {
-                    "type": "boolean",
-                    "default": false
                   }
                 }
               }
@@ -4732,6 +4728,221 @@
             }
           },
           "409": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/supplied-items/selectors/active": {
+      "get": {
+        "summary": "Search active global Supplied Items for selectors",
+        "tags": ["Commercial"],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 25
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          },
+          {
+            "schema": { "type": "string", "minLength": 1, "maxLength": 2048 },
+            "in": "query",
+            "name": "cursor",
+            "required": false
+          },
+          {
+            "schema": { "type": "string", "maxLength": 120 },
+            "in": "query",
+            "name": "search",
+            "required": false
+          },
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "in": "query",
+            "name": "categoryId",
+            "required": false
+          },
+          {
+            "schema": { "type": "boolean", "default": true },
+            "in": "query",
+            "name": "includeDescendants",
+            "required": false
+          },
+          {
+            "schema": { "type": "boolean", "default": false },
+            "in": "query",
+            "name": "onlyWithActiveOffers",
+            "required": false
+          }
+        ],
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["success", "message", "data"],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [true] },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "required": ["data", "pageInfo"],
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "id",
+                              "name",
+                              "baseUnitId",
+                              "categoryId",
+                              "categoryPath",
+                              "activeSupplierCount"
+                            ],
+                            "properties": {
+                              "id": { "type": "string", "format": "uuid" },
+                              "name": { "type": "string" },
+                              "baseUnitId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "categoryId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "nullable": true
+                              },
+                              "categoryPath": {
+                                "type": "array",
+                                "items": { "type": "string" }
+                              },
+                              "activeSupplierCount": {
+                                "type": "integer",
+                                "minimum": 0
+                              }
+                            },
+                            "additionalProperties": false
+                          }
+                        },
+                        "pageInfo": {
+                          "type": "object",
+                          "required": ["hasNextPage", "nextCursor"],
+                          "properties": {
+                            "hasNextPage": { "type": "boolean" },
+                            "nextCursor": { "type": "string", "nullable": true }
+                          },
+                          "additionalProperties": false
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
             "description": "Default Response",
             "content": {
               "application/json": {
@@ -5498,6 +5709,179 @@
         }
       }
     },
+    "/api/v1/supplied-items/{itemId}/offer-suppliers": {
+      "get": {
+        "summary": "List active Suppliers with active offers for a global Supplied Item",
+        "tags": ["Commercial"],
+        "parameters": [
+          {
+            "schema": { "type": "string", "maxLength": 120 },
+            "in": "query",
+            "name": "search",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 25
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          },
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "in": "path",
+            "name": "itemId",
+            "required": true
+          }
+        ],
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["success", "message", "data"],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [true] },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": ["id", "name", "document"],
+                        "properties": {
+                          "id": { "type": "string", "format": "uuid" },
+                          "name": { "type": "string" },
+                          "tradeName": { "type": "string", "nullable": true },
+                          "document": {
+                            "type": "object",
+                            "required": ["documentType", "maskedDocument"],
+                            "properties": {
+                              "documentType": {
+                                "type": "string",
+                                "enum": ["CPF", "CNPJ"]
+                              },
+                              "maskedDocument": {
+                                "type": "string",
+                                "example": "***.***.247-25"
+                              }
+                            },
+                            "additionalProperties": false
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/supplied-items/{itemId}/offers": {
       "get": {
         "summary": "List active Supplier Offers for a global Supplied Item",
@@ -5518,6 +5902,12 @@
             "schema": { "type": "string", "minLength": 1, "maxLength": 2048 },
             "in": "query",
             "name": "cursor",
+            "required": false
+          },
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "in": "query",
+            "name": "supplierId",
             "required": false
           },
           {
@@ -13263,6 +13653,10 @@
                         "employees",
                         "machines",
                         "jobRoles",
+                        "suppliers",
+                        "suppliedItems",
+                        "suppliedItemCategories",
+                        "measurementUnits",
                         "supplierOffers"
                       ],
                       "properties": {
@@ -13288,6 +13682,34 @@
                           }
                         },
                         "jobRoles": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": true
+                          }
+                        },
+                        "suppliers": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": true
+                          }
+                        },
+                        "suppliedItems": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": true
+                          }
+                        },
+                        "suppliedItemCategories": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": true
+                          }
+                        },
+                        "measurementUnits": {
                           "type": "array",
                           "items": {
                             "type": "object",
@@ -13401,26 +13823,98 @@
                     "minItems": 1,
                     "maxItems": 10,
                     "items": {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "required": ["sourceOfferId", "price"],
-                      "properties": {
-                        "sourceOfferId": { "type": "string", "format": "uuid" },
-                        "price": { "type": "string" }
-                      }
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": ["sourceOfferId", "price"],
+                          "properties": {
+                            "mode": { "enum": ["existing"] },
+                            "sourceOfferId": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "price": { "type": "string" }
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "mode",
+                            "supplierId",
+                            "itemId",
+                            "purchaseUnitId",
+                            "conversionToBase",
+                            "price"
+                          ],
+                          "properties": {
+                            "mode": {
+                              "enum": ["projectOnly", "companyCatalog"]
+                            },
+                            "supplierId": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "itemId": { "type": "string", "format": "uuid" },
+                            "purchaseUnitId": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "conversionToBase": { "type": "string" },
+                            "price": { "type": "string" }
+                          }
+                        }
+                      ]
                     }
                   },
                   "materialOffers": {
                     "type": "array",
                     "maxItems": 50,
                     "items": {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "required": ["sourceOfferId", "price"],
-                      "properties": {
-                        "sourceOfferId": { "type": "string", "format": "uuid" },
-                        "price": { "type": "string" }
-                      }
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": ["sourceOfferId", "price"],
+                          "properties": {
+                            "mode": { "enum": ["existing"] },
+                            "sourceOfferId": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "price": { "type": "string" }
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "mode",
+                            "supplierId",
+                            "itemId",
+                            "purchaseUnitId",
+                            "conversionToBase",
+                            "price"
+                          ],
+                          "properties": {
+                            "mode": {
+                              "enum": ["projectOnly", "companyCatalog"]
+                            },
+                            "supplierId": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "itemId": { "type": "string", "format": "uuid" },
+                            "purchaseUnitId": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "conversionToBase": { "type": "string" },
+                            "price": { "type": "string" }
+                          }
+                        }
+                      ]
                     }
                   },
                   "accountability": {

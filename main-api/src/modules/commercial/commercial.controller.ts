@@ -20,6 +20,7 @@ import {
   createSupplierSchema,
   supplierOfferSchema as createSupplierOfferBodySchema,
   listCommercialRegistryQuerySchema,
+  listSuppliedItemSelectorsQuerySchema,
   listSuppliedItemOffersQuerySchema,
   selectorQuerySchema,
   updateSuppliedItemCategorySchema,
@@ -155,6 +156,20 @@ const suppliedItemOffersOpenApiQuerySchema = {
   properties: {
     limit: { type: "integer", minimum: 1, maximum: 100, default: 30 },
     cursor: { type: "string", minLength: 1, maxLength: 2048 },
+    supplierId: { type: "string", format: "uuid" },
+  },
+} as const;
+
+const suppliedItemSelectorsOpenApiQuerySchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    limit: { type: "integer", minimum: 1, maximum: 100, default: 25 },
+    cursor: { type: "string", minLength: 1, maxLength: 2048 },
+    search: { type: "string", maxLength: 120 },
+    categoryId: { type: "string", format: "uuid" },
+    includeDescendants: { type: "boolean", default: true },
+    onlyWithActiveOffers: { type: "boolean", default: false },
   },
 } as const;
 
@@ -504,6 +519,53 @@ const suppliedItemCatalogResponseSchema = {
       properties: {
         categories: { type: "array", items: suppliedItemCategorySchema },
         items: { type: "array", items: suppliedItemCatalogItemSchema },
+      },
+      additionalProperties: false,
+    },
+  },
+} as const;
+
+const suppliedItemSelectorSchema = {
+  type: "object",
+  required: [
+    "id",
+    "name",
+    "baseUnitId",
+    "categoryId",
+    "categoryPath",
+    "activeSupplierCount",
+  ],
+  properties: {
+    id: { type: "string", format: "uuid" },
+    name: { type: "string" },
+    baseUnitId: { type: "string", format: "uuid" },
+    categoryId: { type: "string", format: "uuid", nullable: true },
+    categoryPath: { type: "array", items: { type: "string" } },
+    activeSupplierCount: { type: "integer", minimum: 0 },
+  },
+  additionalProperties: false,
+} as const;
+
+const suppliedItemSelectorsResponseSchema = {
+  type: "object",
+  required: ["success", "message", "data"],
+  properties: {
+    success: { type: "boolean", const: true },
+    message: { type: "string" },
+    data: {
+      type: "object",
+      required: ["data", "pageInfo"],
+      properties: {
+        data: { type: "array", items: suppliedItemSelectorSchema },
+        pageInfo: {
+          type: "object",
+          required: ["hasNextPage", "nextCursor"],
+          properties: {
+            hasNextPage: { type: "boolean" },
+            nextCursor: { type: "string", nullable: true },
+          },
+          additionalProperties: false,
+        },
       },
       additionalProperties: false,
     },
@@ -1345,6 +1407,36 @@ export const v1CommercialController = async (app: FastifyInstance) => {
     },
   );
 
+  app.get(
+    "/supplied-items/selectors/active",
+    {
+      preHandler: [
+        app.requireCompanyScope,
+        validateQuery(listSuppliedItemSelectorsQuerySchema),
+      ],
+      schema: {
+        tags: ["Commercial"],
+        summary: "Search active global Supplied Items for selectors",
+        security: [{ bearerAuth: [] }],
+        querystring: suppliedItemSelectorsOpenApiQuerySchema,
+        response: {
+          200: suppliedItemSelectorsResponseSchema,
+          400: errorSchema,
+          401: errorSchema,
+          403: errorSchema,
+          404: errorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const data = await commercialService.listSuppliedItemSelectors(
+        scopeFromRequest(request),
+        request.query as z.infer<typeof listSuppliedItemSelectorsQuerySchema>,
+      );
+      return jsonResponse.success({ reply, data });
+    },
+  );
+
   app.post(
     "/supplied-items",
     {
@@ -1519,7 +1611,8 @@ export const v1CommercialController = async (app: FastifyInstance) => {
       ],
       schema: {
         tags: ["Commercial"],
-        summary: "List Supplier ids with active offers for a global Supplied Item",
+        summary:
+          "List Supplier ids with active offers for a global Supplied Item",
         security: [{ bearerAuth: [] }],
         params: {
           type: "object",
@@ -1543,6 +1636,48 @@ export const v1CommercialController = async (app: FastifyInstance) => {
       const data = await commercialService.listSuppliedItemOfferSupplierIds(
         scopeFromRequest(request),
         itemId,
+      );
+      return jsonResponse.success({ reply, data });
+    },
+  );
+
+  app.get(
+    "/supplied-items/:itemId/offer-suppliers",
+    {
+      preHandler: [
+        app.requireCompanyScope,
+        validateParams(suppliedItemParamsSchema),
+        validateQuery(selectorQuerySchema),
+      ],
+      schema: {
+        tags: ["Commercial"],
+        summary:
+          "List active Suppliers with active offers for a global Supplied Item",
+        security: [{ bearerAuth: [] }],
+        params: {
+          type: "object",
+          additionalProperties: false,
+          required: ["itemId"],
+          properties: { itemId: { type: "string", format: "uuid" } },
+        },
+        querystring: selectorOpenApiQuerySchema,
+        response: {
+          200: selectorResponseSchema,
+          400: errorSchema,
+          401: errorSchema,
+          403: errorSchema,
+          404: errorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { itemId } = request.params as z.infer<
+        typeof suppliedItemParamsSchema
+      >;
+      const data = await commercialService.listSuppliedItemOfferSuppliers(
+        scopeFromRequest(request),
+        itemId,
+        request.query as z.infer<typeof selectorQuerySchema>,
       );
       return jsonResponse.success({ reply, data });
     },

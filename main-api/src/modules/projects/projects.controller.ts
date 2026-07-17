@@ -346,8 +346,10 @@ const projectReadinessCommandOpenApiSchema = {
         },
       },
     },
-    employeeAllocations: projectCommandOpenApiSchema.properties.initialEmployeeAllocations,
-    machineAllocations: projectCommandOpenApiSchema.properties.initialMachineAllocations,
+    employeeAllocations:
+      projectCommandOpenApiSchema.properties.initialEmployeeAllocations,
+    machineAllocations:
+      projectCommandOpenApiSchema.properties.initialMachineAllocations,
     compensationPaymentTerms: {
       type: "array",
       maxItems: 5,
@@ -428,17 +430,43 @@ const projectReadinessOptionsSchema = {
     "jobRoles",
     "suppliers",
     "suppliedItems",
+    "suppliedItemCategories",
     "measurementUnits",
     "supplierOffers",
   ],
   properties: {
-    clients: { type: "array", items: { type: "object", additionalProperties: true } },
-    employees: { type: "array", items: { type: "object", additionalProperties: true } },
-    machines: { type: "array", items: { type: "object", additionalProperties: true } },
-    jobRoles: { type: "array", items: { type: "object", additionalProperties: true } },
-    suppliers: { type: "array", items: { type: "object", additionalProperties: true } },
-    suppliedItems: { type: "array", items: { type: "object", additionalProperties: true } },
-    measurementUnits: { type: "array", items: { type: "object", additionalProperties: true } },
+    clients: {
+      type: "array",
+      items: { type: "object", additionalProperties: true },
+    },
+    employees: {
+      type: "array",
+      items: { type: "object", additionalProperties: true },
+    },
+    machines: {
+      type: "array",
+      items: { type: "object", additionalProperties: true },
+    },
+    jobRoles: {
+      type: "array",
+      items: { type: "object", additionalProperties: true },
+    },
+    suppliers: {
+      type: "array",
+      items: { type: "object", additionalProperties: true },
+    },
+    suppliedItems: {
+      type: "array",
+      items: { type: "object", additionalProperties: true },
+    },
+    suppliedItemCategories: {
+      type: "array",
+      items: { type: "object", additionalProperties: true },
+    },
+    measurementUnits: {
+      type: "array",
+      items: { type: "object", additionalProperties: true },
+    },
     supplierOffers: {
       type: "array",
       items: { type: "object", additionalProperties: true },
@@ -712,7 +740,8 @@ export async function v1ProjectsController(app: FastifyInstance) {
       preHandler: app.requireCompanyScope,
       schema: {
         tags: ["Projects"],
-        summary: "Save the operational readiness checklist for a planned Project",
+        summary:
+          "Save the operational readiness checklist for a planned Project",
         security: [{ bearerAuth: [] }],
         params: {
           type: "object",
@@ -800,7 +829,10 @@ export async function v1ProjectsController(app: FastifyInstance) {
       try {
         return jsonResponse.success({
           reply,
-          data: await service.activate(scope(request), parsedParams.data.projectId),
+          data: await service.activate(
+            scope(request),
+            parsedParams.data.projectId,
+          ),
         });
       } catch (error) {
         return jsonResponse.fromError({ reply, error });

@@ -18,6 +18,7 @@ export async function resetIntegrationData(prisma: PrismaClient) {
   await prisma.supplierOfferPrice.deleteMany();
   await prisma.supplierOffer.deleteMany();
   await prisma.suppliedItem.deleteMany();
+  await prisma.suppliedItemCategory.deleteMany();
   await prisma.fuelSupplier.deleteMany();
   await prisma.client.deleteMany();
   await prisma.sensitiveDocumentProtectionHarness.deleteMany();
