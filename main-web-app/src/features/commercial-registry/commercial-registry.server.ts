@@ -75,6 +75,10 @@ export type SuppliedItemCategory = {
   id: string;
   name: string;
   parentId: string | null;
+  systemKey: string | null;
+  isActive: boolean;
+  effectiveActive: boolean;
+  kind: "fuel" | "material";
   createdAt: string;
   updatedAt: string;
 };
@@ -86,6 +90,9 @@ export type SuppliedItemCatalogItem = {
   baseUnit: MeasurementUnitOption | null;
   valueUnitQuantity: string;
   basePrice: string;
+  isActive: boolean;
+  effectiveActive: boolean;
+  kind: "fuel" | "material";
   activeSupplierCount: number;
   spentQuantity: string | null;
   lastSpentAt: string | null;
@@ -204,6 +211,7 @@ export async function getSupplierCatalogOptions() {
     }>({
       url: "/api/v1/supplied-items/catalog",
       method: "GET",
+      params: { includeInactive: true },
     }),
   ]);
   return {

@@ -54,13 +54,13 @@ describe("Projects DTO", () => {
   it("accepts the minimal aggregate", () =>
     expect(projectCommandSchema.safeParse(command).success).toBe(true));
 
-  it("keeps supplier offers optional while validating populated entries", () => {
+  it("only accepts supplier offers after project creation", () => {
     expect(
       projectCommandSchema.safeParse({
         ...command,
         projectSupplierOffers: [supplierOffer()],
       }).success,
-    ).toBe(true);
+    ).toBe(false);
     expect(
       projectCommandSchema.safeParse({
         ...command,

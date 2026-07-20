@@ -159,13 +159,15 @@ export type SupplierOfferOption = {
   purchaseUnit: { id: string; code: string; name: string };
   conversionToBase: string;
   currentPrice: { price: string; effectiveFrom: string };
-  isFuelCandidate: boolean;
+  kind: "fuel" | "material";
 };
 
 export type SuppliedItemCategoryOption = {
   id: string;
   name: string;
   parentId: string | null;
+  systemKey?: string | null;
+  kind: "fuel" | "material";
 };
 
 export type SuppliedItemSelectorOption = {
@@ -175,6 +177,7 @@ export type SuppliedItemSelectorOption = {
   categoryId: string | null;
   categoryPath: string[];
   activeSupplierCount: number;
+  kind: "fuel" | "material";
 };
 
 export type SuppliedItemSelectorPage = {
@@ -202,7 +205,13 @@ export type ProjectReadinessOptions = {
   machines: ProjectOption[];
   jobRoles: ProjectOption[];
   suppliers: FuelSupplierOption[];
-  suppliedItems: { id: string; name: string; baseUnitId: string }[];
+  suppliedItems: {
+    id: string;
+    name: string;
+    baseUnitId: string;
+    categoryId?: string | null;
+    kind: "fuel" | "material";
+  }[];
   suppliedItemCategories: SuppliedItemCategoryOption[];
   measurementUnits: { id: string; code: string; name: string }[];
   supplierOffers: SupplierOfferOption[];

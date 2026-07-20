@@ -3821,6 +3821,14 @@
       "get": {
         "summary": "List the global Supplied Item catalog tree",
         "tags": ["Commercial"],
+        "parameters": [
+          {
+            "schema": { "type": "boolean", "default": false },
+            "in": "query",
+            "name": "includeInactive",
+            "required": false
+          }
+        ],
         "security": [{ "bearerAuth": [] }],
         "responses": {
           "200": {
@@ -3845,6 +3853,10 @@
                               "id",
                               "name",
                               "parentId",
+                              "systemKey",
+                              "isActive",
+                              "effectiveActive",
+                              "kind",
                               "createdAt",
                               "updatedAt"
                             ],
@@ -3855,6 +3867,16 @@
                                 "type": "string",
                                 "format": "uuid",
                                 "nullable": true
+                              },
+                              "systemKey": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "isActive": { "type": "boolean" },
+                              "effectiveActive": { "type": "boolean" },
+                              "kind": {
+                                "type": "string",
+                                "enum": ["fuel", "material"]
                               },
                               "createdAt": {
                                 "type": "string",
@@ -3883,7 +3905,10 @@
                               "activeSupplierCount",
                               "spentQuantity",
                               "lastSpentAt",
-                              "updatedAt"
+                              "updatedAt",
+                              "isActive",
+                              "effectiveActive",
+                              "kind"
                             ],
                             "properties": {
                               "id": { "type": "string", "format": "uuid" },
@@ -3926,6 +3951,12 @@
                               "updatedAt": {
                                 "type": "string",
                                 "format": "date-time"
+                              },
+                              "isActive": { "type": "boolean" },
+                              "effectiveActive": { "type": "boolean" },
+                              "kind": {
+                                "type": "string",
+                                "enum": ["fuel", "material"]
                               }
                             },
                             "additionalProperties": false
@@ -4036,6 +4067,10 @@
                         "id",
                         "name",
                         "parentId",
+                        "systemKey",
+                        "isActive",
+                        "effectiveActive",
+                        "kind",
                         "createdAt",
                         "updatedAt"
                       ],
@@ -4046,6 +4081,13 @@
                           "type": "string",
                           "format": "uuid",
                           "nullable": true
+                        },
+                        "systemKey": { "type": "string", "nullable": true },
+                        "isActive": { "type": "boolean" },
+                        "effectiveActive": { "type": "boolean" },
+                        "kind": {
+                          "type": "string",
+                          "enum": ["fuel", "material"]
                         },
                         "createdAt": {
                           "type": "string",
@@ -4212,6 +4254,10 @@
                         "id",
                         "name",
                         "parentId",
+                        "systemKey",
+                        "isActive",
+                        "effectiveActive",
+                        "kind",
                         "createdAt",
                         "updatedAt"
                       ],
@@ -4222,6 +4268,13 @@
                           "type": "string",
                           "format": "uuid",
                           "nullable": true
+                        },
+                        "systemKey": { "type": "string", "nullable": true },
+                        "isActive": { "type": "boolean" },
+                        "effectiveActive": { "type": "boolean" },
+                        "kind": {
+                          "type": "string",
+                          "enum": ["fuel", "material"]
                         },
                         "createdAt": {
                           "type": "string",
@@ -4494,6 +4547,101 @@
         }
       }
     },
+    "/api/v1/supplied-item-categories/{categoryId}/status": {
+      "patch": {
+        "summary": "Activate or deactivate a Supplied Item Category",
+        "tags": ["Commercial"],
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "schema": { "type": "string" },
+            "in": "path",
+            "name": "categoryId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": { "schema": { "type": "object" } }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/supplied-items": {
       "get": {
         "summary": "List global Supplied Items",
@@ -4525,7 +4673,11 @@
                             "nullable": true
                           },
                           "valueUnitQuantity": { "type": "string" },
-                          "basePrice": { "type": "string" }
+                          "basePrice": { "type": "string" },
+                          "kind": {
+                            "type": "string",
+                            "enum": ["fuel", "material"]
+                          }
                         },
                         "additionalProperties": false
                       }
@@ -4646,7 +4798,11 @@
                           "nullable": true
                         },
                         "valueUnitQuantity": { "type": "string" },
-                        "basePrice": { "type": "string" }
+                        "basePrice": { "type": "string" },
+                        "kind": {
+                          "type": "string",
+                          "enum": ["fuel", "material"]
+                        }
                       },
                       "additionalProperties": false
                     }
@@ -4799,6 +4955,16 @@
             "in": "query",
             "name": "onlyWithActiveOffers",
             "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": ["fuel", "material", "all"],
+              "default": "all"
+            },
+            "in": "query",
+            "name": "kind",
+            "required": false
           }
         ],
         "security": [{ "bearerAuth": [] }],
@@ -4827,7 +4993,8 @@
                               "baseUnitId",
                               "categoryId",
                               "categoryPath",
-                              "activeSupplierCount"
+                              "activeSupplierCount",
+                              "kind"
                             ],
                             "properties": {
                               "id": { "type": "string", "format": "uuid" },
@@ -4848,6 +5015,10 @@
                               "activeSupplierCount": {
                                 "type": "integer",
                                 "minimum": 0
+                              },
+                              "kind": {
+                                "type": "string",
+                                "enum": ["fuel", "material"]
                               }
                             },
                             "additionalProperties": false
@@ -5038,7 +5209,11 @@
                           "nullable": true
                         },
                         "valueUnitQuantity": { "type": "string" },
-                        "basePrice": { "type": "string" }
+                        "basePrice": { "type": "string" },
+                        "kind": {
+                          "type": "string",
+                          "enum": ["fuel", "material"]
+                        }
                       },
                       "additionalProperties": false
                     }
@@ -5732,6 +5907,16 @@
             "required": false
           },
           {
+            "schema": {
+              "type": "string",
+              "enum": ["fuel", "material", "all"],
+              "default": "all"
+            },
+            "in": "query",
+            "name": "kind",
+            "required": false
+          },
+          {
             "schema": { "type": "string", "format": "uuid" },
             "in": "path",
             "name": "itemId",
@@ -5908,6 +6093,16 @@
             "schema": { "type": "string", "format": "uuid" },
             "in": "query",
             "name": "supplierId",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": ["fuel", "material", "all"],
+              "default": "all"
+            },
+            "in": "query",
+            "name": "kind",
             "required": false
           },
           {
@@ -6154,6 +6349,101 @@
             }
           },
           "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/supplied-items/{itemId}/status": {
+      "patch": {
+        "summary": "Activate or deactivate a global Supplied Item",
+        "tags": ["Commercial"],
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "schema": { "type": "string" },
+            "in": "path",
+            "name": "itemId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": { "schema": { "type": "object" } }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
             "description": "Default Response",
             "content": {
               "application/json": {
@@ -6682,6 +6972,16 @@
             },
             "in": "query",
             "name": "limit",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": ["fuel", "material", "all"],
+              "default": "all"
+            },
+            "in": "query",
+            "name": "kind",
             "required": false
           }
         ],
@@ -13090,7 +13390,7 @@
                   },
                   "projectSupplierOffers": {
                     "type": "array",
-                    "maxItems": 50,
+                    "maxItems": 0,
                     "items": {
                       "type": "object",
                       "additionalProperties": false,

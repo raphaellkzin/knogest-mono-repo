@@ -1,4 +1,5 @@
 import type { PrismaClient } from "../../src/db/generated/prisma/client";
+import { ensureCompanyCatalogBootstrap } from "../../src/modules/commercial/catalog-bootstrap";
 import { hashPassword } from "../../src/lib/security/password";
 import { protectSensitiveDocument } from "../../src/lib/security/sensitive-document";
 
@@ -269,6 +270,11 @@ async function seedCompany(prisma: PrismaClient, fixture: CompanyFixture) {
       name: fixture.name,
       isActive: true,
     },
+  });
+
+  await ensureCompanyCatalogBootstrap(prisma, {
+    corporationId: PILOT_CORPORATION_ID,
+    companyId: fixture.id,
   });
 
   for (const [index, employee] of fixture.employees.entries()) {

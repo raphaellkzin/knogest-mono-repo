@@ -50,10 +50,10 @@ describe("projectCommandSchema", () => {
     expect(parsed.projectSupplierOffers).toEqual([]);
   });
 
-  it("keeps supplier offers optional while validating populated entries", () => {
+  it("only accepts supplier offers after project creation", () => {
     const withOffer = valid();
     withOffer.projectSupplierOffers = [supplierOffer()];
-    expect(projectCommandSchema.safeParse(withOffer).success).toBe(true);
+    expect(projectCommandSchema.safeParse(withOffer).success).toBe(false);
 
     const invalidOffer = valid();
     invalidOffer.projectSupplierOffers = [

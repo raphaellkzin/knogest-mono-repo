@@ -167,7 +167,11 @@ describe("project material offers readiness", () => {
     return response.json().data.id as string;
   }
 
-  async function createItem(authorization: string, name: string) {
+  async function createItem(
+    authorization: string,
+    name: string,
+    categoryId?: string,
+  ) {
     const response = await app.inject({
       method: "POST",
       url: "/api/v1/supplied-items",
@@ -175,6 +179,7 @@ describe("project material offers readiness", () => {
       payload: {
         name,
         baseUnitId: "00000000-0000-4000-8000-00000000a003",
+        categoryId,
       },
     });
     expect(response.statusCode).toBe(201);
@@ -304,7 +309,20 @@ describe("project material offers readiness", () => {
       document: syntheticCatalogSupplierCpfFixture,
       name: "Posto Catálogo",
     });
-    const itemId = await createItem(scope.authorization, "Diesel S10");
+    const fuelCategory = await app.prisma.suppliedItemCategory.findFirstOrThrow(
+      {
+        where: {
+          corporationId: scope.corporationId,
+          companyId: scope.companyId,
+          systemKey: "fuel",
+        },
+      },
+    );
+    const itemId = await createItem(
+      scope.authorization,
+      "Diesel de teste da obra",
+      fuelCategory.id,
+    );
 
     const sourceOffer = await app.inject({
       method: "POST",

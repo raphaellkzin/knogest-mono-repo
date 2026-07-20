@@ -337,14 +337,19 @@ export async function removeSuppliedItemAction(
 ): Promise<RegistryActionState> {
   const supplierId = optionalString(formData, "supplierId") ?? "";
   const itemId = optionalString(formData, "itemId") ?? "";
+  const isActive = optionalString(formData, "isActive") === "true";
   try {
     await client({
-      url: `/api/v1/supplied-items/${itemId}`,
-      method: "DELETE",
+      url: `/api/v1/supplied-items/${itemId}/status`,
+      method: "PATCH",
+      data: { isActive },
     });
     revalidatePath("/home/fornecedores");
     if (supplierId) revalidatePath(`/home/fornecedores/${supplierId}`);
-    return { ok: true, message: "Item desativado." };
+    return {
+      ok: true,
+      message: isActive ? "Item reativado." : "Item desativado.",
+    };
   } catch (error) {
     return { ok: false, message: failureMessage(error) };
   }
@@ -381,14 +386,19 @@ export async function removeSuppliedItemCategoryAction(
 ): Promise<RegistryActionState> {
   const supplierId = optionalString(formData, "supplierId") ?? "";
   const categoryId = optionalString(formData, "categoryId") ?? "";
+  const isActive = optionalString(formData, "isActive") === "true";
   try {
     await client({
-      url: `/api/v1/supplied-item-categories/${categoryId}`,
-      method: "DELETE",
+      url: `/api/v1/supplied-item-categories/${categoryId}/status`,
+      method: "PATCH",
+      data: { isActive },
     });
     revalidatePath("/home/fornecedores");
     if (supplierId) revalidatePath(`/home/fornecedores/${supplierId}`);
-    return { ok: true, message: "Categoria desativada." };
+    return {
+      ok: true,
+      message: isActive ? "Categoria reativada." : "Categoria desativada.",
+    };
   } catch (error) {
     return { ok: false, message: failureMessage(error) };
   }

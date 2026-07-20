@@ -76,17 +76,20 @@ export type LookupMaterialItemsAction = (input: {
   cursor?: string | null;
   onlyWithActiveOffers?: boolean;
   search?: string;
+  kind: "fuel" | "material";
 }) => Promise<SuppliedItemSelectorPage>;
 
 export type LookupMaterialOfferSuppliersAction = (input: {
   itemId: string;
   search?: string;
+  kind: "fuel" | "material";
 }) => Promise<FuelSupplierOption[]>;
 
 export type LookupMaterialOffersAction = (input: {
   cursor?: string | null;
   itemId: string;
   supplierId?: string | null;
+  kind: "fuel" | "material";
 }) => Promise<ProjectSuppliedItemOffersPage>;
 
 export type LookupMaterialSuppliersAction = (input: {
@@ -513,6 +516,7 @@ export function MaterialAddEditor({
         cursor,
         onlyWithActiveOffers: draft.mode === "existing",
         search: debouncedItemSearch,
+        kind: "material",
       })
         .then((page) => {
           if (itemRequestId.current !== requestId) return;
@@ -546,6 +550,7 @@ export function MaterialAddEditor({
         cursor,
         itemId: draft.itemId,
         supplierId: draft.supplierId,
+        kind: "material",
       })
         .then((page) => {
           if (offerRequestId.current !== requestId) return;
@@ -607,6 +612,7 @@ export function MaterialAddEditor({
           ? lookupOfferSuppliersAction({
               itemId: draft.itemId,
               search: debouncedSupplierSearch,
+              kind: "material",
             })
           : lookupSuppliersAction({ search: debouncedSupplierSearch });
       void request

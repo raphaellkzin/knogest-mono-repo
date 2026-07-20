@@ -271,6 +271,7 @@ export async function lookupProjectSuppliedItemsAction(input: {
   cursor?: string | null;
   onlyWithActiveOffers?: boolean;
   search?: string;
+  kind: "fuel" | "material";
 }): Promise<SuppliedItemSelectorPage> {
   const response = await client<{
     success: true;
@@ -285,6 +286,7 @@ export async function lookupProjectSuppliedItemsAction(input: {
       categoryId: input.categoryId || undefined,
       includeDescendants: true,
       onlyWithActiveOffers: input.onlyWithActiveOffers ?? false,
+      kind: input.kind,
     },
   });
   return response.data.data;
@@ -293,6 +295,7 @@ export async function lookupProjectSuppliedItemsAction(input: {
 export async function lookupProjectSuppliedItemOfferSuppliersAction(input: {
   itemId: string;
   search?: string;
+  kind: "fuel" | "material";
 }): Promise<FuelSupplierOption[]> {
   const response = await client<{
     success: true;
@@ -303,6 +306,7 @@ export async function lookupProjectSuppliedItemOfferSuppliersAction(input: {
     params: {
       limit: 25,
       search: input.search || undefined,
+      kind: input.kind,
     },
   });
   return response.data.data;
@@ -329,6 +333,7 @@ export async function lookupProjectSuppliedItemOffersAction(input: {
   cursor?: string | null;
   itemId: string;
   supplierId?: string | null;
+  kind: "fuel" | "material";
 }): Promise<ProjectSuppliedItemOffersPage> {
   const response = await client<{
     success: true;
@@ -340,6 +345,7 @@ export async function lookupProjectSuppliedItemOffersAction(input: {
       limit: 20,
       cursor: input.cursor ?? undefined,
       supplierId: input.supplierId || undefined,
+      kind: input.kind,
     },
   });
   return response.data.data;

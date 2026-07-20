@@ -21,12 +21,14 @@ import {
   supplierOfferSchema as createSupplierOfferBodySchema,
   listCommercialRegistryQuerySchema,
   listSuppliedItemSelectorsQuerySchema,
+  listSuppliedItemCatalogQuerySchema,
   listSuppliedItemOffersQuerySchema,
   selectorQuerySchema,
   updateSuppliedItemCategorySchema,
   updateSuppliedItemSchema,
   updateSupplierOfferSchema,
   updateSupplierSchema,
+  updateCatalogStatusSchema,
 } from "./commercial.dto";
 import { CommercialService } from "./commercial.service";
 import { listActiveFuelTypesHandler } from "./handlers/commercial-registry.handler";
@@ -147,6 +149,7 @@ const selectorOpenApiQuerySchema = {
   properties: {
     search: { type: "string", maxLength: 120 },
     limit: { type: "integer", minimum: 1, maximum: 100, default: 25 },
+    kind: { type: "string", enum: ["fuel", "material", "all"], default: "all" },
   },
 } as const;
 
@@ -157,6 +160,7 @@ const suppliedItemOffersOpenApiQuerySchema = {
     limit: { type: "integer", minimum: 1, maximum: 100, default: 30 },
     cursor: { type: "string", minLength: 1, maxLength: 2048 },
     supplierId: { type: "string", format: "uuid" },
+    kind: { type: "string", enum: ["fuel", "material", "all"], default: "all" },
   },
 } as const;
 
@@ -170,6 +174,7 @@ const suppliedItemSelectorsOpenApiQuerySchema = {
     categoryId: { type: "string", format: "uuid" },
     includeDescendants: { type: "boolean", default: true },
     onlyWithActiveOffers: { type: "boolean", default: false },
+    kind: { type: "string", enum: ["fuel", "material", "all"], default: "all" },
   },
 } as const;
 
@@ -471,17 +476,32 @@ const suppliedItemSchema = {
     categoryId: { type: "string", format: "uuid", nullable: true },
     valueUnitQuantity: { type: "string" },
     basePrice: { type: "string" },
+    kind: { type: "string", enum: ["fuel", "material"] },
   },
   additionalProperties: false,
 } as const;
 
 const suppliedItemCategorySchema = {
   type: "object",
-  required: ["id", "name", "parentId", "createdAt", "updatedAt"],
+  required: [
+    "id",
+    "name",
+    "parentId",
+    "systemKey",
+    "isActive",
+    "effectiveActive",
+    "kind",
+    "createdAt",
+    "updatedAt",
+  ],
   properties: {
     id: { type: "string", format: "uuid" },
     name: { type: "string" },
     parentId: { type: "string", format: "uuid", nullable: true },
+    systemKey: { type: "string", nullable: true },
+    isActive: { type: "boolean" },
+    effectiveActive: { type: "boolean" },
+    kind: { type: "string", enum: ["fuel", "material"] },
     createdAt: { type: "string", format: "date-time" },
     updatedAt: { type: "string", format: "date-time" },
   },
@@ -502,6 +522,9 @@ const suppliedItemCatalogItemSchema = {
     "spentQuantity",
     "lastSpentAt",
     "updatedAt",
+    "isActive",
+    "effectiveActive",
+    "kind",
   ],
   properties: {
     id: { type: "string", format: "uuid" },
@@ -515,6 +538,9 @@ const suppliedItemCatalogItemSchema = {
     spentQuantity: { type: "string", nullable: true },
     lastSpentAt: { type: "string", format: "date-time", nullable: true },
     updatedAt: { type: "string", format: "date-time" },
+    isActive: { type: "boolean" },
+    effectiveActive: { type: "boolean" },
+    kind: { type: "string", enum: ["fuel", "material"] },
   },
   additionalProperties: false,
 } as const;
@@ -546,6 +572,7 @@ const suppliedItemSelectorSchema = {
     "categoryId",
     "categoryPath",
     "activeSupplierCount",
+    "kind",
   ],
   properties: {
     id: { type: "string", format: "uuid" },
@@ -554,6 +581,7 @@ const suppliedItemSelectorSchema = {
     categoryId: { type: "string", format: "uuid", nullable: true },
     categoryPath: { type: "array", items: { type: "string" } },
     activeSupplierCount: { type: "integer", minimum: 0 },
+    kind: { type: "string", enum: ["fuel", "material"] },
   },
   additionalProperties: false,
 } as const;
@@ -1227,11 +1255,21 @@ export const v1CommercialController = async (app: FastifyInstance) => {
   app.get(
     "/supplied-items/catalog",
     {
-      preHandler: app.requireCompanyScope,
+      preHandler: [
+        app.requireCompanyScope,
+        validateQuery(listSuppliedItemCatalogQuerySchema),
+      ],
       schema: {
         tags: ["Commercial"],
         summary: "List the global Supplied Item catalog tree",
         security: [{ bearerAuth: [] }],
+        querystring: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            includeInactive: { type: "boolean", default: false },
+          },
+        },
         response: {
           200: suppliedItemCatalogResponseSchema,
           401: errorSchema,
@@ -1242,6 +1280,7 @@ export const v1CommercialController = async (app: FastifyInstance) => {
     async (request, reply) => {
       const data = await commercialService.listSuppliedItemCatalog(
         scopeFromRequest(request),
+        request.query as z.infer<typeof listSuppliedItemCatalogQuerySchema>,
       );
       return jsonResponse.success({ reply, data });
     },
@@ -1383,6 +1422,39 @@ export const v1CommercialController = async (app: FastifyInstance) => {
       const data = await commercialService.removeSuppliedItemCategory(
         scopeFromRequest(request),
         categoryId,
+      );
+      return jsonResponse.success({ reply, data });
+    },
+  );
+
+  app.patch(
+    "/supplied-item-categories/:categoryId/status",
+    {
+      preHandler: [
+        app.requireCompanyScope,
+        validateParams(suppliedItemCategoryParamsSchema),
+        validateBody(updateCatalogStatusSchema),
+      ],
+      schema: {
+        tags: ["Commercial"],
+        summary: "Activate or deactivate a Supplied Item Category",
+        security: [{ bearerAuth: [] }],
+        response: {
+          200: { type: "object" },
+          400: errorSchema,
+          404: errorSchema,
+          409: errorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { categoryId } = request.params as z.infer<
+        typeof suppliedItemCategoryParamsSchema
+      >;
+      const data = await commercialService.updateSuppliedItemCategoryStatus(
+        scopeFromRequest(request),
+        categoryId,
+        request.body as z.infer<typeof updateCatalogStatusSchema>,
       );
       return jsonResponse.success({ reply, data });
     },
@@ -1769,6 +1841,39 @@ export const v1CommercialController = async (app: FastifyInstance) => {
       const data = await commercialService.removeSuppliedItem(
         scopeFromRequest(request),
         itemId,
+      );
+      return jsonResponse.success({ reply, data });
+    },
+  );
+
+  app.patch(
+    "/supplied-items/:itemId/status",
+    {
+      preHandler: [
+        app.requireCompanyScope,
+        validateParams(suppliedItemParamsSchema),
+        validateBody(updateCatalogStatusSchema),
+      ],
+      schema: {
+        tags: ["Commercial"],
+        summary: "Activate or deactivate a global Supplied Item",
+        security: [{ bearerAuth: [] }],
+        response: {
+          200: { type: "object" },
+          400: errorSchema,
+          404: errorSchema,
+          409: errorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { itemId } = request.params as z.infer<
+        typeof suppliedItemParamsSchema
+      >;
+      const data = await commercialService.updateSuppliedItemStatus(
+        scopeFromRequest(request),
+        itemId,
+        request.body as z.infer<typeof updateCatalogStatusSchema>,
       );
       return jsonResponse.success({ reply, data });
     },

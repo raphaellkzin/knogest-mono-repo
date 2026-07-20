@@ -39,11 +39,17 @@ const units: ProjectReadinessOptions["measurementUnits"] = [
 ];
 
 const categories: ProjectReadinessOptions["suppliedItemCategories"] = [
-  { id: "category-root", name: "Agregados", parentId: null },
+  {
+    id: "category-root",
+    name: "Agregados",
+    parentId: null,
+    kind: "material",
+  },
   {
     id: "category-child",
     name: "Britas",
     parentId: "category-root",
+    kind: "material",
   },
 ];
 
@@ -64,6 +70,7 @@ const itemPage: SuppliedItemSelectorPage = {
       categoryId: "category-child",
       categoryPath: ["Agregados", "Britas"],
       activeSupplierCount: 1,
+      kind: "material",
     },
   ],
   pageInfo: { hasNextPage: false, nextCursor: null },
@@ -220,6 +227,7 @@ describe("Project material offer wizard", () => {
     await waitFor(() =>
       expect(lookupOfferSuppliers).toHaveBeenCalledWith({
         itemId: "item-1",
+        kind: "material",
         search: "",
       }),
     );
@@ -227,6 +235,7 @@ describe("Project material offer wizard", () => {
       expect(lookupOffers).toHaveBeenCalledWith({
         cursor: null,
         itemId: "item-1",
+        kind: "material",
         supplierId: supplier.id,
       }),
     );

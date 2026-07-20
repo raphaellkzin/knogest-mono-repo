@@ -15,11 +15,13 @@ import {
   ChevronRight,
   Eye,
   FolderPlus,
+  LockKeyhole,
   MoreHorizontal,
   PackagePlus,
   Pencil,
   Plus,
   Search,
+  RotateCcw,
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -122,7 +124,27 @@ function preferredItemUnitId(units: MeasurementUnitOption[]) {
   return liter?.id ?? units[0]?.id ?? "";
 }
 
-function itemDraftFromFormData(formData: FormData, fallback: ItemDraft): ItemDraft {
+function isCategoryDescendantOf(
+  categories: SuppliedItemCategory[],
+  categoryId: string,
+  possibleAncestorId: string,
+) {
+  const byId = new Map(categories.map((category) => [category.id, category]));
+  const seen = new Set<string>();
+  let currentId: string | null = categoryId;
+  while (currentId) {
+    if (currentId === possibleAncestorId) return true;
+    if (seen.has(currentId)) return false;
+    seen.add(currentId);
+    currentId = byId.get(currentId)?.parentId ?? null;
+  }
+  return false;
+}
+
+function itemDraftFromFormData(
+  formData: FormData,
+  fallback: ItemDraft,
+): ItemDraft {
   const value = (key: string) => {
     const field = formData.get(key);
     return typeof field === "string" ? field : "";
@@ -204,6 +226,9 @@ export function SuppliedItemsCatalog({
             catalog.units.find((unit) => unit.id === item.baseUnitId) ?? null,
           valueUnitQuantity: item.valueUnitQuantity ?? "1.000000",
           basePrice: item.basePrice ?? "0.0000",
+          isActive: true,
+          effectiveActive: true,
+          kind: "material",
           activeSupplierCount: 0,
           spentQuantity: null,
           lastSpentAt: null,
@@ -214,6 +239,9 @@ export function SuppliedItemsCatalog({
   );
   const categories = catalog.categories ?? [];
   const [isItemModalOpen, setIsItemModalOpen] = useState(false);
+  const [catalogStatus, setCatalogStatus] = useState<"active" | "inactive">(
+    "active",
+  );
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [isItemSupplierModalOpen, setIsItemSupplierModalOpen] = useState(false);
   const [isItemOffersModalOpen, setIsItemOffersModalOpen] = useState(false);
@@ -252,6 +280,7 @@ export function SuppliedItemsCatalog({
 
   const handleSaveItemAction = useCallback<RegistryAction>(
     async (state, formData) => {
+      const submittedDraft = itemDraftFromFormData(formData, itemDraft);
       const result = await saveSuppliedItemAction(state, formData);
       if (result.ok && result.message) {
         setIsItemModalOpen(false);
@@ -259,11 +288,11 @@ export function SuppliedItemsCatalog({
         setPendingItemFields([]);
         setOtherOfferCount(0);
       } else {
-        setItemDraft((current) => itemDraftFromFormData(formData, current));
+        setItemDraft(submittedDraft);
       }
       return result;
     },
-    [saveSuppliedItemAction],
+    [itemDraft, saveSuppliedItemAction],
   );
   const handleSaveCategoryAction = useCallback<RegistryAction>(
     async (state, formData) => {
@@ -485,11 +514,7 @@ export function SuppliedItemsCatalog({
     item: SuppliedItemCatalogItem,
     draft: ItemDraft,
   ) => {
-    const nextBasePrice = decimalInputToCanonicalFixed(
-      draft.basePrice,
-      4,
-      4,
-    );
+    const nextBasePrice = decimalInputToCanonicalFixed(draft.basePrice, 4, 4);
     const nextValueUnitQuantity = draft.useValueUnit
       ? decimalInputToCanonicalFixed(draft.valueUnitQuantity, 6, 6)
       : "1.000000";
@@ -500,9 +525,7 @@ export function SuppliedItemsCatalog({
     );
   };
 
-  const handleItemSubmit: React.FormEventHandler<HTMLFormElement> = (
-    event,
-  ) => {
+  const handleItemSubmit: React.FormEventHandler<HTMLFormElement> = (event) => {
     const formData = new FormData(event.currentTarget);
     const submittedDraft = itemDraftFromFormData(formData, itemDraft);
     setItemDraft(submittedDraft);
@@ -534,12 +557,6 @@ export function SuppliedItemsCatalog({
     });
   };
 
-  useEffect(() => {
-    if (!isItemSupplierModalOpen) {
-      setItemSupplierDraft(emptyItemSupplierDraft);
-    }
-  }, [isItemSupplierModalOpen]);
-
   const toggleCategory = (categoryId: string) => {
     setOpenCategoryIds((current) => {
       const next = new Set(current);
@@ -558,6 +575,13 @@ export function SuppliedItemsCatalog({
   const visibleItemOffers = isEditingItemOffer
     ? itemOffers.filter((offer) => offer.id === itemOfferDraft.offerId)
     : itemOffers;
+  const visibleCatalogItems = catalogItems.filter((item) =>
+    catalogStatus === "active" ? item.effectiveActive : !item.effectiveActive,
+  );
+  const visibleCategories =
+    catalogStatus === "active"
+      ? categories.filter((category) => category.effectiveActive)
+      : categories;
 
   return (
     <section className="rounded-lg border border-border bg-card">
@@ -569,6 +593,24 @@ export function SuppliedItemsCatalog({
       </div>
 
       <div className="grid gap-4 px-5 py-4">
+        <div className="flex justify-end gap-2" aria-label="Filtrar catálogo">
+          <Button
+            type="button"
+            size="sm"
+            variant={catalogStatus === "active" ? "default" : "outline"}
+            onClick={() => setCatalogStatus("active")}
+          >
+            Ativos
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={catalogStatus === "inactive" ? "default" : "outline"}
+            onClick={() => setCatalogStatus("inactive")}
+          >
+            Inativos
+          </Button>
+        </div>
         <div className="flex flex-col gap-3 rounded-md border border-primary/35 bg-primary/[0.035] p-4 md:flex-row md:items-center md:justify-between">
           <div className="min-w-0">
             <p className="text-sm font-bold">Ações da raiz</p>
@@ -593,11 +635,11 @@ export function SuppliedItemsCatalog({
           </div>
         </div>
 
-        {catalogItems.length > 0 || categories.length > 0 ? (
+        {visibleCatalogItems.length > 0 || visibleCategories.length > 0 ? (
           <CatalogTree
             activeCategoryId={activeCategoryId}
-            categories={categories}
-            items={catalogItems}
+            categories={visibleCategories}
+            items={visibleCatalogItems}
             itemActionId={itemActionId}
             onAddSupplier={openItemSupplierModal}
             onCreateItem={(categoryId) => openItemModal(null, categoryId)}
@@ -656,7 +698,6 @@ export function SuppliedItemsCatalog({
           {itemDraft.id && (
             <input type="hidden" name="itemId" value={itemDraft.id} />
           )}
-          <input type="hidden" name="categoryId" value={itemDraft.categoryId} />
           <FormSection
             title="Dados do item"
             description="O item fica disponível para as ofertas de todos os fornecedores desta empresa."
@@ -675,12 +716,43 @@ export function SuppliedItemsCatalog({
               maxLength={160}
               placeholder="Ex.: Diesel S10"
             />
+            <label className="grid gap-1.5 text-sm font-semibold">
+              <span>Categoria</span>
+              <select
+                name="categoryId"
+                value={itemDraft.categoryId}
+                onChange={(event) =>
+                  setItemDraft((current) => ({
+                    ...current,
+                    categoryId: event.target.value,
+                  }))
+                }
+                className="min-h-11 rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
+              >
+                <option value="">Sem categoria</option>
+                {categories
+                  .filter((category) => category.effectiveActive)
+                  .map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.kind === "fuel" ? "Combustíveis / " : ""}
+                      {category.name}
+                    </option>
+                  ))}
+              </select>
+            </label>
             <div className="grid gap-3 md:grid-cols-2">
               <label className="grid gap-1.5 text-sm font-semibold">
                 <span>Unidade de medida</span>
                 <select
                   name="baseUnitId"
                   value={itemDraft.baseUnitId}
+                  ref={(element) => {
+                    if (!element) return;
+                    for (const option of element.options) {
+                      option.defaultSelected =
+                        option.value === itemDraft.baseUnitId;
+                    }
+                  }}
                   required
                   onChange={(event) =>
                     setItemDraft((current) => ({
@@ -793,7 +865,6 @@ export function SuppliedItemsCatalog({
           {categoryDraft.id && (
             <input type="hidden" name="categoryId" value={categoryDraft.id} />
           )}
-          <input type="hidden" name="parentId" value={categoryDraft.parentId} />
           <FormSection title="Categoria">
             <Field
               label="Nome"
@@ -809,6 +880,40 @@ export function SuppliedItemsCatalog({
               maxLength={120}
               placeholder="Ex.: Combustíveis"
             />
+            <label className="grid gap-1.5 text-sm font-semibold">
+              <span>Categoria pai</span>
+              <select
+                name="parentId"
+                value={categoryDraft.parentId}
+                onChange={(event) =>
+                  setCategoryDraft((current) => ({
+                    ...current,
+                    parentId: event.target.value,
+                  }))
+                }
+                className="min-h-11 rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
+              >
+                <option value="">Categoria raiz</option>
+                {categories
+                  .filter(
+                    (category) =>
+                      category.effectiveActive &&
+                      category.id !== categoryDraft.id &&
+                      (!categoryDraft.id ||
+                        !isCategoryDescendantOf(
+                          categories,
+                          category.id,
+                          categoryDraft.id,
+                        )),
+                  )
+                  .map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.kind === "fuel" ? "Combustíveis / " : ""}
+                      {category.name}
+                    </option>
+                  ))}
+              </select>
+            </label>
           </FormSection>
 
           {!saveCategoryState.ok && saveCategoryState.message && (
@@ -824,7 +929,10 @@ export function SuppliedItemsCatalog({
       <OperationsModal
         icon={PackagePlus}
         open={isItemSupplierModalOpen}
-        onOpenChange={setIsItemSupplierModalOpen}
+        onOpenChange={(open) => {
+          setIsItemSupplierModalOpen(open);
+          if (!open) setItemSupplierDraft(emptyItemSupplierDraft);
+        }}
         size="lg"
         title="Adicionar fornecedor"
         description="Escolha um fornecedor ativo e confirme a oferta deste item."
@@ -1431,19 +1539,46 @@ function CatalogLevel({
                 )}
                 <span className="truncate">{category.name}</span>
               </button>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                onClick={() => onEditCategory(category)}
-              >
-                <Pencil className="size-4" />
-                Editar
-              </Button>
-              <form action={onRemoveCategory}>
-                <input type="hidden" name="categoryId" value={category.id} />
-                <RemoveCategoryButton />
-              </form>
+              {category.systemKey === "fuel" && (
+                <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-xs font-bold text-primary">
+                  <LockKeyhole className="size-3" />
+                  Categoria fixa
+                </span>
+              )}
+              {!category.effectiveActive && (
+                <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs font-bold text-muted-foreground">
+                  Inativa
+                </span>
+              )}
+              {category.systemKey !== "fuel" && (
+                <>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => onEditCategory(category)}
+                  >
+                    <Pencil className="size-4" />
+                    Editar
+                  </Button>
+                  {(category.isActive || !category.effectiveActive) &&
+                    !(category.isActive && !category.effectiveActive) && (
+                      <form action={onRemoveCategory}>
+                        <input
+                          type="hidden"
+                          name="categoryId"
+                          value={category.id}
+                        />
+                        <input
+                          type="hidden"
+                          name="isActive"
+                          value={category.isActive ? "false" : "true"}
+                        />
+                        <RemoveCategoryButton activate={!category.isActive} />
+                      </form>
+                    )}
+                </>
+              )}
             </div>
             {isOpen && (
               <div className="grid gap-2 border-t border-border px-3 py-3">
@@ -1452,6 +1587,7 @@ function CatalogLevel({
                     type="button"
                     size="sm"
                     variant="outline"
+                    disabled={!category.effectiveActive}
                     onClick={() => onCreateItem(category.id)}
                   >
                     <Plus className="size-4" />
@@ -1461,7 +1597,9 @@ function CatalogLevel({
                     type="button"
                     size="sm"
                     variant="outline"
-                    disabled={!canCreateSubcategory}
+                    disabled={
+                      !canCreateSubcategory || !category.effectiveActive
+                    }
                     onClick={() => onCreateSubcategory(category.id)}
                   >
                     <FolderPlus className="size-4" />
@@ -1537,7 +1675,14 @@ function CatalogItemRow({
     <div className="rounded-md border border-border bg-background">
       <div className="grid gap-3 px-3 py-3 md:grid-cols-[minmax(0,1.4fr)_repeat(3,minmax(8rem,0.75fr))_auto] md:items-center">
         <div className="min-w-0">
-          <p className="truncate text-sm font-bold">{item.name}</p>
+          <div className="flex items-center gap-2">
+            <p className="truncate text-sm font-bold">{item.name}</p>
+            {!item.effectiveActive && (
+              <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs font-bold text-muted-foreground">
+                Inativo
+              </span>
+            )}
+          </div>
           <p className="mt-1 text-xs font-semibold text-muted-foreground">
             {item.baseUnit
               ? `${item.baseUnit.code} - ${item.baseUnit.name}`
@@ -1681,30 +1826,34 @@ function FloatingItemActionMenu({
           position.placement === "above" ? "translateY(-100%)" : undefined,
       }}
     >
-      <button
-        type="button"
-        role="menuitem"
-        className="flex min-h-9 w-full items-center gap-2 rounded-md px-2.5 text-left text-sm font-semibold outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/30"
-        onClick={() => {
-          onClose();
-          onViewOffers(item);
-        }}
-      >
-        <Eye className="size-4 text-primary" />
-        Ver ofertas
-      </button>
-      <button
-        type="button"
-        role="menuitem"
-        className="flex min-h-9 w-full items-center gap-2 rounded-md px-2.5 text-left text-sm font-semibold outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/30"
-        onClick={() => {
-          onClose();
-          onAddSupplier(item);
-        }}
-      >
-        <PackagePlus className="size-4 text-primary" />
-        Adicionar fornecedor
-      </button>
+      {item.effectiveActive && (
+        <>
+          <button
+            type="button"
+            role="menuitem"
+            className="flex min-h-9 w-full items-center gap-2 rounded-md px-2.5 text-left text-sm font-semibold outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/30"
+            onClick={() => {
+              onClose();
+              onViewOffers(item);
+            }}
+          >
+            <Eye className="size-4 text-primary" />
+            Ver ofertas
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="flex min-h-9 w-full items-center gap-2 rounded-md px-2.5 text-left text-sm font-semibold outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/30"
+            onClick={() => {
+              onClose();
+              onAddSupplier(item);
+            }}
+          >
+            <PackagePlus className="size-4 text-primary" />
+            Adicionar fornecedor
+          </button>
+        </>
+      )}
       <button
         type="button"
         role="menuitem"
@@ -1717,10 +1866,20 @@ function FloatingItemActionMenu({
         <Pencil className="size-4 text-primary" />
         Editar
       </button>
-      <form action={onRemoveItem}>
-        <input type="hidden" name="itemId" value={item.id} />
-        <RemoveItemButton className="w-full justify-start border-transparent shadow-none hover:bg-red-50" />
-      </form>
+      {!(item.isActive && !item.effectiveActive) && (
+        <form action={onRemoveItem}>
+          <input type="hidden" name="itemId" value={item.id} />
+          <input
+            type="hidden"
+            name="isActive"
+            value={item.isActive ? "false" : "true"}
+          />
+          <RemoveItemButton
+            activate={!item.isActive}
+            className="w-full justify-start border-transparent shadow-none hover:bg-red-50"
+          />
+        </form>
+      )}
     </div>,
     document.body,
   );
@@ -1823,7 +1982,13 @@ function SaveItemSupplierButton({ formId }: { formId: string }) {
   );
 }
 
-function RemoveItemButton({ className }: { className?: string }) {
+function RemoveItemButton({
+  activate,
+  className,
+}: {
+  activate: boolean;
+  className?: string;
+}) {
   const { pending } = useFormStatus();
   return (
     <Button
@@ -1832,15 +1997,25 @@ function RemoveItemButton({ className }: { className?: string }) {
       variant="outline"
       disabled={pending}
       role="menuitem"
-      className={`border-red-200 text-red-900 hover:bg-red-50 ${className ?? ""}`}
+      className={`${activate ? "border-primary/25 text-primary hover:bg-primary/5" : "border-red-200 text-red-900 hover:bg-red-50"} ${className ?? ""}`}
     >
-      <Trash2 className="size-4" />
-      {pending ? "Desativando" : "Desativar item"}
+      {activate ? (
+        <RotateCcw className="size-4" />
+      ) : (
+        <Trash2 className="size-4" />
+      )}
+      {pending
+        ? activate
+          ? "Reativando"
+          : "Desativando"
+        : activate
+          ? "Reativar item"
+          : "Desativar item"}
     </Button>
   );
 }
 
-function RemoveCategoryButton() {
+function RemoveCategoryButton({ activate }: { activate: boolean }) {
   const { pending } = useFormStatus();
   return (
     <Button
@@ -1848,10 +2023,24 @@ function RemoveCategoryButton() {
       size="sm"
       variant="outline"
       disabled={pending}
-      className="border-red-200 text-red-900 hover:bg-red-50"
+      className={
+        activate
+          ? "border-primary/25 text-primary hover:bg-primary/5"
+          : "border-red-200 text-red-900 hover:bg-red-50"
+      }
     >
-      <Trash2 className="size-4" />
-      {pending ? "Desativando" : "Desativar"}
+      {activate ? (
+        <RotateCcw className="size-4" />
+      ) : (
+        <Trash2 className="size-4" />
+      )}
+      {pending
+        ? activate
+          ? "Reativando"
+          : "Desativando"
+        : activate
+          ? "Reativar"
+          : "Desativar"}
     </Button>
   );
 }

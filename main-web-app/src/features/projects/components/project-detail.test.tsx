@@ -59,11 +59,23 @@ const suppliers: ProjectReadinessOptions["suppliers"] = [
 ];
 
 const suppliedItems: ProjectReadinessOptions["suppliedItems"] = [
-  { id: "item-1", name: "Diesel S10", baseUnitId: "unit-l" },
+  {
+    id: "item-1",
+    name: "Diesel S10",
+    baseUnitId: "unit-l",
+    kind: "fuel",
+  },
 ];
 
 const suppliedItemCategories: ProjectReadinessOptions["suppliedItemCategories"] =
-  [{ id: "category-1", name: "Combustíveis", parentId: null }];
+  [
+    {
+      id: "category-1",
+      name: "Combustíveis",
+      parentId: null,
+      kind: "fuel",
+    },
+  ];
 
 const fuelOptions: SupplierOfferOption[] = [
   {
@@ -76,7 +88,7 @@ const fuelOptions: SupplierOfferOption[] = [
       price: "6.5000",
       effectiveFrom: "2026-07-16T00:00:00.000Z",
     },
-    isFuelCandidate: true,
+    kind: "fuel",
   },
 ];
 
@@ -185,6 +197,7 @@ const lookupSuppliedItemsAction: React.ComponentProps<
       categoryId: "category-1",
       categoryPath: ["Combustíveis"],
       activeSupplierCount: 1,
+      kind: "fuel",
     },
   ],
   pageInfo: { hasNextPage: false, nextCursor: null },

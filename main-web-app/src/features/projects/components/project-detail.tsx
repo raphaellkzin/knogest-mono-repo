@@ -189,17 +189,20 @@ type LookupSuppliedItemsAction = (input: {
   cursor?: string | null;
   onlyWithActiveOffers?: boolean;
   search?: string;
+  kind: "fuel" | "material";
 }) => Promise<SuppliedItemSelectorPage>;
 
 type LookupSuppliedItemOfferSuppliersAction = (input: {
   itemId: string;
   search?: string;
+  kind: "fuel" | "material";
 }) => Promise<FuelSupplierOption[]>;
 
 type LookupSuppliedItemOffersAction = (input: {
   cursor?: string | null;
   itemId: string;
   supplierId?: string | null;
+  kind: "fuel" | "material";
 }) => Promise<ProjectSuppliedItemOffersPage>;
 
 export type ReadinessOfferCommand =
@@ -529,8 +532,7 @@ function defaultUnitId(
 }
 
 function pickFuelOptions(options: SupplierOfferOption[]) {
-  const candidates = options.filter((offer) => offer.isFuelCandidate);
-  return candidates.length ? candidates : options;
+  return options.filter((offer) => offer.kind === "fuel");
 }
 
 export function createBlankFuelDraft(
@@ -871,6 +873,7 @@ export function FuelAddEditor({
         cursor,
         onlyWithActiveOffers: draft.mode === "existing",
         search: debouncedItemSearch,
+        kind: "fuel",
       })
         .then((page) => {
           if (itemRequestId.current !== requestId) return;
@@ -903,6 +906,7 @@ export function FuelAddEditor({
         cursor,
         itemId: draft.itemId,
         supplierId: selectedOfferSupplierId || null,
+        kind: "fuel",
       })
         .then((page) => {
           if (offerRequestId.current !== requestId) return;
@@ -944,6 +948,7 @@ export function FuelAddEditor({
       void lookupSuppliedItemOfferSuppliersAction({
         itemId: draft.itemId,
         search: debouncedSupplierSearch,
+        kind: "fuel",
       })
         .then((data) => {
           if (supplierRequestId.current !== requestId) return;
@@ -3012,7 +3017,9 @@ export function ProjectDetail({
       >
         {fuelAddDraft && (
           <FuelAddEditor
-            categories={options.suppliedItemCategories}
+            categories={options.suppliedItemCategories.filter(
+              (category) => category.kind === "fuel",
+            )}
             draft={fuelAddDraft}
             fuelOptions={fuelOptions}
             lookupSuppliedItemOfferSuppliersAction={
@@ -3232,7 +3239,9 @@ export function ProjectDetail({
         )}
         {materialView === "add" && materialDraft && (
           <MaterialAddEditor
-            categories={options.suppliedItemCategories}
+            categories={options.suppliedItemCategories.filter(
+              (category) => category.kind === "material",
+            )}
             draft={materialDraft}
             lookupItemsAction={lookupSuppliedItemsAction}
             lookupOfferSuppliersAction={lookupSuppliedItemOfferSuppliersAction}

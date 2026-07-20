@@ -52,6 +52,10 @@ const catalog = {
       id: "category-1",
       name: "Combustíveis",
       parentId: null,
+      systemKey: "fuel",
+      isActive: true,
+      effectiveActive: true,
+      kind: "fuel" as const,
       createdAt: "2026-07-14T12:00:00.000Z",
       updatedAt: "2026-07-14T12:00:00.000Z",
     },
@@ -65,6 +69,9 @@ const catalog = {
       baseUnit: { id: "unit-1", code: "L", name: "Litro" },
       valueUnitQuantity: "1.234560",
       basePrice: "7.5000",
+      isActive: true,
+      effectiveActive: true,
+      kind: "fuel" as const,
       activeSupplierCount: 1,
       spentQuantity: null,
       lastSpentAt: null,
@@ -156,6 +163,7 @@ function renderTabs({
     data: [itemOffer],
     pageInfo: { hasNextPage: false, nextCursor: null },
   }),
+  removeSuppliedItemAction = async () => initialState,
   saveSupplierOfferAction = async () => initialState,
   saveSuppliedItemAction = async () => initialState,
   supplierCatalog = catalog,
@@ -173,6 +181,9 @@ function renderTabs({
   lookupSuppliedItemOffersAction?: ComponentProps<
     typeof FuelSuppliersTabs
   >["lookupSuppliedItemOffersAction"];
+  removeSuppliedItemAction?: ComponentProps<
+    typeof FuelSuppliersTabs
+  >["removeSuppliedItemAction"];
   saveSupplierOfferAction?: ComponentProps<
     typeof FuelSuppliersTabs
   >["saveSupplierOfferAction"];
@@ -194,7 +205,7 @@ function renderTabs({
       lookupSuppliedItemOffersAction={lookupSuppliedItemOffersAction}
       pageInfo={{ hasNextPage: false, nextCursor: null }}
       query={query}
-      removeSuppliedItemAction={async () => initialState}
+      removeSuppliedItemAction={removeSuppliedItemAction}
       removeSuppliedItemCategoryAction={async () => initialState}
       removeSupplierAction={async () => initialState}
       rows={supplierRows}
@@ -207,6 +218,40 @@ function renderTabs({
 }
 
 describe("FuelSuppliersTabs", () => {
+  it("protects the fixed fuel root and lets inactive fuels be reactivated", async () => {
+    const user = userEvent.setup();
+    let submitted: FormData | null = null;
+    const removeSuppliedItemAction = vi.fn(async (_state, formData) => {
+      submitted = formData;
+      return { ok: true, message: "Item reativado." };
+    });
+    renderTabs({
+      removeSuppliedItemAction,
+      supplierCatalog: {
+        ...catalog,
+        catalogItems: catalog.catalogItems.map((item) => ({
+          ...item,
+          isActive: false,
+          effectiveActive: false,
+        })),
+      },
+    });
+
+    expect(screen.getByText("Categoria fixa")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Editar" })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Inativos" }));
+    await user.click(screen.getByRole("button", { name: "Combustíveis" }));
+    await user.click(
+      screen.getByRole("button", { name: "Ações de Diesel S10" }),
+    );
+    await user.click(screen.getByRole("menuitem", { name: "Reativar item" }));
+
+    await waitFor(() => expect(removeSuppliedItemAction).toHaveBeenCalled());
+    expect(submitted).not.toBeNull();
+    expect((submitted as unknown as FormData).get("isActive")).toBe("true");
+  });
+
   it("opens on supplied items and keeps the supplier list in the second tab", async () => {
     const user = userEvent.setup();
     renderTabs();
@@ -348,9 +393,9 @@ describe("FuelSuppliersTabs", () => {
       ),
     ).toBeNull();
     await user.click(screen.getByLabelText("Informar quantidade"));
-    expect((screen.getByLabelText("Quantidade") as HTMLInputElement).value).toBe(
-      "1,23456",
-    );
+    expect(
+      (screen.getByLabelText("Quantidade") as HTMLInputElement).value,
+    ).toBe("1,23456");
 
     await user.click(screen.getByRole("button", { name: "Confirmar oferta" }));
 
@@ -535,7 +580,9 @@ describe("FuelSuppliersTabs", () => {
         itemId: "item-1",
       }),
     );
-    expect(await dialog.findByText("Available Fuel Supplier Ltda")).toBeTruthy();
+    expect(
+      await dialog.findByText("Available Fuel Supplier Ltda"),
+    ).toBeTruthy();
 
     await user.click(dialog.getAllByRole("button", { name: "Editar" })[0]!);
     expect(dialog.queryByRole("button", { name: "Editar" })).toBeNull();

@@ -435,7 +435,7 @@ describe("commercial Client and Fuel Supplier registries", () => {
       url: "/api/v1/supplied-items",
       headers: { authorization },
       payload: {
-        name: "Diesel S10",
+        name: "Óleo combustível de teste",
         baseUnitId: "00000000-0000-4000-8000-00000000a001",
         valueUnitQuantity: "1.000000",
         basePrice: "7.2500",
@@ -443,7 +443,7 @@ describe("commercial Client and Fuel Supplier registries", () => {
     });
     expect(created.statusCode).toBe(201);
     expect(created.json().data).toMatchObject({
-      name: "Diesel S10",
+      name: "Óleo combustível de teste",
       baseUnitId: "00000000-0000-4000-8000-00000000a001",
     });
 
@@ -452,7 +452,7 @@ describe("commercial Client and Fuel Supplier registries", () => {
       url: "/api/v1/supplied-items",
       headers: { authorization },
       payload: {
-        name: "Diesel S500",
+        name: "Aditivo de teste",
         baseUnitId: "00000000-0000-4000-8000-00000000a001",
         valueUnitQuantity: "1.000000",
         basePrice: "7.4000",
@@ -463,6 +463,81 @@ describe("commercial Client and Fuel Supplier registries", () => {
     expect(extraField.json()).toMatchObject({ code: "VALIDATION_ERROR" });
   });
 
+  it("keeps the fuel root fixed while allowing default fuels to be deactivated and reactivated", async () => {
+    const pilot = await provision("fixed-fuel-catalog");
+    const authorization = await authFor({
+      corporationId: pilot.corporation.id,
+      userId: pilot.administrator.id,
+      companyId: pilot.companies[0].id,
+    });
+    const catalog = await app.inject({
+      method: "GET",
+      url: "/api/v1/supplied-items/catalog?includeInactive=true",
+      headers: { authorization },
+    });
+    expect(catalog.statusCode).toBe(200);
+    const root = catalog
+      .json()
+      .data.categories.find(
+        (category: { systemKey: string | null }) =>
+          category.systemKey === "fuel",
+      );
+    expect(root).toMatchObject({
+      name: "Combustíveis",
+      parentId: null,
+      isActive: true,
+      kind: "fuel",
+    });
+    const defaultFuelNames = catalog
+      .json()
+      .data.items.filter(
+        (item: { categoryId: string | null }) => item.categoryId === root.id,
+      )
+      .map((item: { name: string }) => item.name);
+    expect(defaultFuelNames).toEqual(
+      expect.arrayContaining([
+        "Diesel S10",
+        "Diesel S500",
+        "Gasolina comum",
+        "Etanol",
+        "ARLA 32",
+      ]),
+    );
+
+    const renamedRoot = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/supplied-item-categories/${root.id}`,
+      headers: { authorization },
+      payload: { name: "Outra categoria" },
+    });
+    expect(renamedRoot.statusCode).toBe(409);
+    const disabledRoot = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/supplied-item-categories/${root.id}/status`,
+      headers: { authorization },
+      payload: { isActive: false },
+    });
+    expect(disabledRoot.statusCode).toBe(409);
+
+    const dieselS10 = catalog
+      .json()
+      .data.items.find((item: { name: string }) => item.name === "Diesel S10");
+    const disabledItem = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/supplied-items/${dieselS10.id}/status`,
+      headers: { authorization },
+      payload: { isActive: false },
+    });
+    expect(disabledItem.statusCode).toBe(200);
+    const reactivatedItem = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/supplied-items/${dieselS10.id}/status`,
+      headers: { authorization },
+      payload: { isActive: true },
+    });
+    expect(reactivatedItem.statusCode).toBe(200);
+  });
+
   it("searches supplied item selectors by name, category descendants, and active offers", async () => {
     const pilot = await provision("supplied-item-selectors");
     const authorization = await authFor({
@@ -471,18 +546,23 @@ describe("commercial Client and Fuel Supplier registries", () => {
       companyId: pilot.companies[0].id,
     });
 
-    const category = await app.inject({
-      method: "POST",
-      url: "/api/v1/supplied-item-categories",
+    const catalog = await app.inject({
+      method: "GET",
+      url: "/api/v1/supplied-items/catalog",
       headers: { authorization },
-      payload: { name: "Combustíveis" },
     });
-    expect(category.statusCode).toBe(201);
+    expect(catalog.statusCode).toBe(200);
+    const category = catalog
+      .json()
+      .data.categories.find(
+        (entry: { systemKey: string | null }) => entry.systemKey === "fuel",
+      );
+    expect(category).toBeTruthy();
     const subcategory = await app.inject({
       method: "POST",
       url: "/api/v1/supplied-item-categories",
       headers: { authorization },
-      payload: { name: "Diesel", parentId: category.json().data.id },
+      payload: { name: "Diesel especial", parentId: category.id },
     });
     expect(subcategory.statusCode).toBe(201);
 
@@ -491,7 +571,7 @@ describe("commercial Client and Fuel Supplier registries", () => {
       url: "/api/v1/supplied-items",
       headers: { authorization },
       payload: {
-        name: "Diesel S10",
+        name: "Diesel marítimo de teste",
         baseUnitId: "00000000-0000-4000-8000-00000000a001",
         categoryId: subcategory.json().data.id,
       },
@@ -535,22 +615,22 @@ describe("commercial Client and Fuel Supplier registries", () => {
 
     const matched = await app.inject({
       method: "GET",
-      url: `/api/v1/supplied-items/selectors/active?search=Diesel&categoryId=${category.json().data.id}&onlyWithActiveOffers=true`,
+      url: `/api/v1/supplied-items/selectors/active?search=Diesel&categoryId=${category.id}&onlyWithActiveOffers=true&kind=fuel`,
       headers: { authorization },
     });
     expect(matched.statusCode).toBe(200);
     expect(matched.json().data.data).toEqual([
       expect.objectContaining({
         id: diesel.json().data.id,
-        name: "Diesel S10",
+        name: "Diesel marítimo de teste",
         activeSupplierCount: 1,
-        categoryPath: ["Combustíveis", "Diesel"],
+        categoryPath: ["Combustíveis", "Diesel especial"],
       }),
     ]);
 
     const rootOnly = await app.inject({
       method: "GET",
-      url: `/api/v1/supplied-items/selectors/active?categoryId=${category.json().data.id}&includeDescendants=false&onlyWithActiveOffers=true`,
+      url: `/api/v1/supplied-items/selectors/active?categoryId=${category.id}&includeDescendants=false&onlyWithActiveOffers=true&kind=fuel`,
       headers: { authorization },
     });
     expect(rootOnly.statusCode).toBe(200);
@@ -578,7 +658,7 @@ describe("commercial Client and Fuel Supplier registries", () => {
       url: "/api/v1/supplied-items",
       headers: { authorization },
       payload: {
-        name: "Diesel S500",
+        name: "Óleo diesel de homologação",
         baseUnitId: "00000000-0000-4000-8000-00000000a001",
       },
     });

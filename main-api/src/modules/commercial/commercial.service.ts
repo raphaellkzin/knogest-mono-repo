@@ -20,13 +20,20 @@ import type {
   CreateSupplierInput,
   ListCommercialRegistryQuery,
   ListSuppliedItemSelectorsQuery,
+  ListSuppliedItemCatalogQuery,
   ListSuppliedItemOffersQuery,
   SelectorQuery,
   UpdateSuppliedItemCategoryInput,
   UpdateSuppliedItemInput,
+  UpdateCatalogStatusInput,
   UpdateSupplierOfferInput,
   UpdateSupplierInput,
 } from "./commercial.dto";
+import {
+  buildCatalogCategoryStates,
+  itemCatalogState,
+} from "./catalog-classification";
+import { FUEL_CATEGORY_SYSTEM_KEY } from "./catalog-bootstrap";
 import {
   createCommercialRegistryHandler,
   findCommercialRegistryForRemovalHandler,
@@ -195,6 +202,8 @@ type ItemCategorySummary = {
   id: string;
   name: string;
   parentId: string | null;
+  systemKey: string | null;
+  isActive: boolean;
 };
 
 function categoryDescendantIds(
@@ -235,6 +244,53 @@ function categoryPath(
     currentId = category.parentId;
   }
   return path;
+}
+
+async function reclassifyCurrentProjectOffers(
+  context: HandlerContext,
+  scope: AuthenticatedCompanyScope,
+  itemIds: string[],
+) {
+  if (itemIds.length === 0) return;
+  const store = commercialRegistryStore(context);
+  const [categories, items] = await Promise.all([
+    store.suppliedItemCategory.findMany({
+      where: {
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+      },
+      select: {
+        id: true,
+        parentId: true,
+        systemKey: true,
+        isActive: true,
+      },
+    }),
+    store.suppliedItem.findMany({
+      where: {
+        id: { in: itemIds },
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+      },
+      select: { id: true, categoryId: true, isActive: true },
+    }),
+  ]);
+  const states = buildCatalogCategoryStates(categories);
+  for (const kind of ["fuel", "material"] as const) {
+    const ids = items
+      .filter((item) => itemCatalogState(states, item).kind === kind)
+      .map((item) => item.id);
+    if (ids.length === 0) continue;
+    await store.projectSupplierOffer.updateMany({
+      where: {
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        itemId: { in: ids },
+        effectiveTo: null,
+      },
+      data: { usageKind: kind },
+    });
+  }
 }
 
 async function supplierOffersDto(
@@ -356,7 +412,12 @@ async function suppliedItemOffersDto(
       isGlobal: true,
       isActive: true,
     },
-    select: { id: true, baseUnitId: true },
+    select: {
+      id: true,
+      baseUnitId: true,
+      categoryId: true,
+      isActive: true,
+    },
   });
   if (!item) {
     throw new AppError({
@@ -365,10 +426,12 @@ async function suppliedItemOffersDto(
       statusCode: 404,
     });
   }
+  await assertCatalogItemAvailable(context, scope, item, query.kind);
 
   const normalizedQuery = suppliedItemOffersQueryForCursor(
     itemId,
     query.supplierId,
+    query.kind,
   );
   const boundary = parseBoundCursor({
     cursor: query.cursor,
@@ -546,12 +609,49 @@ function suppliedItemSelectorsQueryForCursor(
     categoryId: query.categoryId ?? null,
     includeDescendants: query.includeDescendants,
     onlyWithActiveOffers: query.onlyWithActiveOffers,
+    kind: query.kind,
     search: query.search?.toLocaleLowerCase("pt-BR") ?? null,
   };
 }
 
-function suppliedItemOffersQueryForCursor(itemId: string, supplierId?: string) {
-  return { itemId, supplierId: supplierId ?? null };
+function suppliedItemOffersQueryForCursor(
+  itemId: string,
+  supplierId: string | undefined,
+  kind: "fuel" | "material" | "all",
+) {
+  return { itemId, supplierId: supplierId ?? null, kind };
+}
+
+async function assertCatalogItemAvailable(
+  context: HandlerContext,
+  scope: AuthenticatedCompanyScope,
+  item: { categoryId: string | null; isActive: boolean },
+  requestedKind: "fuel" | "material" | "all",
+) {
+  const store = commercialRegistryStore(context);
+  const categories = await store.suppliedItemCategory.findMany({
+    where: {
+      corporationId: scope.corporationId,
+      companyId: scope.companyId,
+    },
+    select: { id: true, parentId: true, systemKey: true, isActive: true },
+  });
+  const state = itemCatalogState(buildCatalogCategoryStates(categories), item);
+  if (!state.effectiveActive) {
+    throw new AppError({
+      code: "SUPPLIED_ITEM_NOT_FOUND",
+      message: "Supplied item not found",
+      statusCode: 404,
+    });
+  }
+  if (requestedKind !== "all" && state.kind !== requestedKind) {
+    throw new AppError({
+      code: "SUPPLIED_ITEM_CATEGORY_KIND_MISMATCH",
+      message: "Supplied item does not belong to the requested catalog",
+      statusCode: 409,
+    });
+  }
+  return state;
 }
 
 type SuppliedItemSelectorBoundaryWhere = {
@@ -1227,18 +1327,49 @@ export class CommercialService {
       where: {
         corporationId: scope.corporationId,
         companyId: scope.companyId,
-        isActive: true,
       },
       orderBy: [{ name: "asc" }, { id: "asc" }],
-      select: { id: true, name: true, parentId: true },
+      select: {
+        id: true,
+        name: true,
+        parentId: true,
+        systemKey: true,
+        isActive: true,
+      },
     });
+    const categoryStates = buildCatalogCategoryStates(categories);
+    const activeCategoryIdsForKind = new Set(
+      categories
+        .filter((category) => {
+          const state = categoryStates.get(category.id);
+          return (
+            state?.effectiveActive &&
+            (query.kind === "all" || state.kind === query.kind)
+          );
+        })
+        .map((category) => category.id),
+    );
 
     let categoryIds: Set<string> | null = null;
     if (query.categoryId) {
       await categoryDepth(this.context, scope, query.categoryId);
+      const requestedState = categoryStates.get(query.categoryId);
+      if (
+        !requestedState?.effectiveActive ||
+        (query.kind !== "all" && requestedState.kind !== query.kind)
+      ) {
+        throw new AppError({
+          code: "SUPPLIED_ITEM_CATEGORY_KIND_MISMATCH",
+          message: "Supplied item category does not belong to this catalog",
+          statusCode: 400,
+        });
+      }
       categoryIds = query.includeDescendants
         ? categoryDescendantIds(categories, query.categoryId)
         : new Set([query.categoryId]);
+      categoryIds = new Set(
+        [...categoryIds].filter((id) => activeCategoryIdsForKind.has(id)),
+      );
     }
 
     const activeSuppliers = await store.fuelSupplier.findMany({
@@ -1293,7 +1424,23 @@ export class CommercialService {
         ...(query.search
           ? { name: { contains: query.search, mode: "insensitive" as const } }
           : {}),
-        ...(categoryIds ? { categoryId: { in: [...categoryIds] } } : {}),
+        ...(categoryIds
+          ? { categoryId: { in: [...categoryIds] } }
+          : query.kind === "fuel"
+            ? { categoryId: { in: [...activeCategoryIdsForKind] } }
+            : query.kind === "material"
+              ? {
+                  OR: [
+                    { categoryId: null },
+                    { categoryId: { in: [...activeCategoryIdsForKind] } },
+                  ],
+                }
+              : {
+                  OR: [
+                    { categoryId: null },
+                    { categoryId: { in: [...activeCategoryIdsForKind] } },
+                  ],
+                }),
         ...(itemIdsWithActiveOffers
           ? { id: { in: [...itemIdsWithActiveOffers] } }
           : {}),
@@ -1301,7 +1448,13 @@ export class CommercialService {
       },
       orderBy: [{ name: "asc" }, { id: "asc" }],
       take: query.limit + 1,
-      select: { id: true, name: true, baseUnitId: true, categoryId: true },
+      select: {
+        id: true,
+        name: true,
+        baseUnitId: true,
+        categoryId: true,
+        isActive: true,
+      },
     });
     const page = buildCursorPage({
       items,
@@ -1344,6 +1497,7 @@ export class CommercialService {
         baseUnitId: item.baseUnitId,
         categoryId: item.categoryId,
         categoryPath: categoryPath(categoryById, item.categoryId),
+        kind: itemCatalogState(categoryStates, item).kind,
         activeSupplierCount: suppliersByItemId.get(item.id)?.size ?? 0,
       })),
       pageInfo: page.pageInfo,
@@ -1352,49 +1506,17 @@ export class CommercialService {
 
   async listSuppliedItems(scope: AuthenticatedCompanyScope) {
     const store = commercialRegistryStore(this.context);
-    const items = await store.suppliedItem.findMany({
-      where: {
-        corporationId: scope.corporationId,
-        companyId: scope.companyId,
-        isGlobal: true,
-        isActive: true,
-      },
-      orderBy: [{ name: "asc" }, { id: "asc" }],
-      select: {
-        id: true,
-        name: true,
-        baseUnitId: true,
-        categoryId: true,
-        valueUnitQuantity: true,
-        basePrice: true,
-      },
-    });
-    return items.map((item) => ({
-      id: item.id,
-      name: item.name,
-      baseUnitId: item.baseUnitId,
-      categoryId: item.categoryId,
-      valueUnitQuantity: item.valueUnitQuantity.toFixed(6),
-      basePrice: item.basePrice.toFixed(4),
-    }));
-  }
-
-  async listSuppliedItemCatalog(scope: AuthenticatedCompanyScope) {
-    const store = commercialRegistryStore(this.context);
     const [categories, items] = await Promise.all([
       store.suppliedItemCategory.findMany({
         where: {
           corporationId: scope.corporationId,
           companyId: scope.companyId,
-          isActive: true,
         },
-        orderBy: [{ name: "asc" }, { id: "asc" }],
         select: {
           id: true,
-          name: true,
           parentId: true,
-          createdAt: true,
-          updatedAt: true,
+          systemKey: true,
+          isActive: true,
         },
       }),
       store.suppliedItem.findMany({
@@ -1412,7 +1534,62 @@ export class CommercialService {
           categoryId: true,
           valueUnitQuantity: true,
           basePrice: true,
+          isActive: true,
+        },
+      }),
+    ]);
+    const categoryStates = buildCatalogCategoryStates(categories);
+    return items
+      .filter((item) => itemCatalogState(categoryStates, item).effectiveActive)
+      .map((item) => ({
+        id: item.id,
+        name: item.name,
+        baseUnitId: item.baseUnitId,
+        categoryId: item.categoryId,
+        valueUnitQuantity: item.valueUnitQuantity.toFixed(6),
+        basePrice: item.basePrice.toFixed(4),
+        kind: itemCatalogState(categoryStates, item).kind,
+      }));
+  }
+
+  async listSuppliedItemCatalog(
+    scope: AuthenticatedCompanyScope,
+    query: ListSuppliedItemCatalogQuery,
+  ) {
+    const store = commercialRegistryStore(this.context);
+    const [categories, items] = await Promise.all([
+      store.suppliedItemCategory.findMany({
+        where: {
+          corporationId: scope.corporationId,
+          companyId: scope.companyId,
+        },
+        orderBy: [{ name: "asc" }, { id: "asc" }],
+        select: {
+          id: true,
+          name: true,
+          parentId: true,
+          systemKey: true,
+          isActive: true,
+          createdAt: true,
           updatedAt: true,
+        },
+      }),
+      store.suppliedItem.findMany({
+        where: {
+          corporationId: scope.corporationId,
+          companyId: scope.companyId,
+          isGlobal: true,
+        },
+        orderBy: [{ name: "asc" }, { id: "asc" }],
+        select: {
+          id: true,
+          name: true,
+          baseUnitId: true,
+          categoryId: true,
+          valueUnitQuantity: true,
+          basePrice: true,
+          updatedAt: true,
+          isActive: true,
         },
       }),
     ]);
@@ -1432,6 +1609,7 @@ export class CommercialService {
       }),
     ]);
     const unitById = new Map(units.map((unit) => [unit.id, unit]));
+    const categoryStates = buildCatalogCategoryStates(categories);
     const suppliersByItemId = new Map<string, Set<string>>();
     for (const offer of offers) {
       const suppliers = suppliersByItemId.get(offer.itemId) ?? new Set();
@@ -1440,31 +1618,52 @@ export class CommercialService {
     }
 
     return {
-      categories: categories.map((category) => ({
-        id: category.id,
-        name: category.name,
-        parentId: category.parentId,
-        createdAt: category.createdAt.toISOString(),
-        updatedAt: category.updatedAt.toISOString(),
-      })),
-      items: items.map((item) => {
-        const unit = unitById.get(item.baseUnitId);
-        return {
-          id: item.id,
-          name: item.name,
-          categoryId: item.categoryId,
-          baseUnitId: item.baseUnitId,
-          baseUnit: unit
-            ? { id: unit.id, code: unit.code, name: unit.name }
-            : null,
-          valueUnitQuantity: item.valueUnitQuantity.toFixed(6),
-          basePrice: item.basePrice.toFixed(4),
-          activeSupplierCount: suppliersByItemId.get(item.id)?.size ?? 0,
-          spentQuantity: null,
-          lastSpentAt: null,
-          updatedAt: item.updatedAt.toISOString(),
-        };
-      }),
+      categories: categories
+        .filter(
+          (category) =>
+            query.includeInactive ||
+            categoryStates.get(category.id)?.effectiveActive,
+        )
+        .map((category) => ({
+          id: category.id,
+          name: category.name,
+          parentId: category.parentId,
+          systemKey: category.systemKey,
+          isActive: category.isActive,
+          effectiveActive:
+            categoryStates.get(category.id)?.effectiveActive ?? false,
+          kind: categoryStates.get(category.id)?.kind ?? "material",
+          createdAt: category.createdAt.toISOString(),
+          updatedAt: category.updatedAt.toISOString(),
+        })),
+      items: items
+        .filter(
+          (item) =>
+            query.includeInactive ||
+            itemCatalogState(categoryStates, item).effectiveActive,
+        )
+        .map((item) => {
+          const unit = unitById.get(item.baseUnitId);
+          const state = itemCatalogState(categoryStates, item);
+          return {
+            id: item.id,
+            name: item.name,
+            categoryId: item.categoryId,
+            baseUnitId: item.baseUnitId,
+            baseUnit: unit
+              ? { id: unit.id, code: unit.code, name: unit.name }
+              : null,
+            valueUnitQuantity: item.valueUnitQuantity.toFixed(6),
+            basePrice: item.basePrice.toFixed(4),
+            isActive: item.isActive,
+            effectiveActive: state.effectiveActive,
+            kind: state.kind,
+            activeSupplierCount: suppliersByItemId.get(item.id)?.size ?? 0,
+            spentQuantity: null,
+            lastSpentAt: null,
+            updatedAt: item.updatedAt.toISOString(),
+          };
+        }),
     };
   }
 
@@ -1490,7 +1689,7 @@ export class CommercialService {
         isGlobal: true,
         isActive: true,
       },
-      select: { id: true },
+      select: { id: true, categoryId: true, isActive: true },
     });
     if (!item) {
       throw new AppError({
@@ -1499,6 +1698,7 @@ export class CommercialService {
         statusCode: 404,
       });
     }
+    await assertCatalogItemAvailable(this.context, scope, item, query.kind);
 
     const offers = await store.supplierOffer.findMany({
       where: {
@@ -1751,6 +1951,12 @@ export class CommercialService {
         }
       }
 
+      if (input.categoryId !== undefined) {
+        await reclassifyCurrentProjectOffers(transactionContext, scope, [
+          item.id,
+        ]);
+      }
+
       return {
         id: item.id,
         name: item.name,
@@ -1861,16 +2067,44 @@ export class CommercialService {
   }
 
   async removeSuppliedItem(scope: AuthenticatedCompanyScope, itemId: string) {
+    return this.updateSuppliedItemStatus(scope, itemId, { isActive: false });
+  }
+
+  async updateSuppliedItemStatus(
+    scope: AuthenticatedCompanyScope,
+    itemId: string,
+    input: UpdateCatalogStatusInput,
+  ) {
     const store = commercialRegistryStore(this.context);
+    if (input.isActive) {
+      const item = await store.suppliedItem.findFirst({
+        where: {
+          id: itemId,
+          corporationId: scope.corporationId,
+          companyId: scope.companyId,
+          isGlobal: true,
+        },
+        select: { categoryId: true },
+      });
+      if (!item) {
+        throw new AppError({
+          code: "SUPPLIED_ITEM_NOT_FOUND",
+          message: "Supplied item not found",
+          statusCode: 404,
+        });
+      }
+      if (item.categoryId)
+        await categoryDepth(this.context, scope, item.categoryId);
+    }
     const updated = await store.suppliedItem.updateMany({
       where: {
         id: itemId,
         corporationId: scope.corporationId,
         companyId: scope.companyId,
         isGlobal: true,
-        isActive: true,
+        isActive: !input.isActive,
       },
-      data: { isActive: false },
+      data: { isActive: input.isActive },
     });
     if (updated.count === 0) {
       throw new AppError({
@@ -1879,7 +2113,7 @@ export class CommercialService {
         statusCode: 404,
       });
     }
-    return { id: itemId, isActive: false };
+    return { id: itemId, isActive: input.isActive };
   }
 
   async createSuppliedItemCategory(
@@ -1899,7 +2133,7 @@ export class CommercialService {
       });
     }
     const store = commercialRegistryStore(this.context);
-    return store.suppliedItemCategory.create({
+    const category = await store.suppliedItemCategory.create({
       data: {
         corporationId: scope.corporationId,
         companyId: scope.companyId,
@@ -1910,10 +2144,30 @@ export class CommercialService {
         id: true,
         name: true,
         parentId: true,
+        systemKey: true,
+        isActive: true,
         createdAt: true,
         updatedAt: true,
       },
     });
+    const allCategories = await store.suppliedItemCategory.findMany({
+      where: {
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+      },
+      select: {
+        id: true,
+        parentId: true,
+        systemKey: true,
+        isActive: true,
+      },
+    });
+    const state = buildCatalogCategoryStates(allCategories).get(category.id);
+    return {
+      ...category,
+      effectiveActive: state?.effectiveActive ?? false,
+      kind: state?.kind ?? "material",
+    };
   }
 
   async updateSuppliedItemCategory(
@@ -1921,6 +2175,23 @@ export class CommercialService {
     categoryId: string,
     input: UpdateSuppliedItemCategoryInput,
   ) {
+    const existingCategory = await commercialRegistryStore(
+      this.context,
+    ).suppliedItemCategory.findFirst({
+      where: {
+        id: categoryId,
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+      },
+      select: { systemKey: true },
+    });
+    if (existingCategory?.systemKey === FUEL_CATEGORY_SYSTEM_KEY) {
+      throw new AppError({
+        code: "SYSTEM_CATEGORY_IMMUTABLE",
+        message: "The Combustíveis category cannot be changed",
+        statusCode: 409,
+      });
+    }
     if (input.parentId === categoryId) {
       throw new AppError({
         code: "SUPPLIED_ITEM_CATEGORY_INVALID_TREE",
@@ -2005,7 +2276,7 @@ export class CommercialService {
         statusCode: 404,
       });
     }
-    return store.suppliedItemCategory.findFirstOrThrow({
+    const category = await store.suppliedItemCategory.findFirstOrThrow({
       where: {
         id: categoryId,
         corporationId: scope.corporationId,
@@ -2015,49 +2286,113 @@ export class CommercialService {
         id: true,
         name: true,
         parentId: true,
+        systemKey: true,
+        isActive: true,
         createdAt: true,
         updatedAt: true,
       },
     });
+    if (input.parentId !== undefined) {
+      const categories = await store.suppliedItemCategory.findMany({
+        where: {
+          corporationId: scope.corporationId,
+          companyId: scope.companyId,
+        },
+        select: { id: true, parentId: true },
+      });
+      const ids = [
+        ...categoryDescendantIds(
+          categories.map((item) => ({
+            ...item,
+            name: "",
+            systemKey: null,
+            isActive: true,
+          })),
+          categoryId,
+        ),
+      ];
+      const items = await store.suppliedItem.findMany({
+        where: {
+          corporationId: scope.corporationId,
+          companyId: scope.companyId,
+          categoryId: { in: ids },
+        },
+        select: { id: true },
+      });
+      await reclassifyCurrentProjectOffers(
+        this.context,
+        scope,
+        items.map((item) => item.id),
+      );
+    }
+    const allCategories = await store.suppliedItemCategory.findMany({
+      where: {
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+      },
+      select: {
+        id: true,
+        parentId: true,
+        systemKey: true,
+        isActive: true,
+      },
+    });
+    const state = buildCatalogCategoryStates(allCategories).get(category.id);
+    return {
+      ...category,
+      effectiveActive: state?.effectiveActive ?? false,
+      kind: state?.kind ?? "material",
+    };
   }
 
   async removeSuppliedItemCategory(
     scope: AuthenticatedCompanyScope,
     categoryId: string,
   ) {
+    return this.updateSuppliedItemCategoryStatus(scope, categoryId, {
+      isActive: false,
+    });
+  }
+
+  async updateSuppliedItemCategoryStatus(
+    scope: AuthenticatedCompanyScope,
+    categoryId: string,
+    input: UpdateCatalogStatusInput,
+  ) {
     const store = commercialRegistryStore(this.context);
-    const categories = await store.suppliedItemCategory.findMany({
+    const category = await store.suppliedItemCategory.findFirst({
       where: {
+        id: categoryId,
         corporationId: scope.corporationId,
         companyId: scope.companyId,
-        isActive: true,
       },
-      select: { id: true, parentId: true },
+      select: { id: true, parentId: true, systemKey: true },
     });
-    const descendants = new Set<string>([categoryId]);
-    let changed = true;
-    while (changed) {
-      changed = false;
-      for (const category of categories) {
-        if (
-          category.parentId &&
-          descendants.has(category.parentId) &&
-          !descendants.has(category.id)
-        ) {
-          descendants.add(category.id);
-          changed = true;
-        }
-      }
+    if (!category) {
+      throw new AppError({
+        code: "SUPPLIED_ITEM_CATEGORY_NOT_FOUND",
+        message: "Supplied item category not found",
+        statusCode: 404,
+      });
     }
-    const ids = [...descendants];
+    if (category.systemKey === FUEL_CATEGORY_SYSTEM_KEY) {
+      throw new AppError({
+        code: "SYSTEM_CATEGORY_IMMUTABLE",
+        message: "The Combustíveis category cannot be deactivated",
+        statusCode: 409,
+      });
+    }
+    if (input.isActive && category.parentId) {
+      await categoryDepth(this.context, scope, category.parentId);
+    }
     const updated = await store.suppliedItemCategory.updateMany({
       where: {
-        id: { in: ids },
+        id: categoryId,
         corporationId: scope.corporationId,
         companyId: scope.companyId,
-        isActive: true,
+        isActive: !input.isActive,
       },
-      data: { isActive: false },
+      data: { isActive: input.isActive },
     });
     if (updated.count === 0) {
       throw new AppError({
@@ -2066,16 +2401,6 @@ export class CommercialService {
         statusCode: 404,
       });
     }
-    await store.suppliedItem.updateMany({
-      where: {
-        corporationId: scope.corporationId,
-        companyId: scope.companyId,
-        isGlobal: true,
-        isActive: true,
-        categoryId: { in: ids },
-      },
-      data: { isActive: false },
-    });
-    return { id: categoryId, isActive: false };
+    return { id: categoryId, isActive: input.isActive };
   }
 }

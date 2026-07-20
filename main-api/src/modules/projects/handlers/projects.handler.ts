@@ -11,6 +11,10 @@ import {
 } from "../../../lib/utils/cursor-pagination";
 import { hashProjectCommand } from "../project-canonicalization";
 import {
+  buildCatalogCategoryStates,
+  itemCatalogState,
+} from "../../commercial/catalog-classification";
+import {
   formatProjectAddress,
   type ProjectCommand,
   type ProjectListQuery,
@@ -627,7 +631,7 @@ async function replaceProjectOffers(
     ...sourceOffers.map((item) => item.purchaseUnitId),
     ...newOffers.map((item) => item.purchaseUnitId),
   ];
-  const [suppliers, items, units] = await Promise.all([
+  const [suppliers, items, units, categories] = await Promise.all([
     tx.prisma.fuelSupplier.findMany({
       where: {
         id: { in: [...new Set(supplierIds)] },
@@ -647,7 +651,7 @@ async function replaceProjectOffers(
         isActive: true,
         isGlobal: true,
       },
-      select: { id: true },
+      select: { id: true, categoryId: true, isActive: true },
     }),
     tx.prisma.measurementUnit.findMany({
       where: {
@@ -660,6 +664,18 @@ async function replaceProjectOffers(
       },
       select: { id: true },
     }),
+    tx.prisma.suppliedItemCategory.findMany({
+      where: {
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+      },
+      select: {
+        id: true,
+        parentId: true,
+        systemKey: true,
+        isActive: true,
+      },
+    }),
   ]);
   if (suppliers.length !== new Set(supplierIds).size)
     throw conflict([resource("supplier", "unknown", "supplierOffers")]);
@@ -669,7 +685,15 @@ async function replaceProjectOffers(
     throw conflict([resource("measurementUnit", "unknown", "supplierOffers")]);
 
   const supplierSet = new Set(suppliers.map((item) => item.id));
-  const itemSet = new Set(items.map((item) => item.id));
+  const categoryStates = buildCatalogCategoryStates(categories);
+  const itemSet = new Set(
+    items
+      .filter((item) => {
+        const state = itemCatalogState(categoryStates, item);
+        return state.effectiveActive && state.kind === usageKind;
+      })
+      .map((item) => item.id),
+  );
   const unitSet = new Set(units.map((item) => item.id));
   for (const offer of newOffers) {
     if (!supplierSet.has(offer.supplierId))
@@ -701,6 +725,15 @@ async function replaceProjectOffers(
       if (!source)
         throw conflict([
           resource("supplierOffer", offer.sourceOfferId, "supplierOffers"),
+        ]);
+      if (!itemSet.has(source.itemId))
+        throw conflict([
+          resource(
+            "suppliedItem",
+            source.itemId,
+            usageKind === "fuel" ? "fuelOffers" : "materialOffers",
+            "catalog_kind_mismatch",
+          ),
         ]);
       normalizedOffers.push({
         sourceOfferId: source.id,
@@ -1260,16 +1293,27 @@ async function buildProjectReadinessOptions(
       },
       orderBy: { name: "asc" },
       take: 500,
-      select: { id: true, name: true, baseUnitId: true },
+      select: {
+        id: true,
+        name: true,
+        baseUnitId: true,
+        categoryId: true,
+        isActive: true,
+      },
     }),
     context.prisma.suppliedItemCategory.findMany({
       where: {
         corporationId: scope.corporationId,
         companyId: scope.companyId,
-        isActive: true,
       },
       orderBy: [{ name: "asc" }, { id: "asc" }],
-      select: { id: true, name: true, parentId: true },
+      select: {
+        id: true,
+        name: true,
+        parentId: true,
+        systemKey: true,
+        isActive: true,
+      },
     }),
     context.prisma.measurementUnit.findMany({
       where: {
@@ -1316,7 +1360,13 @@ async function buildProjectReadinessOptions(
           isActive: true,
           isGlobal: true,
         },
-        select: { id: true, name: true, baseUnitId: true },
+        select: {
+          id: true,
+          name: true,
+          baseUnitId: true,
+          categoryId: true,
+          isActive: true,
+        },
       }),
       context.prisma.measurementUnit.findMany({
         where: {
@@ -1350,6 +1400,7 @@ async function buildProjectReadinessOptions(
   const offerPriceMap = new Map(
     offerPrices.map((item) => [item.offerId, item]),
   );
+  const categoryStates = buildCatalogCategoryStates(suppliedItemCategories);
 
   const currentEmploymentIds = new Set(
     currentEmployeeAllocations.map((item) => item.employmentId),
@@ -1442,16 +1493,26 @@ async function buildProjectReadinessOptions(
       tradeName: supplier.tradeName,
       document: toMaskedDocumentDto(supplier),
     })),
-    suppliedItems: suppliedItems.map((item) => ({
-      id: item.id,
-      name: item.name,
-      baseUnitId: item.baseUnitId,
-    })),
-    suppliedItemCategories: suppliedItemCategories.map((category) => ({
-      id: category.id,
-      name: category.name,
-      parentId: category.parentId,
-    })),
+    suppliedItems: suppliedItems
+      .filter((item) => itemCatalogState(categoryStates, item).effectiveActive)
+      .map((item) => ({
+        id: item.id,
+        name: item.name,
+        baseUnitId: item.baseUnitId,
+        categoryId: item.categoryId,
+        kind: itemCatalogState(categoryStates, item).kind,
+      })),
+    suppliedItemCategories: suppliedItemCategories
+      .filter(
+        (category) => categoryStates.get(category.id)?.effectiveActive ?? false,
+      )
+      .map((category) => ({
+        id: category.id,
+        name: category.name,
+        parentId: category.parentId,
+        systemKey: category.systemKey,
+        kind: categoryStates.get(category.id)?.kind ?? "material",
+      })),
     measurementUnits,
     supplierOffers: supplierOffers
       .filter((offer) => {
@@ -1466,7 +1527,7 @@ async function buildProjectReadinessOptions(
         const item = offerItemMap.get(offer.itemId)!;
         const unit = offerUnitMap.get(offer.purchaseUnitId)!;
         const price = offerPriceMap.get(offer.id)!;
-        const itemName = item.name.toLocaleLowerCase("pt-BR");
+        const state = itemCatalogState(categoryStates, item);
         return {
           id: offer.id,
           supplier: {
@@ -1486,10 +1547,7 @@ async function buildProjectReadinessOptions(
             price: decimalString(price.price, 4),
             effectiveFrom: price.effectiveFrom.toISOString(),
           },
-          isFuelCandidate:
-            itemName.includes("diesel") ||
-            itemName.includes("gasolina") ||
-            itemName.includes("combust"),
+          kind: state.kind,
         };
       }),
   };

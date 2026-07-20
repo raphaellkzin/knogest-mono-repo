@@ -56,6 +56,7 @@ const decimal = (scale: number, integral: number, positive = false) => {
 };
 
 const uuid = z.string().uuid();
+export const catalogKindSchema = z.enum(["fuel", "material", "all"]);
 
 const supplierOfferBaseSchema = z
   .object({
@@ -288,6 +289,7 @@ export const selectorQuerySchema = z
       .optional()
       .transform((value) => (value && value.length > 0 ? value : undefined)),
     limit: z.coerce.number().int().min(1).max(100).default(25),
+    kind: catalogKindSchema.default("all"),
   })
   .strict();
 
@@ -306,6 +308,7 @@ export const listSuppliedItemSelectorsQuerySchema = z
     categoryId: uuid.optional(),
     includeDescendants: z.coerce.boolean().default(true),
     onlyWithActiveOffers: z.coerce.boolean().default(false),
+    kind: catalogKindSchema.default("all"),
   })
   .strict();
 
@@ -313,11 +316,28 @@ export type ListSuppliedItemSelectorsQuery = z.infer<
   typeof listSuppliedItemSelectorsQuerySchema
 >;
 
+export const listSuppliedItemCatalogQuerySchema = z
+  .object({ includeInactive: z.coerce.boolean().default(false) })
+  .strict();
+
+export type ListSuppliedItemCatalogQuery = z.infer<
+  typeof listSuppliedItemCatalogQuerySchema
+>;
+
+export const updateCatalogStatusSchema = z
+  .object({ isActive: z.boolean() })
+  .strict();
+
+export type UpdateCatalogStatusInput = z.infer<
+  typeof updateCatalogStatusSchema
+>;
+
 export const listSuppliedItemOffersQuerySchema = z
   .object({
     limit: z.coerce.number().int().min(1).max(100).default(30),
     cursor: z.string().trim().min(1).max(2048).optional(),
     supplierId: uuid.optional(),
+    kind: catalogKindSchema.default("all"),
   })
   .strict();
 

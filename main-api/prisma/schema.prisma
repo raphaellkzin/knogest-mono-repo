@@ -363,6 +363,7 @@ model SuppliedItemCategory {
   corporationId String   @map("corporation_id") @db.Uuid
   companyId     String   @map("company_id") @db.Uuid
   parentId      String?  @map("parent_id") @db.Uuid
+  systemKey     String?  @map("system_key") @db.VarChar(32)
   name          String   @db.VarChar(120)
   isActive      Boolean  @default(true) @map("is_active")
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)

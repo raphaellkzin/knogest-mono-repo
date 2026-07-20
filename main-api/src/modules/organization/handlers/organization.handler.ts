@@ -1,5 +1,6 @@
 import { AppError } from "../../../lib/utils/appError";
 import type { HandlerContext } from "../../../lib/utils/handler.dto";
+import { ensureCompanyCatalogBootstrap } from "../../commercial/catalog-bootstrap";
 
 function isUniqueError(error: unknown): boolean {
   return (
@@ -46,10 +47,15 @@ export async function createCompanyHandler(
   data: { corporationId: string; name: string },
 ) {
   try {
-    return await context.prisma.company.create({
+    const company = await context.prisma.company.create({
       data,
       select: { id: true, name: true },
     });
+    await ensureCompanyCatalogBootstrap(context.prisma, {
+      corporationId: data.corporationId,
+      companyId: company.id,
+    });
+    return company;
   } catch (error) {
     if (isUniqueError(error)) {
       throw new AppError({

@@ -228,7 +228,7 @@ export const projectCommandSchema = z
           .superRefine((allocation, context) => {
             const hasExistingRole = Boolean(
               allocation.confirmedJobRoleId ||
-                allocation.confirmedJobRolePeriodId,
+              allocation.confirmedJobRolePeriodId,
             );
             const hasTemporaryRole = Boolean(allocation.confirmedJobRoleName);
             if (!hasExistingRole && !hasTemporaryRole)
@@ -298,7 +298,7 @@ export const projectCommandSchema = z
               });
           }),
       )
-      .max(50),
+      .max(0, "Supplier offers can only be configured after project creation"),
   })
   .strict()
   .superRefine((command, context) => {
@@ -479,10 +479,7 @@ export const projectReadinessCommandSchema = z
       .max(4)
       .optional(),
     fuelOffers: z.array(projectReadinessOfferSchema).max(10).optional(),
-    materialOffers: z
-      .array(projectReadinessOfferSchema)
-      .max(50)
-      .optional(),
+    materialOffers: z.array(projectReadinessOfferSchema).max(50).optional(),
     accountability: z
       .object({
         clientId: uuid,
@@ -579,9 +576,7 @@ export const projectReadinessCommandSchema = z
     const machineOperatorIds = (command.machineAllocations ?? []).map(
       (item) => item.operatorEmploymentId,
     );
-    if (
-      new Set(machineOperatorIds).size !== machineOperatorIds.length
-    )
+    if (new Set(machineOperatorIds).size !== machineOperatorIds.length)
       context.addIssue({
         code: "custom",
         path: ["machineAllocations"],

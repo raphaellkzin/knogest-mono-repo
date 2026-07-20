@@ -127,12 +127,13 @@ describe("Commercial DTOs", () => {
   it("defaults supplied item offers pagination to 30", () => {
     expect(listSuppliedItemOffersQuerySchema.parse({})).toEqual({
       limit: 30,
+      kind: "all",
     });
     expect(
       listSuppliedItemOffersQuerySchema.parse({
         cursor: "abc",
         limit: "30",
       }),
-    ).toEqual({ cursor: "abc", limit: 30 });
+    ).toEqual({ cursor: "abc", kind: "all", limit: 30 });
   });
 });
