@@ -7,6 +7,9 @@ import type {
   ProjectCommand,
   ProjectListQuery,
   ProjectReadinessCommand,
+  ProjectActivateCommand,
+  ProjectQuantityBaselineRevisionCommand,
+  ProjectWorkFrontCommand,
 } from "./projects.dto";
 
 export type { ProjectScope } from "./handlers/projects.handler";
@@ -47,7 +50,44 @@ export class ProjectsService {
     return this.handler.saveReadiness(scope, projectId, command);
   }
 
-  activate(scope: ProjectScope, projectId: string) {
-    return this.handler.activate(scope, projectId);
+  saveQuantityBaseline(
+    scope: ProjectScope,
+    projectId: string,
+    command: ProjectQuantityBaselineRevisionCommand,
+  ) {
+    return this.handler.saveQuantityBaseline(scope, projectId, command);
+  }
+
+  createWorkFront(
+    scope: ProjectScope,
+    projectId: string,
+    command: ProjectWorkFrontCommand,
+  ) {
+    return this.handler.createWorkFront(scope, projectId, command);
+  }
+
+  updateWorkFront(
+    scope: ProjectScope,
+    projectId: string,
+    frontId: string,
+    command: ProjectWorkFrontCommand,
+  ) {
+    return this.handler.updateWorkFront(scope, projectId, frontId, command);
+  }
+
+  startWorkFront(scope: ProjectScope, projectId: string, frontId: string) {
+    return this.handler.startWorkFront(scope, projectId, frontId);
+  }
+
+  cancelWorkFront(scope: ProjectScope, projectId: string, frontId: string) {
+    return this.handler.cancelWorkFront(scope, projectId, frontId);
+  }
+
+  activate(
+    scope: ProjectScope,
+    projectId: string,
+    command: ProjectActivateCommand,
+  ) {
+    return this.handler.activate(scope, projectId, command);
   }
 }

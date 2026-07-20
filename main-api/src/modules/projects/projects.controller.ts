@@ -2,10 +2,14 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { jsonResponse } from "../../lib/utils/jsonResponse";
 import {
   projectCommandSchema,
+  projectActivateCommandSchema,
   projectIdempotencyKeySchema,
   projectListQuerySchema,
   projectParamsSchema,
+  projectQuantityBaselineRevisionCommandSchema,
   projectReadinessCommandSchema,
+  projectWorkFrontCommandSchema,
+  projectWorkFrontParamsSchema,
 } from "./projects.dto";
 import { ProjectsService, type ProjectScope } from "./projects.service";
 
@@ -368,6 +372,71 @@ const projectReadinessCommandOpenApiSchema = {
   },
 } as const;
 
+const projectQuantityBaselineRevisionCommandOpenApiSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["items"],
+  properties: {
+    reason: { type: "string", nullable: true, maxLength: 240 },
+    items: {
+      type: "array",
+      minItems: 1,
+      maxItems: 20,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["serviceCode", "unitCode", "total"],
+        properties: {
+          serviceCode: {
+            enum: [
+              "cut",
+              "fill",
+              "finishing",
+              "top_soil",
+              "unsuitable_soil_removal",
+              "replacement_fill",
+            ],
+          },
+          unitCode: { enum: ["M3", "M2", "M3_KM"] },
+          total: { type: "string" },
+        },
+      },
+    },
+  },
+} as const;
+
+const projectWorkFrontCommandOpenApiSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["name", "services"],
+  properties: {
+    name: { type: "string", minLength: 1, maxLength: 160 },
+    location: { type: "string", nullable: true, maxLength: 240 },
+    notes: { type: "string", nullable: true, maxLength: 1000 },
+    plannedStartDate: { type: "string", format: "date", nullable: true },
+    plannedEndDate: { type: "string", format: "date", nullable: true },
+    services: {
+      type: "array",
+      minItems: 1,
+      maxItems: 20,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["serviceCode", "unitCode", "quantity"],
+        properties: {
+          serviceCode:
+            projectQuantityBaselineRevisionCommandOpenApiSchema.properties.items
+              .items.properties.serviceCode,
+          unitCode:
+            projectQuantityBaselineRevisionCommandOpenApiSchema.properties.items
+              .items.properties.unitCode,
+          quantity: { type: "string" },
+        },
+      },
+    },
+  },
+} as const;
+
 const projectReadinessBlockerSchema = {
   type: "object",
   required: ["section", "message"],
@@ -376,6 +445,7 @@ const projectReadinessBlockerSchema = {
       enum: [
         "dates",
         "metrics",
+        "fronts",
         "fuel",
         "items",
         "equipment",
@@ -398,6 +468,8 @@ const projectDetailSchema = {
     "actualStartedAt",
     "createdAt",
     "baseline",
+    "quantityBaseline",
+    "workFronts",
     "readiness",
   ],
   properties: {
@@ -408,6 +480,11 @@ const projectDetailSchema = {
     actualStartedAt: { type: "string", format: "date-time", nullable: true },
     createdAt: { type: "string", format: "date-time" },
     baseline: { type: "object", nullable: true, additionalProperties: true },
+    quantityBaseline: { type: "object", additionalProperties: true },
+    workFronts: {
+      type: "array",
+      items: { type: "object", additionalProperties: true },
+    },
     readiness: {
       type: "object",
       required: ["canActivate", "blockers"],
@@ -797,6 +874,184 @@ export async function v1ProjectsController(app: FastifyInstance) {
   );
 
   app.post<{ Params: { projectId: string } }>(
+    "/projects/:projectId/quantity-baseline-revisions",
+    {
+      preHandler: app.requireCompanyScope,
+      schema: {
+        tags: ["Projects"],
+        summary: "Create a Project quantity baseline revision",
+        security: [{ bearerAuth: [] }],
+        body: projectQuantityBaselineRevisionCommandOpenApiSchema,
+        response: {
+          200: successSchema(projectDetailSchema),
+          400: errorSchema,
+          404: errorSchema,
+          409: errorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const params = projectParamsSchema.safeParse(request.params);
+      const body = projectQuantityBaselineRevisionCommandSchema.safeParse(
+        request.body,
+      );
+      if (!params.success || !body.success)
+        return jsonResponse.error({
+          reply,
+          statusCode: 400,
+          code: "VALIDATION_ERROR",
+          message: "Invalid quantity baseline command",
+        });
+      try {
+        return jsonResponse.success({
+          reply,
+          data: await service.saveQuantityBaseline(
+            scope(request),
+            params.data.projectId,
+            body.data,
+          ),
+        });
+      } catch (error) {
+        return jsonResponse.fromError({ reply, error });
+      }
+    },
+  );
+
+  app.post<{ Params: { projectId: string } }>(
+    "/projects/:projectId/fronts",
+    {
+      preHandler: app.requireCompanyScope,
+      schema: {
+        tags: ["Projects"],
+        summary: "Create a work front for a Project",
+        security: [{ bearerAuth: [] }],
+        body: projectWorkFrontCommandOpenApiSchema,
+        response: {
+          200: successSchema(projectDetailSchema),
+          400: errorSchema,
+          404: errorSchema,
+          409: errorSchema,
+          422: errorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const params = projectParamsSchema.safeParse(request.params);
+      const body = projectWorkFrontCommandSchema.safeParse(request.body);
+      if (!params.success || !body.success)
+        return jsonResponse.error({
+          reply,
+          statusCode: 400,
+          code: "VALIDATION_ERROR",
+          message: "Invalid work front command",
+        });
+      try {
+        return jsonResponse.success({
+          reply,
+          data: await service.createWorkFront(
+            scope(request),
+            params.data.projectId,
+            body.data,
+          ),
+        });
+      } catch (error) {
+        return jsonResponse.fromError({ reply, error });
+      }
+    },
+  );
+
+  app.patch<{ Params: { projectId: string; frontId: string } }>(
+    "/projects/:projectId/fronts/:frontId",
+    {
+      preHandler: app.requireCompanyScope,
+      schema: {
+        tags: ["Projects"],
+        summary: "Update a planned work front",
+        security: [{ bearerAuth: [] }],
+        body: projectWorkFrontCommandOpenApiSchema,
+        response: {
+          200: successSchema(projectDetailSchema),
+          400: errorSchema,
+          404: errorSchema,
+          409: errorSchema,
+          422: errorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const params = projectWorkFrontParamsSchema.safeParse(request.params);
+      const body = projectWorkFrontCommandSchema.safeParse(request.body);
+      if (!params.success || !body.success)
+        return jsonResponse.error({
+          reply,
+          statusCode: 400,
+          code: "VALIDATION_ERROR",
+          message: "Invalid work front command",
+        });
+      try {
+        return jsonResponse.success({
+          reply,
+          data: await service.updateWorkFront(
+            scope(request),
+            params.data.projectId,
+            params.data.frontId,
+            body.data,
+          ),
+        });
+      } catch (error) {
+        return jsonResponse.fromError({ reply, error });
+      }
+    },
+  );
+
+  for (const action of ["start", "cancel"] as const)
+    app.post<{ Params: { projectId: string; frontId: string } }>(
+      `/projects/:projectId/fronts/:frontId/${action}`,
+      {
+        preHandler: app.requireCompanyScope,
+        schema: {
+          tags: ["Projects"],
+          summary: `${action === "start" ? "Start" : "Cancel"} a work front`,
+          security: [{ bearerAuth: [] }],
+          response: {
+            200: successSchema(projectDetailSchema),
+            400: errorSchema,
+            404: errorSchema,
+            409: errorSchema,
+            422: errorSchema,
+          },
+        },
+      },
+      async (request, reply) => {
+        const params = projectWorkFrontParamsSchema.safeParse(request.params);
+        if (!params.success)
+          return jsonResponse.error({
+            reply,
+            statusCode: 400,
+            code: "VALIDATION_ERROR",
+            message: "Invalid work front params",
+          });
+        try {
+          const data =
+            action === "start"
+              ? await service.startWorkFront(
+                  scope(request),
+                  params.data.projectId,
+                  params.data.frontId,
+                )
+              : await service.cancelWorkFront(
+                  scope(request),
+                  params.data.projectId,
+                  params.data.frontId,
+                );
+          return jsonResponse.success({ reply, data });
+        } catch (error) {
+          return jsonResponse.fromError({ reply, error });
+        }
+      },
+    );
+
+  app.post<{ Params: { projectId: string } }>(
     "/projects/:projectId/activate",
     {
       preHandler: app.requireCompanyScope,
@@ -809,6 +1064,20 @@ export async function v1ProjectsController(app: FastifyInstance) {
           required: ["projectId"],
           properties: { projectId: { type: "string", format: "uuid" } },
         },
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["frontIds"],
+          properties: {
+            frontIds: {
+              type: "array",
+              minItems: 1,
+              maxItems: 100,
+              uniqueItems: true,
+              items: uuid,
+            },
+          },
+        },
         response: {
           200: successSchema(projectDetailSchema),
           400: errorSchema,
@@ -819,12 +1088,13 @@ export async function v1ProjectsController(app: FastifyInstance) {
     },
     async (request, reply) => {
       const parsedParams = projectParamsSchema.safeParse(request.params);
-      if (!parsedParams.success)
+      const parsedBody = projectActivateCommandSchema.safeParse(request.body);
+      if (!parsedParams.success || !parsedBody.success)
         return jsonResponse.error({
           reply,
           statusCode: 400,
           code: "VALIDATION_ERROR",
-          message: "Invalid Project params",
+          message: "Invalid Project activation command",
         });
       try {
         return jsonResponse.success({
@@ -832,6 +1102,7 @@ export async function v1ProjectsController(app: FastifyInstance) {
           data: await service.activate(
             scope(request),
             parsedParams.data.projectId,
+            parsedBody.data,
           ),
         });
       } catch (error) {

@@ -14,6 +14,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../projects.actions", () => ({
   activateProjectAction: vi.fn(),
+  createProjectWorkFrontAction: vi.fn(),
+  saveProjectQuantityBaselineAction: vi.fn(),
   saveProjectReadinessAction: vi.fn(),
 }));
 
@@ -21,7 +23,11 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn() }),
 }));
 
-import { saveProjectReadinessAction } from "../projects.actions";
+import {
+  createProjectWorkFrontAction,
+  saveProjectQuantityBaselineAction,
+  saveProjectReadinessAction,
+} from "../projects.actions";
 import type {
   ProjectDetailSnapshot,
   ProjectOfferSnapshot,
@@ -152,6 +158,21 @@ const projectSnapshot: ProjectDetailSnapshot = {
   fuelOffers: [],
   supplierOffers: [],
   productionMetricTargets: [{ metricCode: "cut", targetTotal: "1234.00" }],
+  quantityBaseline: {
+    revision: 1,
+    createdAt: "2026-07-16T00:00:00.000Z",
+    reason: null,
+    items: [
+      {
+        serviceCode: "cut",
+        unitCode: "M3",
+        total: "1234.00",
+        allocated: "0.00",
+        unallocated: "1234.00",
+      },
+    ],
+  },
+  workFronts: [],
   compensationPaymentTerms: [],
   readiness: {
     canActivate: false,
@@ -370,9 +391,14 @@ describe("Project detail fuel editors", () => {
 });
 
 describe("Project detail planning metrics", () => {
-  it("shows integer production metrics and saves them with canonical zero cents", async () => {
+  it("shows integer reference quantities and saves them with canonical zero cents", async () => {
     const saveReadiness = vi.mocked(saveProjectReadinessAction);
     saveReadiness.mockResolvedValue({
+      kind: "success",
+      project: projectSnapshot,
+    });
+    const saveBaseline = vi.mocked(saveProjectQuantityBaselineAction);
+    saveBaseline.mockResolvedValue({
       kind: "success",
       project: projectSnapshot,
     });
@@ -381,7 +407,7 @@ describe("Project detail planning metrics", () => {
     renderProjectDetail(projectSnapshot);
 
     const targetInput = screen.getAllByLabelText(
-      /Meta total/u,
+      /Total de referência/u,
     )[0] as HTMLInputElement;
     expect(targetInput.value).toBe("1.234");
     expect(targetInput.value).not.toBe("1.234,00");
@@ -397,9 +423,151 @@ describe("Project detail planning metrics", () => {
     await waitFor(() =>
       expect(saveReadiness).toHaveBeenCalledWith(projectSnapshot.id, {
         plannedEndDate: "2026-08-01",
-        productionMetricTargets: [
-          { metricCode: "cut", targetTotal: "1234567.00" },
-        ],
+      }),
+    );
+    expect(saveBaseline).toHaveBeenCalledWith(projectSnapshot.id, {
+      items: [{ serviceCode: "cut", unitCode: "M3", total: "1234567.00" }],
+    });
+  });
+});
+
+describe("Project work fronts", () => {
+  it("creates a work front through the operational modal", async () => {
+    const createFront = vi.mocked(createProjectWorkFrontAction);
+    createFront.mockResolvedValue({
+      kind: "success",
+      project: projectSnapshot,
+    });
+    const user = userEvent.setup();
+
+    renderProjectDetail(projectSnapshot);
+    await user.click(screen.getByRole("tab", { name: /Frentes/u }));
+    await user.click(screen.getByRole("button", { name: /Cadastrar frente/u }));
+
+    expect(
+      screen.getByRole("heading", { name: "Cadastrar frente de serviço" }),
+    ).toBeTruthy();
+    const modal = screen.getByRole("dialog");
+    await user.type(
+      within(modal).getByLabelText("Nome da frente"),
+      "Frente norte",
+    );
+    await user.type(
+      within(modal).getByLabelText("Quantidade para Corte"),
+      "250",
+    );
+    await user.click(
+      within(modal).getByRole("button", { name: /^Cadastrar frente$/u }),
+    );
+
+    await waitFor(() =>
+      expect(createFront).toHaveBeenCalledWith(projectSnapshot.id, {
+        name: "Frente norte",
+        location: null,
+        services: [{ serviceCode: "cut", unitCode: "M3", quantity: "250.00" }],
+      }),
+    );
+  });
+
+  it("shows the backend error inside the work-front modal", async () => {
+    const createFront = vi.mocked(createProjectWorkFrontAction);
+    createFront.mockResolvedValue({
+      kind: "recoverable-conflict",
+      code: "WORK_FRONT_QUANTITY_EXCEEDS_BALANCE",
+      message: "Um ou mais quantitativos ultrapassam o saldo disponível.",
+      blockers: [
+        {
+          section: "fronts",
+          message: "A frente excede o saldo disponível para corte.",
+        },
+      ],
+    });
+    const user = userEvent.setup();
+
+    renderProjectDetail(projectSnapshot);
+    await user.click(screen.getByRole("tab", { name: /Frentes/u }));
+    await user.click(screen.getByRole("button", { name: /Cadastrar frente/u }));
+    const modal = screen.getByRole("dialog");
+    await user.type(
+      within(modal).getByLabelText("Nome da frente"),
+      "Frente norte",
+    );
+    await user.type(
+      within(modal).getByLabelText("Quantidade para Corte"),
+      "250",
+    );
+    await user.click(
+      within(modal).getByRole("button", { name: /^Cadastrar frente$/u }),
+    );
+
+    expect(
+      await screen.findByText("A frente excede o saldo disponível para corte."),
+    ).toBeTruthy();
+  });
+
+  it("warns and blocks a work front above the available balance", async () => {
+    const createFront = vi.mocked(createProjectWorkFrontAction);
+    const user = userEvent.setup();
+
+    renderProjectDetail(projectSnapshot);
+    await user.click(screen.getByRole("tab", { name: /Frentes/u }));
+    await user.click(screen.getByRole("button", { name: /Cadastrar frente/u }));
+    const modal = screen.getByRole("dialog");
+    await user.type(
+      within(modal).getByLabelText("Nome da frente"),
+      "Frente acima do saldo",
+    );
+    const quantityInput = within(modal).getByLabelText("Quantidade para Corte");
+    await user.type(quantityInput, "1235");
+
+    expect(
+      within(modal).getByText("Quantitativo acima do saldo disponível."),
+    ).toBeTruthy();
+    expect(
+      within(modal).getByText(
+        "Solicitado 1.235 M3; saldo disponível 1.234 M3.",
+      ),
+    ).toBeTruthy();
+    expect(quantityInput.getAttribute("aria-invalid")).toBe("true");
+    expect(
+      (
+        within(modal).getByRole("button", {
+          name: /^Cadastrar frente$/u,
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(createFront).not.toHaveBeenCalled();
+  });
+
+  it("allows a work front equal to the available balance", async () => {
+    const createFront = vi.mocked(createProjectWorkFrontAction);
+    createFront.mockResolvedValue({
+      kind: "success",
+      project: projectSnapshot,
+    });
+    const user = userEvent.setup();
+
+    renderProjectDetail(projectSnapshot);
+    await user.click(screen.getByRole("tab", { name: /Frentes/u }));
+    await user.click(screen.getByRole("button", { name: /Cadastrar frente/u }));
+    const modal = screen.getByRole("dialog");
+    await user.type(
+      within(modal).getByLabelText("Nome da frente"),
+      "Frente saldo total",
+    );
+    await user.type(
+      within(modal).getByLabelText("Quantidade para Corte"),
+      "1234",
+    );
+    await user.click(
+      within(modal).getByRole("button", { name: /^Cadastrar frente$/u }),
+    );
+
+    await waitFor(() =>
+      expect(createFront).toHaveBeenCalledWith(projectSnapshot.id, {
+        name: "Frente saldo total",
+        location: null,
+        services: [{ serviceCode: "cut", unitCode: "M3", quantity: "1234.00" }],
       }),
     );
   });

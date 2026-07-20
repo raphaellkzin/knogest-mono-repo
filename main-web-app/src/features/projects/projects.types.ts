@@ -6,6 +6,10 @@ export type ProjectLifecycleStatus =
   | "cancelled";
 
 export type ProductionMetricCode = "cut" | "fill" | "finishing" | "top_soil";
+export type EarthworksServiceCode =
+  | ProductionMetricCode
+  | "unsuitable_soil_removal"
+  | "replacement_fill";
 
 export type CompensationMode =
   | "daily"
@@ -122,6 +126,34 @@ export type ProjectDetailSnapshot = {
     metricCode: ProductionMetricCode;
     targetTotal: string;
   }[];
+  quantityBaseline: {
+    revision: number | null;
+    createdAt: string | null;
+    reason: string | null;
+    items: {
+      serviceCode: EarthworksServiceCode;
+      unitCode: "M3" | "M2" | "M3_KM";
+      total: string;
+      allocated: string;
+      unallocated: string;
+    }[];
+  };
+  workFronts: {
+    id: string;
+    name: string;
+    location: string | null;
+    notes: string | null;
+    plannedStartDate: string | null;
+    plannedEndDate: string | null;
+    status: "planned" | "active" | "paused" | "completed" | "cancelled";
+    actualStartedAt: string | null;
+    services: {
+      serviceCode: EarthworksServiceCode;
+      unitCode: "M3" | "M2" | "M3_KM";
+      quantity: string;
+    }[];
+    eligibility: { canStart: boolean; blockers: string[] };
+  }[];
   compensationPaymentTerms: {
     compensationMode: CompensationMode;
     daysAfterPeriodEnd: number;
@@ -132,6 +164,7 @@ export type ProjectDetailSnapshot = {
       section:
         | "dates"
         | "metrics"
+        | "fronts"
         | "fuel"
         | "items"
         | "equipment"

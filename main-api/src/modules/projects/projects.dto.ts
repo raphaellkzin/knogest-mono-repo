@@ -62,6 +62,15 @@ const productionMetricCodeSchema = z.enum([
   "finishing",
   "top_soil",
 ]);
+export const earthworksServiceCodeSchema = z.enum([
+  "cut",
+  "fill",
+  "finishing",
+  "top_soil",
+  "unsuitable_soil_removal",
+  "replacement_fill",
+]);
+const unitCodeSchema = z.enum(["M3", "M2", "M3_KM"]);
 const compensationModeSchema = z.enum([
   "daily",
   "hourly",
@@ -389,6 +398,87 @@ export const projectParamsSchema = z
     projectId: uuid,
   })
   .strict();
+
+export const projectQuantityBaselineRevisionCommandSchema = z
+  .object({
+    reason: optionalNullableText(240),
+    items: z
+      .array(
+        z
+          .object({
+            serviceCode: earthworksServiceCodeSchema,
+            unitCode: unitCodeSchema,
+            total: decimal(2, 16, true),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(20),
+  })
+  .strict()
+  .superRefine((command, context) => {
+    const codes = command.items.map((item) => item.serviceCode);
+    if (new Set(codes).size !== codes.length)
+      context.addIssue({
+        code: "custom",
+        path: ["items"],
+        message: "Duplicate service code",
+      });
+  });
+
+const workFrontServiceSchema = z
+  .object({
+    serviceCode: earthworksServiceCodeSchema,
+    unitCode: unitCodeSchema,
+    quantity: decimal(2, 16, true),
+  })
+  .strict();
+
+export const projectWorkFrontCommandSchema = z
+  .object({
+    name: text(160),
+    location: optionalNullableText(240),
+    notes: optionalNullableText(1000),
+    plannedStartDate: z.iso.date().nullable().optional(),
+    plannedEndDate: z.iso.date().nullable().optional(),
+    services: z.array(workFrontServiceSchema).min(1).max(20),
+  })
+  .strict()
+  .superRefine((command, context) => {
+    const codes = command.services.map((item) => item.serviceCode);
+    if (new Set(codes).size !== codes.length)
+      context.addIssue({
+        code: "custom",
+        path: ["services"],
+        message: "Duplicate service code",
+      });
+    if (
+      command.plannedStartDate &&
+      command.plannedEndDate &&
+      command.plannedEndDate < command.plannedStartDate
+    )
+      context.addIssue({
+        code: "custom",
+        path: ["plannedEndDate"],
+        message: "Planned end date must be after planned start date",
+      });
+  });
+
+export const projectWorkFrontParamsSchema = z
+  .object({ projectId: uuid, frontId: uuid })
+  .strict();
+
+export const projectActivateCommandSchema = z
+  .object({ frontIds: z.array(uuid).min(1).max(100) })
+  .strict()
+  .superRefine((command, context) => {
+    if (new Set(command.frontIds).size !== command.frontIds.length)
+      context.addIssue({
+        code: "custom",
+        path: ["frontIds"],
+        message: "Duplicate front ids",
+      });
+  });
 export const projectListQuerySchema = z
   .object({
     limit: z.coerce.number().int().min(1).max(100).default(25),
@@ -607,6 +697,15 @@ export type ProjectListQuery = z.infer<typeof projectListQuerySchema>;
 export type ProjectParams = z.infer<typeof projectParamsSchema>;
 export type ProjectReadinessCommand = z.infer<
   typeof projectReadinessCommandSchema
+>;
+export type ProjectQuantityBaselineRevisionCommand = z.infer<
+  typeof projectQuantityBaselineRevisionCommandSchema
+>;
+export type ProjectWorkFrontCommand = z.infer<
+  typeof projectWorkFrontCommandSchema
+>;
+export type ProjectActivateCommand = z.infer<
+  typeof projectActivateCommandSchema
 >;
 
 export const projectFieldDetailSchema = z

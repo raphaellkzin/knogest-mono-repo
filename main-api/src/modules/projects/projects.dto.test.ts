@@ -3,7 +3,9 @@ import {
   formatProjectAddress,
   projectCommandSchema,
   projectIdempotencyKeySchema,
+  projectQuantityBaselineRevisionCommandSchema,
   projectReadinessCommandSchema,
+  projectWorkFrontCommandSchema,
   type ProjectCommand,
 } from "./projects.dto";
 
@@ -244,6 +246,41 @@ describe("Projects DTO", () => {
             startMeterReadingId: "00000000-0000-4000-8000-000000000601",
             operatorEmploymentId: operator,
           },
+        ],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("validates earthworks baseline services and work-front quantities", () => {
+    expect(
+      projectQuantityBaselineRevisionCommandSchema.safeParse({
+        items: [
+          { serviceCode: "cut", unitCode: "M3", total: "100.00" },
+          {
+            serviceCode: "unsuitable_soil_removal",
+            unitCode: "M3",
+            total: "20.00",
+          },
+          {
+            serviceCode: "replacement_fill",
+            unitCode: "M3",
+            total: "20.00",
+          },
+        ],
+      }).success,
+    ).toBe(true);
+    expect(
+      projectWorkFrontCommandSchema.safeParse({
+        name: "Frente Norte",
+        services: [{ serviceCode: "cut", unitCode: "M3", quantity: "50.00" }],
+      }).success,
+    ).toBe(true);
+    expect(
+      projectWorkFrontCommandSchema.safeParse({
+        name: "Frente Norte",
+        services: [
+          { serviceCode: "cut", unitCode: "M3", quantity: "50.00" },
+          { serviceCode: "cut", unitCode: "M3", quantity: "10.00" },
         ],
       }).success,
     ).toBe(false);

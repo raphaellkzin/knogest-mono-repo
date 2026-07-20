@@ -53,14 +53,17 @@ import {
 import { cn } from "@/lib/utils";
 import {
   activateProjectAction,
+  createProjectWorkFrontAction,
+  saveProjectQuantityBaselineAction,
   saveProjectReadinessAction,
+  startProjectWorkFrontAction,
   type ProjectReadinessActionInput,
 } from "../projects.actions";
 import { emptyProjectCommand, type ProjectCommand } from "../projects-schema";
 import type {
   CompensationMode,
   FuelSupplierOption,
-  ProductionMetricCode,
+  EarthworksServiceCode,
   ProjectDetailSnapshot,
   ProjectOfferSnapshot,
   ProjectReadinessOptions,
@@ -94,7 +97,7 @@ import {
 } from "./project-material-offers";
 
 const metricDefinitions: Array<{
-  code: ProductionMetricCode;
+  code: EarthworksServiceCode;
   label: string;
   unit: string;
   description: string;
@@ -123,7 +126,29 @@ const metricDefinitions: Array<{
     unit: "m3/km",
     description: "Camada vegetal removida ou recomposta por extensão.",
   },
+  {
+    code: "unsuitable_soil_removal",
+    label: "Remoção de solo impróprio",
+    unit: "m3 removidos",
+    description: "Material sem condição de aproveitamento retirado da área.",
+  },
+  {
+    code: "replacement_fill",
+    label: "Aterro de substituição",
+    unit: "m3 compactados",
+    description:
+      "Material de reposição aplicado após a remoção do solo impróprio.",
+  },
 ];
+
+function canonicalDecimalToHundredths(value: string) {
+  const match = /^(\d+)(?:\.(\d{1,2}))?$/u.exec(value);
+  if (!match) return null;
+  return (
+    BigInt(match[1]) * BigInt(100) +
+    BigInt((match[2] ?? "").padEnd(2, "0"))
+  );
+}
 
 const compensationLabels: Record<CompensationMode, string> = {
   daily: "Diária",
@@ -223,12 +248,19 @@ export type ReadinessOfferCommand =
 
 type ProjectTab =
   | "planning"
+  | "fronts"
   | "fuel"
   | "accountability"
   | "team"
   | "machines"
   | "payments"
-  | "materials";
+  | "materials"
+  | "overview"
+  | "production"
+  | "timekeepers"
+  | "suppliers"
+  | "reports"
+  | "financial";
 
 type ReadinessTone = "ready" | "pending" | "dirty" | "neutral";
 
@@ -262,9 +294,9 @@ function formatMoney(value: string, fractionDigits = 2) {
 
 function metricInitialState(project: ProjectDetailSnapshot) {
   const existing = new Map(
-    project.productionMetricTargets.map((target) => [
-      target.metricCode,
-      target.targetTotal,
+    project.quantityBaseline.items.map((target) => [
+      target.serviceCode,
+      target.total,
     ]),
   );
   return metricDefinitions.map((metric) => ({
@@ -1759,7 +1791,46 @@ export function ProjectDetail({
   const [planningDirty, setPlanningDirty] = React.useState(false);
   const [fuelDirty, setFuelDirty] = React.useState(false);
   const [paymentDirty, setPaymentDirty] = React.useState(false);
-  const [activeTab, setActiveTab] = React.useState<ProjectTab>("planning");
+  const [activeTab, setActiveTab] = React.useState<ProjectTab>(
+    project.status === "active" ? "overview" : "planning",
+  );
+  const [frontName, setFrontName] = React.useState("");
+  const [frontLocation, setFrontLocation] = React.useState("");
+  const [frontQuantities, setFrontQuantities] = React.useState<
+    Record<string, string>
+  >({});
+  const [frontIssues, setFrontIssues] = React.useState<
+    React.ComponentProps<typeof FormErrorDeclaration>["issues"]
+  >([]);
+  const frontExcessIssues = React.useMemo<
+    React.ComponentProps<typeof FormErrorDeclaration>["issues"]
+  >(
+    () =>
+      project.quantityBaseline.items.flatMap((item) => {
+        const quantity = integerInputToCanonicalDecimal(
+          frontQuantities[item.serviceCode] ?? "",
+        );
+        const requested = canonicalDecimalToHundredths(quantity);
+        const available = canonicalDecimalToHundredths(item.unallocated);
+        if (requested === null || available === null || requested <= available)
+          return [];
+        const label =
+          metricDefinitions.find((metric) => metric.code === item.serviceCode)
+            ?.label ?? item.serviceCode;
+        return [
+          {
+            location: "Quantitativos",
+            field: label,
+            message: `Solicitado ${canonicalDecimalToBrazilianInteger(quantity)} ${item.unitCode}; saldo disponível ${canonicalDecimalToBrazilianInteger(item.unallocated)} ${item.unitCode}.`,
+          },
+        ];
+      }),
+    [frontQuantities, project.quantityBaseline.items],
+  );
+  const visibleFrontIssues = [...frontExcessIssues, ...frontIssues];
+  const [selectedStartFrontIds, setSelectedStartFrontIds] = React.useState<
+    string[]
+  >([]);
   const [openModal, setOpenModal] = React.useState<
     | "accountability"
     | "team"
@@ -1768,6 +1839,7 @@ export function ProjectDetail({
     | "fuelEdit"
     | "materials"
     | "payments"
+    | "frontCreate"
     | null
   >(null);
   const readinessForm = useForm<ProjectCommand>({
@@ -1812,6 +1884,12 @@ export function ProjectDetail({
     setPlanningDirty(false);
     setFuelDirty(false);
     setPaymentDirty(false);
+    setFrontName("");
+    setFrontLocation("");
+    setFrontQuantities({});
+    setFrontIssues([]);
+    setSelectedStartFrontIds([]);
+    setActiveTab(project.status === "active" ? "overview" : "planning");
   }, [project, readinessForm]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
@@ -1856,6 +1934,8 @@ export function ProjectDetail({
   }, [watchedEmployeeAllocations]);
 
   const isEditable = project.status === "planned";
+  const canManageFronts =
+    project.status === "planned" || project.status === "active";
   const fuelOptions = React.useMemo(
     () => pickFuelOptions(options.supplierOffers),
     [options.supplierOffers],
@@ -1874,7 +1954,7 @@ export function ProjectDetail({
     project.technicalResponsibilities.length > 0,
   );
   const planningReady = Boolean(
-    project.baseline?.plannedEndDate && project.productionMetricTargets.length,
+    project.baseline?.plannedEndDate && project.quantityBaseline.items.length,
   );
   const teamReady = project.employeeAllocations.length > 0;
   const machinesReady = project.machineAllocations.length > 0;
@@ -1889,7 +1969,7 @@ export function ProjectDetail({
       : ({ label: "Pendente", tone: "pending" } as const);
   const metricsStatus = planningDirty
     ? ({ label: "Alterado", tone: "dirty" } as const)
-    : project.productionMetricTargets.length
+    : project.quantityBaseline.items.length
       ? ({ label: "OK", tone: "ready" } as const)
       : ({ label: "Pendente", tone: "pending" } as const);
   const fuelStatus = fuelDirty
@@ -1945,10 +2025,23 @@ export function ProjectDetail({
     : materialOffers.length
       ? ({ label: "Configurado", tone: "neutral" } as const)
       : ({ label: "Opcional", tone: "neutral" } as const);
-  const tabs = [
+  const planningTabs = [
     {
       value: "planning" as const,
       label: <TabLabel label="Planejamento" status={planningStatus} />,
+    },
+    {
+      value: "fronts" as const,
+      label: (
+        <TabLabel
+          label="Frentes"
+          status={
+            project.workFronts.some((front) => front.eligibility.canStart)
+              ? { label: "OK", tone: "ready" }
+              : { label: "Pendente", tone: "pending" }
+          }
+        />
+      ),
     },
     {
       value: "fuel" as const,
@@ -1975,6 +2068,61 @@ export function ProjectDetail({
       label: <TabLabel label="Itens" status={materialsStatus} />,
     },
   ];
+  const activeTabs = [
+    {
+      value: "overview" as const,
+      label: (
+        <TabLabel
+          label="Visão geral"
+          status={{ label: "Em andamento", tone: "ready" }}
+        />
+      ),
+    },
+    {
+      value: "team" as const,
+      label: <TabLabel label="Equipe" status={teamStatus} />,
+    },
+    {
+      value: "production" as const,
+      label: (
+        <TabLabel
+          label="Produção"
+          status={{ label: "Preparado", tone: "neutral" }}
+        />
+      ),
+    },
+    {
+      value: "machines" as const,
+      label: <TabLabel label="Máquinas" status={machinesStatus} />,
+    },
+    {
+      value: "timekeepers" as const,
+      label: (
+        <TabLabel
+          label="Apontadores"
+          status={{ label: "Em breve", tone: "neutral" }}
+        />
+      ),
+    },
+    {
+      value: "suppliers" as const,
+      label: <TabLabel label="Fornecedores" status={fuelStatus} />,
+    },
+    {
+      value: "reports" as const,
+      label: (
+        <TabLabel
+          label="Relatórios"
+          status={{ label: "Em breve", tone: "neutral" }}
+        />
+      ),
+    },
+    {
+      value: "financial" as const,
+      label: <TabLabel label="Financeiro" status={paymentsStatus} />,
+    },
+  ];
+  const tabs = project.status === "active" ? activeTabs : planningTabs;
 
   const savePatch = (
     command: ProjectReadinessActionInput,
@@ -2016,26 +2164,39 @@ export function ProjectDetail({
   };
 
   const savePlanning = () => {
-    const productionMetricTargets = metrics
+    const items = metrics
       .filter((metric) => metric.enabled)
       .map((metric) => ({
-        metricCode: metric.code,
-        targetTotal: integerInputToCanonicalDecimal(metric.targetTotal),
+        serviceCode: metric.code,
+        unitCode: (metric.code === "finishing"
+          ? "M2"
+          : metric.code === "top_soil"
+            ? "M3_KM"
+            : "M3") as "M3" | "M2" | "M3_KM",
+        total: integerInputToCanonicalDecimal(metric.targetTotal),
       }))
-      .filter((metric) => metric.targetTotal && metric.targetTotal !== "0.00");
+      .filter((metric) => metric.total && metric.total !== "0.00");
     if (!plannedEndDate) {
       toast.warning("Informe a data prevista de fim antes de salvar.");
       return;
     }
-    if (productionMetricTargets.length === 0) {
-      toast.warning("Selecione ao menos uma métrica com meta total.");
+    if (items.length === 0) {
+      toast.warning("Selecione ao menos um quantitativo de referência.");
       return;
     }
-    savePatch(
-      { plannedEndDate, productionMetricTargets },
-      "Datas e métricas salvas.",
-      () => setPlanningDirty(false),
-    );
+    startTransition(async () => {
+      const [dateResult, baselineResult] = await Promise.all([
+        saveProjectReadinessAction(project.id, { plannedEndDate }),
+        saveProjectQuantityBaselineAction(project.id, { items }),
+      ]);
+      if (dateResult.kind === "success" && baselineResult.kind === "success") {
+        toast.success("Datas e quantitativos de referência salvos.");
+        setPlanningDirty(false);
+        router.refresh();
+        return;
+      }
+      toast.error("Não foi possível salvar o planejamento.");
+    });
   };
 
   const getCurrentFuelCommands = () => {
@@ -2309,8 +2470,18 @@ export function ProjectDetail({
       toast.warning("Salve as alterações abertas antes de iniciar a obra.");
       return;
     }
+    if (!selectedStartFrontIds.length) {
+      toast.warning(
+        "Selecione ao menos uma frente elegível para iniciar junto com a obra.",
+      );
+      setActiveTab("fronts");
+      return;
+    }
     startTransition(async () => {
-      const result = await activateProjectAction(project.id);
+      const result = await activateProjectAction(
+        project.id,
+        selectedStartFrontIds,
+      );
       if (result.kind === "success") {
         toast.success("Obra iniciada.");
         router.refresh();
@@ -2328,6 +2499,81 @@ export function ProjectDetail({
         },
       );
     });
+  };
+
+  const saveWorkFront = () => {
+    const services = project.quantityBaseline.items
+      .map((item) => ({
+        serviceCode: item.serviceCode,
+        unitCode: item.unitCode,
+        quantity: integerInputToCanonicalDecimal(
+          frontQuantities[item.serviceCode] ?? "",
+        ),
+      }))
+      .filter((item) => item.quantity && item.quantity !== "0.00");
+    if (frontExcessIssues.length) {
+      setFrontIssues([]);
+      return;
+    }
+    if (!frontName.trim() || !services.length) {
+      setFrontIssues([
+        {
+          location: "Frente",
+          message:
+            "Informe o nome e ao menos um quantitativo distribuído para a frente.",
+        },
+      ]);
+      return;
+    }
+    setFrontIssues([]);
+    startTransition(async () => {
+      const result = await createProjectWorkFrontAction(project.id, {
+        name: frontName,
+        location: frontLocation || null,
+        services,
+      });
+      if (result.kind === "success") {
+        toast.success("Frente cadastrada.");
+        setFrontName("");
+        setFrontLocation("");
+        setFrontQuantities({});
+        setFrontIssues([]);
+        setOpenModal(null);
+        router.refresh();
+        return;
+      }
+      setFrontIssues(
+        result.kind === "recoverable-conflict" && result.blockers?.length
+          ? result.blockers.map((blocker) => ({
+              location: "Frente",
+              field:
+                blocker.section === "fronts"
+                  ? "Quantitativos"
+                  : blocker.section,
+              message: blocker.message,
+            }))
+          : [
+              {
+                location: "Frente",
+                message: result.message,
+              },
+            ],
+      );
+    });
+  };
+
+  const openWorkFrontModal = () => {
+    setFrontName("");
+    setFrontLocation("");
+    setFrontQuantities({});
+    setFrontIssues([]);
+    setOpenModal("frontCreate");
+  };
+
+  const closeWorkFrontModal = () => {
+    if (isPending) return;
+    setFrontIssues([]);
+    setOpenModal(null);
   };
 
   const setFuelDraftWithDirty =
@@ -2517,6 +2763,149 @@ export function ProjectDetail({
           </div>
         </div>
         <div className="p-4">
+          {activeTab === "overview" && (
+            <div className="grid gap-4 lg:grid-cols-2">
+              <Section
+                icon={Gauge}
+                title="Quantitativos de referência"
+                description="A linha de base aprovada é comparada à distribuição atual; os apontamentos de produção serão adicionados nesta etapa futura."
+                status={{
+                  label: `Revisão ${project.quantityBaseline.revision ?? 0}`,
+                  tone: "neutral",
+                }}
+              >
+                <div className="grid gap-2 text-sm">
+                  {project.quantityBaseline.items.map((item) => (
+                    <div
+                      key={item.serviceCode}
+                      className="grid grid-cols-3 gap-2 rounded-md border border-border p-2"
+                    >
+                      <span className="font-semibold">
+                        {metricDefinitions.find(
+                          (metric) => metric.code === item.serviceCode,
+                        )?.label ?? item.serviceCode}
+                      </span>
+                      <span>
+                        Distribuído:{" "}
+                        {canonicalDecimalToBrazilianInteger(item.allocated)}
+                      </span>
+                      <span>
+                        Saldo:{" "}
+                        {canonicalDecimalToBrazilianInteger(item.unallocated)}{" "}
+                        {item.unitCode}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </Section>
+              <Section
+                icon={HardHat}
+                title="Frentes ativas"
+                description="Acompanhe quais áreas já foram liberadas. Produção executada ainda não é registrada nesta etapa."
+                status={{
+                  label: `${project.workFronts.filter((front) => front.status === "active").length} ativa(s)`,
+                  tone: "ready",
+                }}
+              >
+                <div className="grid gap-2 text-sm">
+                  {project.workFronts
+                    .filter((front) => front.status === "active")
+                    .map((front) => (
+                      <div
+                        key={front.id}
+                        className="rounded-md border border-border p-2 font-semibold"
+                      >
+                        {front.name}
+                      </div>
+                    ))}
+                  {!project.workFronts.some(
+                    (front) => front.status === "active",
+                  ) && (
+                    <p className="text-muted-foreground">
+                      Nenhuma frente ativa.
+                    </p>
+                  )}
+                </div>
+              </Section>
+            </div>
+          )}
+
+          {activeTab === "timekeepers" && (
+            <Section
+              icon={UsersRound}
+              title="Apontadores"
+              description="O cadastro de apontadores, produção, abastecimento e demais rotinas diárias será conectado aqui. A obra já possui frentes para receber esses lançamentos."
+              status={{ label: "Em breve", tone: "neutral" }}
+            >
+              <p className="text-sm text-muted-foreground">
+                Nenhum lançamento diário é registrado nesta etapa.
+              </p>
+            </Section>
+          )}
+          {activeTab === "reports" && (
+            <Section
+              icon={PackageCheck}
+              title="Relatórios"
+              description="Os relatórios de produção, diário de obra e medições serão disponibilizados a partir dos apontamentos."
+              status={{ label: "Em breve", tone: "neutral" }}
+            >
+              <p className="text-sm text-muted-foreground">
+                Ainda não há dados executados para consolidar.
+              </p>
+            </Section>
+          )}
+          {activeTab === "suppliers" && (
+            <Section
+              icon={Truck}
+              title="Fornecedores"
+              description="Consulte os fornecedores e preços definidos no planejamento. O registro de recebimentos e abastecimentos será incluído depois."
+              status={fuelStatus}
+            >
+              <div className="grid gap-2 text-sm">
+                {[...project.fuelOffers, ...project.supplierOffers].map(
+                  (offer) => (
+                    <div
+                      key={offer.id}
+                      className="rounded-md border border-border p-2"
+                    >
+                      <strong>{offer.supplier?.name ?? "Fornecedor"}</strong> —{" "}
+                      {offer.item?.name ?? "Item"}
+                    </div>
+                  ),
+                )}
+                {!project.fuelOffers.length &&
+                  !project.supplierOffers.length && (
+                    <p className="text-muted-foreground">
+                      Nenhuma oferta vinculada.
+                    </p>
+                  )}
+              </div>
+            </Section>
+          )}
+          {activeTab === "financial" && (
+            <Section
+              icon={WalletCards}
+              title="Financeiro"
+              description="O orçamento e os prazos planejados permanecem disponíveis. Custos reais e medições financeiras dependem dos lançamentos futuros."
+              status={{ label: "Planejado", tone: "neutral" }}
+            >
+              <div className="grid gap-2 text-sm">
+                <p>
+                  Orçamento aprovado:{" "}
+                  <strong>
+                    {project.baseline
+                      ? formatMoney(project.baseline.approvedBudget)
+                      : "Não informado"}
+                  </strong>
+                </p>
+                <p>
+                  Modalidades de pagamento configuradas:{" "}
+                  <strong>{project.compensationPaymentTerms.length}</strong>
+                </p>
+              </div>
+            </Section>
+          )}
+
           {activeTab === "planning" && (
             <div className="space-y-4">
               <Section
@@ -2566,8 +2955,8 @@ export function ProjectDetail({
 
               <Section
                 icon={Gauge}
-                title="Métricas de produção"
-                description="Selecione as métricas usadas nesta obra e informe a meta total."
+                title="Quantitativos de referência"
+                description="Este é o total aprovado da obra. As frentes distribuem esse total e não o substituem."
                 status={metricsStatus}
               >
                 <div className="grid gap-3">
@@ -2606,7 +2995,7 @@ export function ProjectDetail({
                         </span>
                       </label>
                       <label className="grid gap-1.5 text-sm font-semibold">
-                        <span>Meta total ({metric.unit})</span>
+                        <span>Total de referência ({metric.unit})</span>
                         <Input
                           className="h-11"
                           inputMode="numeric"
@@ -2633,6 +3022,136 @@ export function ProjectDetail({
                   ))}
                 </div>
               </Section>
+            </div>
+          )}
+
+          {(activeTab === "fronts" || activeTab === "production") && (
+            <div className="space-y-4">
+              <Section
+                icon={HardHat}
+                title="Frentes de serviço"
+                description="Cadastre a área de atuação e distribua somente a parcela que será mobilizada agora. O saldo continua disponível para novas frentes."
+                status={
+                  project.workFronts.some((front) => front.eligibility.canStart)
+                    ? { label: "Frente elegível", tone: "ready" }
+                    : { label: "Pendente", tone: "pending" }
+                }
+                action={
+                  canManageFronts ? (
+                    <Button
+                      type="button"
+                      className="min-h-10"
+                      disabled={
+                        isPending || !project.quantityBaseline.items.length
+                      }
+                      onClick={openWorkFrontModal}
+                    >
+                      <Plus className="size-4" />
+                      Cadastrar frente
+                    </Button>
+                  ) : undefined
+                }
+              >
+                <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
+                  {project.quantityBaseline.items.length
+                    ? "Distribua somente os serviços mobilizados nesta etapa. O saldo permanece disponível para as próximas frentes."
+                    : "Salve os quantitativos de referência antes de distribuir serviços em uma frente."}
+                </p>
+              </Section>
+              <div className="grid gap-3">
+                {project.workFronts.length ? (
+                  project.workFronts.map((front) => (
+                    <div
+                      key={front.id}
+                      className="rounded-md border border-border bg-background p-3"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="font-bold">{front.name}</p>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            {front.location ?? "Localização não informada"}
+                          </p>
+                        </div>
+                        {isEditable && front.eligibility.canStart && (
+                          <label className="flex items-center gap-2 text-sm font-semibold">
+                            <input
+                              type="checkbox"
+                              className="size-4 accent-primary"
+                              checked={selectedStartFrontIds.includes(front.id)}
+                              onChange={(event) =>
+                                setSelectedStartFrontIds((current) =>
+                                  event.target.checked
+                                    ? [...current, front.id]
+                                    : current.filter((id) => id !== front.id),
+                                )
+                              }
+                            />
+                            Iniciar com a obra
+                          </label>
+                        )}
+                      </div>
+                      <p className="mt-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                        {front.status === "active"
+                          ? "Em execução"
+                          : front.eligibility.canStart
+                            ? "Elegível para início"
+                            : front.eligibility.blockers.join(" ")}
+                      </p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {front.services.map((service) => (
+                          <span
+                            key={service.serviceCode}
+                            className="rounded-sm bg-secondary px-2 py-1 text-xs font-semibold"
+                          >
+                            {metricDefinitions.find(
+                              (metric) => metric.code === service.serviceCode,
+                            )?.label ?? service.serviceCode}
+                            :{" "}
+                            {canonicalDecimalToBrazilianInteger(
+                              service.quantity,
+                            )}{" "}
+                            {service.unitCode}
+                          </span>
+                        ))}
+                      </div>
+                      {project.status === "active" &&
+                        front.eligibility.canStart && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="mt-3"
+                            disabled={isPending}
+                            onClick={() =>
+                              startTransition(async () => {
+                                const result =
+                                  await startProjectWorkFrontAction(
+                                    project.id,
+                                    front.id,
+                                  );
+                                if (result.kind === "success") {
+                                  toast.success("Frente iniciada.");
+                                  router.refresh();
+                                  return;
+                                }
+                                toast.error(
+                                  "Não foi possível iniciar esta frente.",
+                                );
+                              })
+                            }
+                          >
+                            <Play className="size-4" />
+                            Iniciar frente
+                          </Button>
+                        )}
+                    </div>
+                  ))
+                ) : (
+                  <p className="rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">
+                    Nenhuma frente cadastrada. Cadastre pelo menos uma para
+                    liberar o início da obra.
+                  </p>
+                )}
+              </div>
             </div>
           )}
 
@@ -2969,6 +3488,141 @@ export function ProjectDetail({
           )}
         </div>
       </section>
+
+      <OperationsModal
+        icon={HardHat}
+        open={openModal === "frontCreate"}
+        onOpenChange={(open) => {
+          if (!open) closeWorkFrontModal();
+        }}
+        size="lg"
+        title="Cadastrar frente de serviço"
+        description="Defina a área de atuação e distribua os quantitativos que serão mobilizados agora."
+        footer={
+          <>
+            <p className="text-xs font-medium leading-5 text-muted-foreground">
+              O saldo não distribuído permanece disponível para novas frentes.
+            </p>
+            <div className="flex flex-col-reverse gap-2 sm:flex-row">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isPending}
+                onClick={closeWorkFrontModal}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                disabled={isPending || frontExcessIssues.length > 0}
+                onClick={saveWorkFront}
+              >
+                <Save className="size-4" />
+                {isPending ? "Cadastrando..." : "Cadastrar frente"}
+              </Button>
+            </div>
+          </>
+        }
+      >
+        <div className="grid gap-5">
+          <FormErrorDeclaration
+            issues={visibleFrontIssues}
+            title={
+              frontExcessIssues.length
+                ? "Quantitativo acima do saldo disponível."
+                : "Não foi possível cadastrar a frente."
+            }
+            description={
+              frontExcessIssues.length
+                ? "Reduza os valores indicados para cadastrar a frente."
+                : "Corrija os pontos indicados e tente novamente."
+            }
+          />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="grid gap-1.5 text-sm font-semibold">
+              <span>Nome da frente</span>
+              <Input
+                autoFocus
+                value={frontName}
+                disabled={isPending}
+                placeholder="Ex.: Frente 01 — acesso norte"
+                onChange={(event) => {
+                  setFrontName(event.target.value);
+                  if (frontIssues.length) setFrontIssues([]);
+                }}
+              />
+            </label>
+            <label className="grid gap-1.5 text-sm font-semibold">
+              <span>
+                Localização{" "}
+                <em className="font-normal text-muted-foreground">
+                  (opcional)
+                </em>
+              </span>
+              <Input
+                value={frontLocation}
+                disabled={isPending}
+                placeholder="Estaca, trecho ou setor"
+                onChange={(event) => {
+                  setFrontLocation(event.target.value);
+                  if (frontIssues.length) setFrontIssues([]);
+                }}
+              />
+            </label>
+          </div>
+
+          <div className="grid gap-2">
+            <div>
+              <h3 className="text-sm font-bold">Quantitativos desta frente</h3>
+              <p className="mt-1 text-sm leading-5 text-muted-foreground">
+                Preencha apenas os serviços que serão executados nesta frente.
+              </p>
+            </div>
+            {project.quantityBaseline.items.map((item) => (
+              <label
+                key={item.serviceCode}
+                className="grid gap-2 rounded-md border border-border bg-background px-3 py-3 sm:grid-cols-[minmax(0,1fr)_180px] sm:items-center"
+              >
+                <span className="min-w-0 text-sm">
+                  <strong className="block">
+                    {metricDefinitions.find(
+                      (metric) => metric.code === item.serviceCode,
+                    )?.label ?? item.serviceCode}
+                  </strong>
+                  <span className="mt-1 block text-muted-foreground">
+                    Saldo disponível:{" "}
+                    {canonicalDecimalToBrazilianInteger(item.unallocated)}{" "}
+                    {item.unitCode}
+                  </span>
+                </span>
+                <Input
+                  aria-label={`Quantidade para ${metricDefinitions.find((metric) => metric.code === item.serviceCode)?.label ?? item.serviceCode}`}
+                  aria-invalid={frontExcessIssues.some(
+                    (issue) =>
+                      issue.field ===
+                      (metricDefinitions.find(
+                        (metric) => metric.code === item.serviceCode,
+                      )?.label ?? item.serviceCode),
+                  )}
+                  inputMode="numeric"
+                  disabled={isPending}
+                  placeholder="0"
+                  value={frontQuantities[item.serviceCode] ?? ""}
+                  onChange={(event) => {
+                    setFrontQuantities((current) => ({
+                      ...current,
+                      [item.serviceCode]: formatBrazilianIntegerInput(
+                        event.target.value,
+                      ),
+                    }));
+                    if (frontIssues.length) setFrontIssues([]);
+                  }}
+                />
+              </label>
+            ))}
+          </div>
+        </div>
+      </OperationsModal>
 
       <OperationsModal
         icon={Fuel}

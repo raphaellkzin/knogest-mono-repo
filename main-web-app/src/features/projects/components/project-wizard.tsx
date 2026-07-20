@@ -773,12 +773,14 @@ export function EmployeeMobilization({
   const [jobRoleMessage, setJobRoleMessage] = React.useState("");
 
   React.useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect -- Resets transient modal state when the wizard session changes. */
     setActiveEmploymentId(null);
     setDraft(null);
     setJobRoles(options.jobRoles);
     setNewJobRoleName("");
     setIsAddingJobRole(false);
     setJobRoleMessage("");
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [options.jobRoles, sessionKey]);
 
   const workingDays = weeklySchedule.filter((day) => day.isWorking).length;
@@ -818,6 +820,7 @@ export function EmployeeMobilization({
     [workingDays],
   );
   React.useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect -- Keeps the derived overtime preview in sync with the active draft. */
     setDraft((current) =>
       current && !current.overtimeIsManual
         ? {
@@ -830,6 +833,7 @@ export function EmployeeMobilization({
           }
         : current,
     );
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [calculateHourlyRate]);
   const updateDraft = (
     patch: Partial<NonNullable<typeof draft>>,
@@ -1336,6 +1340,7 @@ export function MachineMobilization({
   }, [allocations, form, teamEmploymentIds]);
 
   React.useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect -- Removes a draft operator that no longer belongs to the selected team. */
     setDraft((current) =>
       current && teamEmploymentIds.has(current.operatorEmploymentId)
         ? current
@@ -1343,6 +1348,7 @@ export function MachineMobilization({
           ? { ...current, operatorEmploymentId: "" }
           : current,
     );
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [teamEmploymentIds]);
 
   const cancelEditing = () => {
@@ -1878,7 +1884,7 @@ export function ProjectWizard({
         ),
       },
     ],
-    [options],
+    [key, options],
   );
 
   const submit = async (command: ProjectCommand) => {

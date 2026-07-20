@@ -16,9 +16,12 @@ import {
 } from "../../commercial/catalog-classification";
 import {
   formatProjectAddress,
+  type ProjectActivateCommand,
   type ProjectCommand,
   type ProjectListQuery,
+  type ProjectQuantityBaselineRevisionCommand,
   type ProjectReadinessCommand,
+  type ProjectWorkFrontCommand,
 } from "../projects.dto";
 
 export type ProjectScope = {
@@ -49,6 +52,7 @@ type ReadinessBlocker = {
   section:
     | "dates"
     | "metrics"
+    | "fronts"
     | "fuel"
     | "items"
     | "equipment"
@@ -56,6 +60,40 @@ type ReadinessBlocker = {
     | "payments";
   message: string;
 };
+
+const serviceUnits = {
+  cut: "M3",
+  fill: "M3",
+  finishing: "M2",
+  top_soil: "M3_KM",
+  unsuitable_soil_removal: "M3",
+  replacement_fill: "M3",
+} as const;
+
+const serviceLabels: Record<keyof typeof serviceUnits, string> = {
+  cut: "Corte",
+  fill: "Aterro",
+  finishing: "Acabamento",
+  top_soil: "Top Soil",
+  unsuitable_soil_removal: "Remoção de solo impróprio",
+  replacement_fill: "Aterro de substituição",
+};
+
+type EarthworksServiceCode = keyof typeof serviceUnits;
+
+function assertServiceUnits(
+  items: Array<{ serviceCode: string; unitCode: string }>,
+) {
+  for (const item of items) {
+    const expected = serviceUnits[item.serviceCode as EarthworksServiceCode];
+    if (!expected || item.unitCode !== expected)
+      validationError(
+        "services",
+        "invalid_unit",
+        "A unidade informada não corresponde ao serviço de terraplanagem.",
+      );
+  }
+}
 
 function decimalString(value: Prisma.Decimal | number | string, scale: number) {
   if (typeof value === "string")
@@ -452,7 +490,7 @@ async function runSerializable<T>(
   context: HandlerContext,
   work: (tx: HandlerContext) => Promise<T>,
 ) {
-  for (let attempt = 1; attempt <= 3; attempt++) {
+  for (let attempt = 1; attempt <= 5; attempt++) {
     try {
       return await context.transaction(work, {
         isolationLevel: "Serializable",
@@ -463,9 +501,10 @@ async function runSerializable<T>(
       if (
         !(error instanceof Prisma.PrismaClientKnownRequestError) ||
         error.code !== "P2034" ||
-        attempt === 3
+        attempt === 5
       )
         throw error;
+      await new Promise((resolve) => setTimeout(resolve, attempt * 25));
     }
   }
   throw new Error("Unreachable serializable retry state");
@@ -497,6 +536,107 @@ function projectScopeWhere(scope: ProjectScope, projectId: string) {
     companyId: scope.companyId,
     projectId,
   };
+}
+
+async function lockProjectWorkFrontAllocations(
+  tx: HandlerContext,
+  projectId: string,
+) {
+  await tx.prisma.$queryRaw(
+    Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${projectId}, 0)) IS NULL AS locked`,
+  );
+}
+
+async function assertWorkFrontAllocationWithinBaseline(
+  tx: HandlerContext,
+  scope: ProjectScope,
+  projectId: string,
+  services: ProjectWorkFrontCommand["services"],
+  excludedFrontId?: string,
+) {
+  const scopeWhere = projectScopeWhere(scope, projectId);
+  const revision = await tx.prisma.projectQuantityBaselineRevision.findFirst({
+    where: scopeWhere,
+    orderBy: { revision: "desc" },
+    select: { id: true },
+  });
+  if (!revision)
+    validationError(
+      "services",
+      "quantity_baseline_required",
+      "Cadastre os quantitativos de referência antes de distribuir uma frente.",
+    );
+
+  const baselineItems = await tx.prisma.projectQuantityBaselineItem.findMany({
+    where: { revisionId: revision.id },
+    select: { serviceCode: true, unitCode: true, total: true },
+  });
+  const allocatedFronts = await tx.prisma.projectWorkFront.findMany({
+    where: {
+      ...scopeWhere,
+      status: { not: "CANCELLED" },
+      ...(excludedFrontId ? { id: { not: excludedFrontId } } : {}),
+    },
+    select: { id: true },
+  });
+  const allocatedServices = allocatedFronts.length
+    ? await tx.prisma.projectWorkFrontService.findMany({
+        where: {
+          ...scopeWhere,
+          workFrontId: { in: allocatedFronts.map((front) => front.id) },
+        },
+        select: { serviceCode: true, quantity: true },
+      })
+    : [];
+  const baselineByService = new Map(
+    baselineItems.map((item) => [item.serviceCode, item]),
+  );
+  const allocatedByService = new Map<string, Prisma.Decimal>();
+  for (const service of allocatedServices) {
+    const allocated =
+      allocatedByService.get(service.serviceCode) ?? new Prisma.Decimal(0);
+    allocatedByService.set(
+      service.serviceCode,
+      allocated.add(service.quantity),
+    );
+  }
+
+  const blockers: ReadinessBlocker[] = [];
+  for (const service of services) {
+    const baseline = baselineByService.get(service.serviceCode);
+    if (!baseline)
+      validationError(
+        "services",
+        "service_not_in_quantity_baseline",
+        "O serviço informado não existe nos quantitativos de referência atuais.",
+      );
+    if (baseline.unitCode !== service.unitCode)
+      validationError(
+        "services",
+        "unit_differs_from_quantity_baseline",
+        "A unidade informada não corresponde ao quantitativo de referência atual.",
+      );
+    const allocated =
+      allocatedByService.get(service.serviceCode) ?? new Prisma.Decimal(0);
+    const available = baseline.total.sub(allocated);
+    const requested = new Prisma.Decimal(service.quantity);
+    if (requested.greaterThan(available)) {
+      const label =
+        serviceLabels[service.serviceCode as EarthworksServiceCode] ??
+        service.serviceCode;
+      blockers.push({
+        section: "fronts",
+        message: `${label}: solicitado ${decimalString(requested, 2)} ${service.unitCode}; saldo disponível ${decimalString(available, 2)} ${service.unitCode}.`,
+      });
+    }
+  }
+  if (blockers.length)
+    throw new AppError({
+      code: "WORK_FRONT_QUANTITY_EXCEEDS_BALANCE",
+      statusCode: 422,
+      message: "Um ou mais quantitativos ultrapassam o saldo disponível.",
+      data: { fields: [], resources: [], blockers },
+    });
 }
 
 async function replaceAccountability(
@@ -1583,6 +1723,9 @@ async function buildProjectSnapshot(
     supplierOffers,
     productionMetricTargets,
     compensationPaymentTerms,
+    quantityBaselineRevision,
+    workFronts,
+    workFrontServices,
   ] = await Promise.all([
     context.prisma.projectBaseline.findFirst({
       where: { ...scopeWhere, effectiveTo: null },
@@ -1622,7 +1765,26 @@ async function buildProjectSnapshot(
       where: scopeWhere,
       orderBy: { compensationMode: "asc" },
     }),
+    context.prisma.projectQuantityBaselineRevision.findFirst({
+      where: scopeWhere,
+      orderBy: { revision: "desc" },
+    }),
+    context.prisma.projectWorkFront.findMany({
+      where: scopeWhere,
+      orderBy: [{ status: "asc" }, { createdAt: "asc" }],
+    }),
+    context.prisma.projectWorkFrontService.findMany({
+      where: scopeWhere,
+      orderBy: { serviceCode: "asc" },
+    }),
   ]);
+
+  const quantityBaselineItems = quantityBaselineRevision
+    ? await context.prisma.projectQuantityBaselineItem.findMany({
+        where: { revisionId: quantityBaselineRevision.id },
+        orderBy: { serviceCode: "asc" },
+      })
+    : [];
 
   const [scheduleDays, breakTemplates] = scheduleRevision
     ? await Promise.all([
@@ -1934,16 +2096,100 @@ async function buildProjectSnapshot(
     !offer.item?.isActive ||
     !offer.purchaseUnit?.isActive;
 
+  const baselineItems = quantityBaselineItems.length
+    ? quantityBaselineItems.map((item) => ({
+        serviceCode: item.serviceCode,
+        unitCode: item.unitCode,
+        total: item.total,
+      }))
+    : productionMetricTargets.map((item) => ({
+        serviceCode: item.metricCode,
+        unitCode:
+          serviceUnits[item.metricCode as EarthworksServiceCode] ?? "M3",
+        total: item.targetTotal,
+      }));
+  const baselineByService = new Map(
+    baselineItems.map((item) => [item.serviceCode, item]),
+  );
+  const allocatedByService = new Map<string, Prisma.Decimal>();
+  for (const service of workFrontServices) {
+    const front = workFronts.find((item) => item.id === service.workFrontId);
+    if (!front || front.status === "CANCELLED") continue;
+    const current =
+      allocatedByService.get(service.serviceCode) ?? new Prisma.Decimal(0);
+    allocatedByService.set(service.serviceCode, current.add(service.quantity));
+  }
+  const quantityBaseline = {
+    revision:
+      quantityBaselineRevision?.revision ?? (baselineItems.length ? 1 : null),
+    createdAt: quantityBaselineRevision?.createdAt.toISOString() ?? null,
+    reason: quantityBaselineRevision?.reason ?? null,
+    items: baselineItems.map((item) => {
+      const allocated =
+        allocatedByService.get(item.serviceCode) ?? new Prisma.Decimal(0);
+      return {
+        serviceCode: item.serviceCode,
+        unitCode: item.unitCode,
+        total: decimalString(item.total, 2),
+        allocated: decimalString(allocated, 2),
+        unallocated: decimalString(item.total.sub(allocated), 2),
+      };
+    }),
+  };
+  const workFrontDtos = workFronts.map((front) => {
+    const services = workFrontServices
+      .filter((service) => service.workFrontId === front.id)
+      .map((service) => ({
+        serviceCode: service.serviceCode,
+        unitCode: service.unitCode,
+        quantity: decimalString(service.quantity, 2),
+      }));
+    const blockers = services.flatMap((service) => {
+      const baseline = baselineByService.get(service.serviceCode);
+      if (!baseline) return ["Serviço não está na linha de base atual."];
+      if (baseline.unitCode !== service.unitCode)
+        return ["Unidade do serviço diverge da linha de base."];
+      const allocated =
+        allocatedByService.get(service.serviceCode) ?? new Prisma.Decimal(0);
+      if (allocated.gt(baseline.total))
+        return [
+          "A distribuição das frentes excede o quantitativo de referência.",
+        ];
+      return [];
+    });
+    if (!services.length) blockers.push("Informe ao menos um serviço.");
+    return {
+      id: front.id,
+      name: front.name,
+      location: front.location,
+      notes: front.notes,
+      plannedStartDate: civilDateString(front.plannedStartDate),
+      plannedEndDate: civilDateString(front.plannedEndDate),
+      status: front.status.toLowerCase(),
+      actualStartedAt: front.actualStartedAt?.toISOString() ?? null,
+      services,
+      eligibility: {
+        canStart: front.status === "PLANNED" && blockers.length === 0,
+        blockers,
+      },
+    };
+  });
+
   const blockers: ReadinessBlocker[] = [];
   if (!baseline?.plannedEndDate)
     blockers.push({
       section: "dates",
       message: "Informe a data prevista de fim da obra.",
     });
-  if (productionMetricTargets.length === 0)
+  if (baselineItems.length === 0)
     blockers.push({
       section: "metrics",
       message: "Selecione ao menos uma métrica de produção com meta total.",
+    });
+  if (!workFrontDtos.some((front) => front.eligibility.canStart))
+    blockers.push({
+      section: "fronts",
+      message: "Cadastre uma frente elegível para iniciar a obra.",
     });
   if (
     fuelOfferDtos.length === 0 ||
@@ -1995,6 +2241,17 @@ async function buildProjectSnapshot(
     blockers.push({
       section: "equipment",
       message: "Cada máquina precisa de operador presente na equipe da obra.",
+    });
+  if (employeeAllocationDtos.length === 0)
+    blockers.push({
+      section: "team",
+      message: "Mobilize ao menos uma pessoa para iniciar a obra.",
+    });
+  if (machineAllocationDtos.length === 0)
+    blockers.push({
+      section: "equipment",
+      message:
+        "Mobilize ao menos uma máquina com operador para iniciar a obra.",
     });
   if (materialOfferDtos.some((offer) => hasInvalidProjectOffer(offer)))
     blockers.push({
@@ -2081,6 +2338,8 @@ async function buildProjectSnapshot(
       metricCode: item.metricCode,
       targetTotal: decimalString(item.targetTotal, 2),
     })),
+    quantityBaseline,
+    workFronts: workFrontDtos,
     compensationPaymentTerms: compensationPaymentTerms.map((item) => ({
       compensationMode: item.compensationMode,
       daysAfterPeriodEnd: item.daysAfterPeriodEnd,
@@ -2414,6 +2673,31 @@ export class ProjectsHandler {
             targetTotal: target.targetTotal,
           })),
         });
+        const currentRevision =
+          await tx.prisma.projectQuantityBaselineRevision.findFirst({
+            where: scopeWhere,
+            orderBy: { revision: "desc" },
+            select: { revision: true },
+          });
+        const revision = await tx.prisma.projectQuantityBaselineRevision.create(
+          {
+            data: {
+              ...scopeWhere,
+              revision: (currentRevision?.revision ?? 0) + 1,
+              reason: "Atualização dos quantitativos de referência",
+              createdByUserId: scope.userId,
+            },
+            select: { id: true },
+          },
+        );
+        await tx.prisma.projectQuantityBaselineItem.createMany({
+          data: command.productionMetricTargets.map((target) => ({
+            revisionId: revision.id,
+            serviceCode: target.metricCode,
+            unitCode: serviceUnits[target.metricCode as EarthworksServiceCode],
+            total: target.targetTotal,
+          })),
+        });
       }
 
       if (command.fuelOffers !== undefined)
@@ -2479,7 +2763,257 @@ export class ProjectsHandler {
     });
   }
 
-  async activate(scope: ProjectScope, projectId: string) {
+  async saveQuantityBaseline(
+    scope: ProjectScope,
+    projectId: string,
+    command: ProjectQuantityBaselineRevisionCommand,
+  ) {
+    assertServiceUnits(command.items);
+    return runSerializable(this.context, async (tx) => {
+      const project = await tx.prisma.project.findFirst({
+        where: {
+          id: projectId,
+          corporationId: scope.corporationId,
+          companyId: scope.companyId,
+        },
+        select: { status: true },
+      });
+      if (!project) projectNotFound();
+      if (!["PLANNED", "ACTIVE"].includes(project.status))
+        projectLifecycleConflict(
+          "Project quantities cannot change in this state",
+        );
+      const scopeWhere = projectScopeWhere(scope, projectId);
+      const current = await tx.prisma.projectQuantityBaselineRevision.findFirst(
+        {
+          where: scopeWhere,
+          orderBy: { revision: "desc" },
+          select: { revision: true },
+        },
+      );
+      const revision = await tx.prisma.projectQuantityBaselineRevision.create({
+        data: {
+          ...scopeWhere,
+          revision: (current?.revision ?? 0) + 1,
+          reason: command.reason,
+          createdByUserId: scope.userId,
+        },
+        select: { id: true },
+      });
+      await tx.prisma.projectQuantityBaselineItem.createMany({
+        data: command.items.map((item) => ({
+          revisionId: revision.id,
+          serviceCode: item.serviceCode,
+          unitCode: item.unitCode,
+          total: item.total,
+        })),
+      });
+      return buildProjectSnapshot(tx, scope, projectId);
+    });
+  }
+
+  async createWorkFront(
+    scope: ProjectScope,
+    projectId: string,
+    command: ProjectWorkFrontCommand,
+  ) {
+    assertServiceUnits(command.services);
+    return runSerializable(this.context, async (tx) => {
+      await lockProjectWorkFrontAllocations(tx, projectId);
+      const project = await tx.prisma.project.findFirst({
+        where: {
+          id: projectId,
+          corporationId: scope.corporationId,
+          companyId: scope.companyId,
+        },
+        select: { status: true },
+      });
+      if (!project) projectNotFound();
+      if (!["PLANNED", "ACTIVE"].includes(project.status))
+        projectLifecycleConflict("Project does not accept new work fronts");
+      await assertWorkFrontAllocationWithinBaseline(
+        tx,
+        scope,
+        projectId,
+        command.services,
+      );
+      const front = await tx.prisma.projectWorkFront.create({
+        data: {
+          ...projectScopeWhere(scope, projectId),
+          name: command.name,
+          location: command.location,
+          notes: command.notes,
+          plannedStartDate: command.plannedStartDate
+            ? new Date(`${command.plannedStartDate}T00:00:00.000Z`)
+            : null,
+          plannedEndDate: command.plannedEndDate
+            ? new Date(`${command.plannedEndDate}T00:00:00.000Z`)
+            : null,
+        },
+        select: { id: true },
+      });
+      await tx.prisma.projectWorkFrontService.createMany({
+        data: command.services.map((service) => ({
+          ...projectScopeWhere(scope, projectId),
+          workFrontId: front.id,
+          serviceCode: service.serviceCode,
+          unitCode: service.unitCode,
+          quantity: service.quantity,
+        })),
+      });
+      return buildProjectSnapshot(tx, scope, projectId);
+    });
+  }
+
+  async updateWorkFront(
+    scope: ProjectScope,
+    projectId: string,
+    frontId: string,
+    command: ProjectWorkFrontCommand,
+  ) {
+    assertServiceUnits(command.services);
+    return runSerializable(this.context, async (tx) => {
+      await lockProjectWorkFrontAllocations(tx, projectId);
+      const front = await tx.prisma.projectWorkFront.findFirst({
+        where: { id: frontId, ...projectScopeWhere(scope, projectId) },
+        select: { status: true },
+      });
+      if (!front) projectNotFound();
+      if (front.status !== "PLANNED")
+        projectLifecycleConflict("Only planned work fronts can be edited");
+      await assertWorkFrontAllocationWithinBaseline(
+        tx,
+        scope,
+        projectId,
+        command.services,
+        frontId,
+      );
+      await tx.prisma.projectWorkFront.updateMany({
+        where: {
+          id: frontId,
+          ...projectScopeWhere(scope, projectId),
+          status: "PLANNED",
+        },
+        data: {
+          name: command.name,
+          location: command.location,
+          notes: command.notes,
+          plannedStartDate: command.plannedStartDate
+            ? new Date(`${command.plannedStartDate}T00:00:00.000Z`)
+            : null,
+          plannedEndDate: command.plannedEndDate
+            ? new Date(`${command.plannedEndDate}T00:00:00.000Z`)
+            : null,
+        },
+      });
+      await tx.prisma.projectWorkFrontService.deleteMany({
+        where: { workFrontId: frontId, ...projectScopeWhere(scope, projectId) },
+      });
+      await tx.prisma.projectWorkFrontService.createMany({
+        data: command.services.map((service) => ({
+          ...projectScopeWhere(scope, projectId),
+          workFrontId: frontId,
+          serviceCode: service.serviceCode,
+          unitCode: service.unitCode,
+          quantity: service.quantity,
+        })),
+      });
+      return buildProjectSnapshot(tx, scope, projectId);
+    });
+  }
+
+  async startWorkFront(
+    scope: ProjectScope,
+    projectId: string,
+    frontId: string,
+  ) {
+    return runSerializable(this.context, async (tx) => {
+      const snapshot = await buildProjectSnapshot(tx, scope, projectId);
+      if (snapshot.status !== "active")
+        projectLifecycleConflict(
+          "Start the Project before starting a work front",
+        );
+      const front = snapshot.workFronts.find((item) => item.id === frontId);
+      if (!front) projectNotFound();
+      if (!front.eligibility.canStart)
+        throw new AppError({
+          code: "WORK_FRONT_NOT_ELIGIBLE",
+          statusCode: 422,
+          message: "Work front is not eligible to start",
+          data: {
+            fields: [],
+            resources: [],
+            blockers: front.eligibility.blockers,
+          },
+        });
+      const now = new Date();
+      const updated = await tx.prisma.projectWorkFront.updateMany({
+        where: {
+          id: frontId,
+          ...projectScopeWhere(scope, projectId),
+          status: "PLANNED",
+        },
+        data: { status: "ACTIVE", actualStartedAt: now },
+      });
+      if (updated.count !== 1) projectLifecycleConflict("Work front changed");
+      await tx.prisma.projectWorkFrontLifecycleEvent.create({
+        data: {
+          ...projectScopeWhere(scope, projectId),
+          workFrontId: frontId,
+          fromStatus: "PLANNED",
+          toStatus: "ACTIVE",
+          occurredAt: now,
+          actorUserId: scope.userId,
+          reason: null,
+        },
+      });
+      return buildProjectSnapshot(tx, scope, projectId);
+    });
+  }
+
+  async cancelWorkFront(
+    scope: ProjectScope,
+    projectId: string,
+    frontId: string,
+  ) {
+    return runSerializable(this.context, async (tx) => {
+      const front = await tx.prisma.projectWorkFront.findFirst({
+        where: { id: frontId, ...projectScopeWhere(scope, projectId) },
+        select: { status: true },
+      });
+      if (!front) projectNotFound();
+      if (front.status !== "PLANNED")
+        projectLifecycleConflict("Only planned work fronts can be cancelled");
+      const now = new Date();
+      const updated = await tx.prisma.projectWorkFront.updateMany({
+        where: {
+          id: frontId,
+          ...projectScopeWhere(scope, projectId),
+          status: "PLANNED",
+        },
+        data: { status: "CANCELLED" },
+      });
+      if (updated.count !== 1) projectLifecycleConflict("Work front changed");
+      await tx.prisma.projectWorkFrontLifecycleEvent.create({
+        data: {
+          ...projectScopeWhere(scope, projectId),
+          workFrontId: frontId,
+          fromStatus: "PLANNED",
+          toStatus: "CANCELLED",
+          occurredAt: now,
+          actorUserId: scope.userId,
+          reason: null,
+        },
+      });
+      return buildProjectSnapshot(tx, scope, projectId);
+    });
+  }
+
+  async activate(
+    scope: ProjectScope,
+    projectId: string,
+    command: ProjectActivateCommand,
+  ) {
     return runSerializable(this.context, async (tx) => {
       const snapshot = await buildProjectSnapshot(tx, scope, projectId);
       if (snapshot.status !== "planned")
@@ -2493,6 +3027,30 @@ export class ProjectsHandler {
             fields: [],
             resources: [],
             blockers: snapshot.readiness.blockers,
+          },
+        });
+
+      const selectedFronts = snapshot.workFronts.filter((front) =>
+        command.frontIds.includes(front.id),
+      );
+      if (selectedFronts.length !== command.frontIds.length)
+        throw new AppError({
+          code: "WORK_FRONT_NOT_FOUND",
+          statusCode: 404,
+          message: "Selected work front was not found",
+        });
+      const ineligible = selectedFronts.filter(
+        (front) => !front.eligibility.canStart,
+      );
+      if (ineligible.length)
+        throw new AppError({
+          code: "WORK_FRONT_NOT_ELIGIBLE",
+          statusCode: 422,
+          message: "Selected work front is not eligible to start",
+          data: {
+            fields: [],
+            resources: [],
+            blockers: ineligible.flatMap((front) => front.eligibility.blockers),
           },
         });
 
@@ -2522,6 +3080,25 @@ export class ProjectsHandler {
           actorUserId: scope.userId,
           reason: null,
         },
+      });
+      await tx.prisma.projectWorkFront.updateMany({
+        where: {
+          id: { in: command.frontIds },
+          ...projectScopeWhere(scope, projectId),
+          status: "PLANNED",
+        },
+        data: { status: "ACTIVE", actualStartedAt: now },
+      });
+      await tx.prisma.projectWorkFrontLifecycleEvent.createMany({
+        data: command.frontIds.map((workFrontId) => ({
+          ...projectScopeWhere(scope, projectId),
+          workFrontId,
+          fromStatus: "PLANNED" as const,
+          toStatus: "ACTIVE" as const,
+          occurredAt: now,
+          actorUserId: scope.userId,
+          reason: "Início da obra",
+        })),
       });
       return buildProjectSnapshot(tx, scope, projectId);
     });

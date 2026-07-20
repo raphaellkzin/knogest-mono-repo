@@ -32,10 +32,17 @@ A empresa vai ter as seguintes relações
   13:00 às 18:00
   -> Escala: Seg. a Sáb.
   -> HORAS EXTRAS FIXAS (ex: sempre paga 1h extra pra todo mundo)
-  -> Metríca de produção (metro cúbico)
+  -> Quantitativos de referência por serviço, versionados e independentes da distribuição operacional
   -> Nivelamento de terreno (metro quadrado)
 
   -> Top Soil (metro cúbico/Km)
+
+  -> Frentes de serviço
+  -- Nome e localização operacional
+  -- Serviços e quantitativos distribuídos
+  -- A soma das frentes não canceladas não pode ultrapassar o saldo da linha de base; o valor exato do saldo é permitido
+  -- Uma frente elegível é obrigatória para iniciar a obra
+  -- Troca de solo registra remoção de solo impróprio e aterro de substituição como serviços distintos
 
   \_> EQUIPAMENTOS: OS EQUIPAMENTOS PERTECENTES A EMPRESA QUE PARTICIPAM DA OBRA
   -- ORÍMETRO INICIAL

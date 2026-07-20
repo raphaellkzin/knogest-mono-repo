@@ -7,6 +7,7 @@ import client, { ApiClientError } from "@/lib/api/server-client";
 import { configureZodPortugueseErrors } from "@/lib/zod-locale";
 import { projectCommandSchema, type ProjectCommand } from "./projects-schema";
 import type {
+  EarthworksServiceCode,
   FuelSupplierOption,
   ProjectDetailSnapshot,
   ProjectSuppliedItemOffersPage,
@@ -90,6 +91,59 @@ const readinessDecimal = (scale: number) => {
 };
 
 const readinessWholeDecimal = () => z.string().regex(/^\d{1,16}\.00$/u);
+const earthworksServiceCodeSchema = z.enum([
+  "cut",
+  "fill",
+  "finishing",
+  "top_soil",
+  "unsuitable_soil_removal",
+  "replacement_fill",
+]);
+const quantityUnitSchema = z.enum(["M3", "M2", "M3_KM"]);
+const frontServiceSchema = z.object({
+  serviceCode: earthworksServiceCodeSchema,
+  unitCode: quantityUnitSchema,
+  quantity: readinessDecimal(2),
+});
+const quantityBaselineActionSchema = z.object({
+  reason: z.string().max(240).nullable().optional(),
+  items: z
+    .array(
+      z.object({
+        serviceCode: earthworksServiceCodeSchema,
+        unitCode: quantityUnitSchema,
+        total: readinessDecimal(2),
+      }),
+    )
+    .min(1)
+    .max(20),
+});
+const workFrontActionSchema = z.object({
+  name: z.string().trim().min(1).max(160),
+  location: z.string().trim().max(240).nullable().optional(),
+  notes: z.string().trim().max(1000).nullable().optional(),
+  plannedStartDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/u)
+    .nullable()
+    .optional(),
+  plannedEndDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/u)
+    .nullable()
+    .optional(),
+  services: z.array(frontServiceSchema).min(1).max(20),
+});
+
+export type QuantityBaselineActionInput = z.infer<
+  typeof quantityBaselineActionSchema
+>;
+export type WorkFrontActionInput = z.infer<typeof workFrontActionSchema>;
+export type WorkFrontServiceInput = {
+  serviceCode: EarthworksServiceCode;
+  unitCode: "M3" | "M2" | "M3_KM";
+  quantity: string;
+};
 
 const projectReadinessActionSchema = z
   .object({
@@ -223,9 +277,15 @@ export type ProjectReadinessMutationResult =
       kind: "recoverable-conflict";
       code: string;
       blockers?: { section: string; message: string }[];
+      message: string;
       requestId?: string;
     }
-  | { kind: "terminal-failure"; code: string; requestId?: string };
+  | {
+      kind: "terminal-failure";
+      code: string;
+      message: string;
+      requestId?: string;
+    };
 
 export async function lookupProjectAddressByCepAction(
   postalCode: string,
@@ -412,13 +472,21 @@ export async function finalizeProjectAction(input: {
 
 function parseProjectError(error: unknown): ProjectReadinessMutationResult {
   if (!(error instanceof ApiClientError))
-    return { kind: "terminal-failure", code: "UNKNOWN_ERROR" };
+    return {
+      kind: "terminal-failure",
+      code: "UNKNOWN_ERROR",
+      message: "Não foi possível concluir a operação agora.",
+    };
   const envelope =
     error.data && typeof error.data === "object"
       ? (error.data as Record<string, unknown>)
       : {};
   const code =
     typeof envelope.code === "string" ? envelope.code : "PROJECT_ACTION_FAILED";
+  const message =
+    typeof envelope.message === "string"
+      ? envelope.message
+      : error.message || "Não foi possível concluir a operação agora.";
   const requestId =
     typeof envelope.requestId === "string" ? envelope.requestId : undefined;
   const details =
@@ -436,9 +504,9 @@ function parseProjectError(error: unknown): ProjectReadinessMutationResult {
         )
         .map((item) => ({ section: item.section, message: item.message }))
     : undefined;
-  if (error.status === 400 || error.status === 409)
-    return { kind: "recoverable-conflict", code, blockers, requestId };
-  return { kind: "terminal-failure", code, requestId };
+  if (error.status === 400 || error.status === 409 || error.status === 422)
+    return { kind: "recoverable-conflict", code, blockers, message, requestId };
+  return { kind: "terminal-failure", code, message, requestId };
 }
 
 export async function saveProjectReadinessAction(
@@ -468,8 +536,12 @@ export async function saveProjectReadinessAction(
 
 export async function activateProjectAction(
   projectId: string,
+  frontIds: string[],
 ): Promise<ProjectReadinessMutationResult> {
   const id = z.string().uuid().parse(projectId);
+  const command = z
+    .object({ frontIds: z.array(z.string().uuid()).min(1) })
+    .parse({ frontIds });
   try {
     const response = await client<{
       success: true;
@@ -477,9 +549,78 @@ export async function activateProjectAction(
     }>({
       url: `/api/v1/projects/${id}/activate`,
       method: "POST",
+      data: command,
+      headers: { "content-type": "application/json" },
     });
     revalidatePath(`/home/obras/${id}`);
     revalidatePath("/home/obras");
+    return { kind: "success", project: response.data.data };
+  } catch (error) {
+    return parseProjectError(error);
+  }
+}
+
+export async function saveProjectQuantityBaselineAction(
+  projectId: string,
+  input: QuantityBaselineActionInput,
+): Promise<ProjectReadinessMutationResult> {
+  const id = z.string().uuid().parse(projectId);
+  const command = quantityBaselineActionSchema.parse(input);
+  try {
+    const response = await client<{
+      success: true;
+      data: ProjectDetailSnapshot;
+    }>({
+      url: `/api/v1/projects/${id}/quantity-baseline-revisions`,
+      method: "POST",
+      data: command,
+      headers: { "content-type": "application/json" },
+    });
+    revalidatePath(`/home/obras/${id}`);
+    return { kind: "success", project: response.data.data };
+  } catch (error) {
+    return parseProjectError(error);
+  }
+}
+
+export async function createProjectWorkFrontAction(
+  projectId: string,
+  input: WorkFrontActionInput,
+): Promise<ProjectReadinessMutationResult> {
+  const id = z.string().uuid().parse(projectId);
+  const command = workFrontActionSchema.parse(input);
+  try {
+    const response = await client<{
+      success: true;
+      data: ProjectDetailSnapshot;
+    }>({
+      url: `/api/v1/projects/${id}/fronts`,
+      method: "POST",
+      data: command,
+      headers: { "content-type": "application/json" },
+    });
+    revalidatePath(`/home/obras/${id}`);
+    return { kind: "success", project: response.data.data };
+  } catch (error) {
+    return parseProjectError(error);
+  }
+}
+
+export async function startProjectWorkFrontAction(
+  projectId: string,
+  frontId: string,
+): Promise<ProjectReadinessMutationResult> {
+  const id = z.string().uuid().parse(projectId);
+  const front = z.string().uuid().parse(frontId);
+  try {
+    const response = await client<{
+      success: true;
+      data: ProjectDetailSnapshot;
+    }>({
+      url: `/api/v1/projects/${id}/fronts/${front}/start`,
+      method: "POST",
+    });
+    revalidatePath(`/home/obras/${id}`);
     return { kind: "success", project: response.data.data };
   } catch (error) {
     return parseProjectError(error);

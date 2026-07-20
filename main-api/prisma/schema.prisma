@@ -79,6 +79,16 @@ enum ProjectLifecycleStatus {
   @@map("project_lifecycle_status")
 }
 
+enum ProjectWorkFrontStatus {
+  PLANNED
+  ACTIVE
+  PAUSED
+  COMPLETED
+  CANCELLED
+
+  @@map("project_work_front_status")
+}
+
 model Corporation {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name      String   @db.VarChar(160)
@@ -884,6 +894,84 @@ model ProjectProductionMetricTarget {
   @@unique([corporationId, companyId, projectId, metricCode])
   @@index([corporationId, companyId, projectId])
   @@map("project_production_metric_targets")
+}
+
+model ProjectQuantityBaselineRevision {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId String   @map("corporation_id") @db.Uuid
+  companyId     String   @map("company_id") @db.Uuid
+  projectId     String   @map("project_id") @db.Uuid
+  revision      Int
+  reason        String?  @db.VarChar(240)
+  createdByUserId String @map("created_by_user_id") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([corporationId, companyId, projectId, revision])
+  @@index([corporationId, companyId, projectId, createdAt])
+  @@map("project_quantity_baseline_revisions")
+}
+
+model ProjectQuantityBaselineItem {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  revisionId  String   @map("revision_id") @db.Uuid
+  serviceCode String   @map("service_code") @db.VarChar(48)
+  unitCode    String   @map("unit_code") @db.VarChar(32)
+  total       Decimal  @db.Decimal(18, 2)
+
+  @@unique([revisionId, serviceCode])
+  @@index([revisionId])
+  @@map("project_quantity_baseline_items")
+}
+
+model ProjectWorkFront {
+  id            String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId String                 @map("corporation_id") @db.Uuid
+  companyId     String                 @map("company_id") @db.Uuid
+  projectId     String                 @map("project_id") @db.Uuid
+  name          String                 @db.VarChar(160)
+  location      String?                @db.VarChar(240)
+  notes         String?                @db.VarChar(1000)
+  plannedStartDate DateTime?           @map("planned_start_date") @db.Date
+  plannedEndDate DateTime?             @map("planned_end_date") @db.Date
+  status        ProjectWorkFrontStatus @default(PLANNED)
+  actualStartedAt DateTime?            @map("actual_started_at") @db.Timestamptz(3)
+  createdAt     DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([corporationId, companyId, projectId, name])
+  @@index([corporationId, companyId, projectId, status])
+  @@map("project_work_fronts")
+}
+
+model ProjectWorkFrontService {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId String @map("corporation_id") @db.Uuid
+  companyId     String @map("company_id") @db.Uuid
+  projectId     String @map("project_id") @db.Uuid
+  workFrontId String   @map("work_front_id") @db.Uuid
+  serviceCode String   @map("service_code") @db.VarChar(48)
+  unitCode    String   @map("unit_code") @db.VarChar(32)
+  quantity    Decimal  @db.Decimal(18, 2)
+
+  @@unique([workFrontId, serviceCode])
+  @@index([corporationId, companyId, projectId, workFrontId])
+  @@map("project_work_front_services")
+}
+
+model ProjectWorkFrontLifecycleEvent {
+  id            String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId String                 @map("corporation_id") @db.Uuid
+  companyId     String                 @map("company_id") @db.Uuid
+  projectId     String                 @map("project_id") @db.Uuid
+  workFrontId   String                 @map("work_front_id") @db.Uuid
+  fromStatus    ProjectWorkFrontStatus @map("from_status")
+  toStatus      ProjectWorkFrontStatus @map("to_status")
+  occurredAt    DateTime               @map("occurred_at") @db.Timestamptz(3)
+  actorUserId   String                 @map("actor_user_id") @db.Uuid
+  reason        String?                @db.VarChar(500)
+
+  @@index([corporationId, companyId, projectId, workFrontId, occurredAt])
+  @@map("project_work_front_lifecycle_events")
 }
 
 model ProjectCompensationPaymentTerm {
