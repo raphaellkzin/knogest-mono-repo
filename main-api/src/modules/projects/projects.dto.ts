@@ -555,6 +555,7 @@ const projectMachineReadinessSchema = z
 
 export const projectReadinessCommandSchema = z
   .object({
+    plannedStartDate: z.iso.date().optional(),
     plannedEndDate: z.iso.date().optional(),
     productionMetricTargets: z
       .array(
@@ -601,6 +602,7 @@ export const projectReadinessCommandSchema = z
   .strict()
   .superRefine((command, context) => {
     if (
+      command.plannedStartDate === undefined &&
       command.plannedEndDate === undefined &&
       command.productionMetricTargets === undefined &&
       command.fuelOffers === undefined &&
@@ -613,6 +615,16 @@ export const projectReadinessCommandSchema = z
       context.addIssue({
         code: "custom",
         message: "At least one readiness section is required",
+      });
+    if (
+      command.plannedStartDate !== undefined &&
+      command.plannedEndDate !== undefined &&
+      command.plannedEndDate < command.plannedStartDate
+    )
+      context.addIssue({
+        code: "custom",
+        path: ["plannedEndDate"],
+        message: "Planned end date cannot be before planned start date",
       });
     const metrics = (command.productionMetricTargets ?? []).map(
       (item) => item.metricCode,

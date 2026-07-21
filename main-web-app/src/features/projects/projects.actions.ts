@@ -147,6 +147,10 @@ export type WorkFrontServiceInput = {
 
 const projectReadinessActionSchema = z
   .object({
+    plannedStartDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/u)
+      .optional(),
     plannedEndDate: z
       .string()
       .regex(/^\d{4}-\d{2}-\d{2}$/u)
@@ -265,7 +269,19 @@ const projectReadinessActionSchema = z
       .max(5)
       .optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((command, context) => {
+    if (
+      command.plannedStartDate &&
+      command.plannedEndDate &&
+      command.plannedEndDate < command.plannedStartDate
+    )
+      context.addIssue({
+        code: "custom",
+        path: ["plannedEndDate"],
+        message: "A data final não pode ser anterior à data inicial.",
+      });
+  });
 
 export type ProjectReadinessActionInput = z.infer<
   typeof projectReadinessActionSchema

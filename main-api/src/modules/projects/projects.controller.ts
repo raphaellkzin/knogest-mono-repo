@@ -239,6 +239,7 @@ const projectReadinessCommandOpenApiSchema = {
   type: "object",
   additionalProperties: false,
   properties: {
+    plannedStartDate: { type: "string", format: "date" },
     plannedEndDate: { type: "string", format: "date" },
     productionMetricTargets: {
       type: "array",
@@ -887,6 +888,7 @@ export async function v1ProjectsController(app: FastifyInstance) {
           400: errorSchema,
           404: errorSchema,
           409: errorSchema,
+          422: errorSchema,
         },
       },
     },

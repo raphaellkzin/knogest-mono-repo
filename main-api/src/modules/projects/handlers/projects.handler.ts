@@ -538,13 +538,76 @@ function projectScopeWhere(scope: ProjectScope, projectId: string) {
   };
 }
 
-async function lockProjectWorkFrontAllocations(
+async function lockProjectQuantityAllocation(
   tx: HandlerContext,
   projectId: string,
 ) {
   await tx.prisma.$queryRaw(
     Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${projectId}, 0)) IS NULL AS locked`,
   );
+}
+
+async function assertQuantityBaselineCoversAllocatedFronts(
+  tx: HandlerContext,
+  scope: ProjectScope,
+  projectId: string,
+  items: ProjectQuantityBaselineRevisionCommand["items"],
+) {
+  const scopeWhere = projectScopeWhere(scope, projectId);
+  const fronts = await tx.prisma.projectWorkFront.findMany({
+    where: { ...scopeWhere, status: { not: "CANCELLED" } },
+    select: { id: true },
+  });
+  const services = fronts.length
+    ? await tx.prisma.projectWorkFrontService.findMany({
+        where: {
+          ...scopeWhere,
+          workFrontId: { in: fronts.map((front) => front.id) },
+        },
+        select: { serviceCode: true, unitCode: true, quantity: true },
+      })
+    : [];
+  const allocatedByService = new Map<
+    string,
+    { quantity: Prisma.Decimal; unitCode: string }
+  >();
+  for (const service of services) {
+    const current = allocatedByService.get(service.serviceCode);
+    allocatedByService.set(service.serviceCode, {
+      quantity: (current?.quantity ?? new Prisma.Decimal(0)).add(
+        service.quantity,
+      ),
+      unitCode: service.unitCode,
+    });
+  }
+  const proposedByService = new Map(
+    items.map((item) => [item.serviceCode, item]),
+  );
+  const blockers: ReadinessBlocker[] = [];
+  for (const [serviceCode, allocated] of allocatedByService) {
+    const proposed = proposedByService.get(
+      serviceCode as EarthworksServiceCode,
+    );
+    if (
+      !proposed ||
+      new Prisma.Decimal(proposed.total).lessThan(allocated.quantity)
+    ) {
+      const label =
+        serviceLabels[serviceCode as EarthworksServiceCode] ?? serviceCode;
+      blockers.push({
+        section: "metrics",
+        message: `${label}: o total de referência deve ser igual ou superior aos ${decimalString(allocated.quantity, 2)} ${allocated.unitCode} já distribuídos.`,
+      });
+    }
+  }
+  if (blockers.length)
+    throw new AppError({
+      code: "PROJECT_QUANTITY_BASELINE_BELOW_ALLOCATED",
+      statusCode: 422,
+      message:
+        "Os quantitativos de referência não podem ficar abaixo do volume distribuído.",
+      data: { fields: [], resources: [], blockers },
+    });
 }
 
 async function assertWorkFrontAllocationWithinBaseline(
@@ -2651,12 +2714,31 @@ export class ProjectsHandler {
       const now = new Date();
       const scopeWhere = projectScopeWhere(scope, projectId);
 
-      if (command.plannedEndDate !== undefined) {
+      if (
+        command.plannedStartDate !== undefined ||
+        command.plannedEndDate !== undefined
+      ) {
+        const currentBaseline = await tx.prisma.projectBaseline.findFirst({
+          where: { ...scopeWhere, effectiveTo: null },
+          select: { plannedStartDate: true, plannedEndDate: true },
+        });
+        if (!currentBaseline)
+          throw conflict([resource("project", projectId, "identity")]);
+        const plannedStartDate = command.plannedStartDate
+          ? new Date(`${command.plannedStartDate}T00:00:00.000Z`)
+          : currentBaseline.plannedStartDate;
+        const plannedEndDate = command.plannedEndDate
+          ? new Date(`${command.plannedEndDate}T00:00:00.000Z`)
+          : currentBaseline.plannedEndDate;
+        if (plannedEndDate && plannedEndDate < plannedStartDate)
+          validationError(
+            "plannedEndDate",
+            "end_before_start",
+            "A data final não pode ser anterior à data inicial.",
+          );
         const updatedBaseline = await tx.prisma.projectBaseline.updateMany({
           where: { ...scopeWhere, effectiveTo: null },
-          data: {
-            plannedEndDate: new Date(`${command.plannedEndDate}T00:00:00.000Z`),
-          },
+          data: { plannedStartDate, plannedEndDate },
         });
         if (updatedBaseline.count !== 1)
           throw conflict([resource("project", projectId, "identity")]);
@@ -2770,6 +2852,7 @@ export class ProjectsHandler {
   ) {
     assertServiceUnits(command.items);
     return runSerializable(this.context, async (tx) => {
+      await lockProjectQuantityAllocation(tx, projectId);
       const project = await tx.prisma.project.findFirst({
         where: {
           id: projectId,
@@ -2783,6 +2866,12 @@ export class ProjectsHandler {
         projectLifecycleConflict(
           "Project quantities cannot change in this state",
         );
+      await assertQuantityBaselineCoversAllocatedFronts(
+        tx,
+        scope,
+        projectId,
+        command.items,
+      );
       const scopeWhere = projectScopeWhere(scope, projectId);
       const current = await tx.prisma.projectQuantityBaselineRevision.findFirst(
         {
@@ -2819,7 +2908,7 @@ export class ProjectsHandler {
   ) {
     assertServiceUnits(command.services);
     return runSerializable(this.context, async (tx) => {
-      await lockProjectWorkFrontAllocations(tx, projectId);
+      await lockProjectQuantityAllocation(tx, projectId);
       const project = await tx.prisma.project.findFirst({
         where: {
           id: projectId,
@@ -2873,7 +2962,7 @@ export class ProjectsHandler {
   ) {
     assertServiceUnits(command.services);
     return runSerializable(this.context, async (tx) => {
-      await lockProjectWorkFrontAllocations(tx, projectId);
+      await lockProjectQuantityAllocation(tx, projectId);
       const front = await tx.prisma.projectWorkFront.findFirst({
         where: { id: frontId, ...projectScopeWhere(scope, projectId) },
         select: { status: true },

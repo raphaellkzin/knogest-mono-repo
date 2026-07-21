@@ -145,8 +145,7 @@ function canonicalDecimalToHundredths(value: string) {
   const match = /^(\d+)(?:\.(\d{1,2}))?$/u.exec(value);
   if (!match) return null;
   return (
-    BigInt(match[1]) * BigInt(100) +
-    BigInt((match[2] ?? "").padEnd(2, "0"))
+    BigInt(match[1]) * BigInt(100) + BigInt((match[2] ?? "").padEnd(2, "0"))
   );
 }
 
@@ -306,6 +305,13 @@ function metricInitialState(project: ProjectDetailSnapshot) {
       ? canonicalDecimalToBrazilianInteger(existing.get(metric.code)!)
       : "",
   }));
+}
+
+function eligibleStartFrontIds(project: ProjectDetailSnapshot) {
+  if (project.status !== "planned") return [];
+  return project.workFronts
+    .filter((front) => front.eligibility.canStart)
+    .map((front) => front.id);
 }
 
 function paymentTermsToState(
@@ -1746,6 +1752,9 @@ export function ProjectDetail({
 }) {
   const router = useRouter();
   const [isPending, startTransition] = React.useTransition();
+  const [plannedStartDate, setPlannedStartDate] = React.useState(
+    project.baseline?.plannedStartDate ?? "",
+  );
   const [plannedEndDate, setPlannedEndDate] = React.useState(
     project.baseline?.plannedEndDate ?? "",
   );
@@ -1788,7 +1797,15 @@ export function ProjectDetail({
   const [paymentTerms, setPaymentTerms] = React.useState(() =>
     paymentInitialState(project),
   );
-  const [planningDirty, setPlanningDirty] = React.useState(false);
+  const [plannedDatesDirty, setPlannedDatesDirty] = React.useState(false);
+  const [quantityBaselineDirty, setQuantityBaselineDirty] =
+    React.useState(false);
+  const [plannedDateIssues, setPlannedDateIssues] = React.useState<
+    React.ComponentProps<typeof FormErrorDeclaration>["issues"]
+  >([]);
+  const [quantityBaselineIssues, setQuantityBaselineIssues] = React.useState<
+    React.ComponentProps<typeof FormErrorDeclaration>["issues"]
+  >([]);
   const [fuelDirty, setFuelDirty] = React.useState(false);
   const [paymentDirty, setPaymentDirty] = React.useState(false);
   const [activeTab, setActiveTab] = React.useState<ProjectTab>(
@@ -1828,10 +1845,51 @@ export function ProjectDetail({
     [frontQuantities, project.quantityBaseline.items],
   );
   const visibleFrontIssues = [...frontExcessIssues, ...frontIssues];
+  const quantityBaselineAllocationIssues = React.useMemo<
+    React.ComponentProps<typeof FormErrorDeclaration>["issues"]
+  >(
+    () =>
+      metrics.flatMap((metric) => {
+        const persisted = project.quantityBaseline.items.find(
+          (item) => item.serviceCode === metric.code,
+        );
+        const allocated = canonicalDecimalToHundredths(
+          persisted?.allocated ?? "0.00",
+        );
+        if (allocated === null || allocated === BigInt(0)) return [];
+        const requested = metric.enabled
+          ? canonicalDecimalToHundredths(
+              integerInputToCanonicalDecimal(metric.targetTotal),
+            )
+          : null;
+        if (requested !== null && requested >= allocated) return [];
+        return [
+          {
+            location: "Quantitativos",
+            field: metric.label,
+            message: `O total deve ser igual ou superior aos ${canonicalDecimalToBrazilianInteger(persisted?.allocated ?? "0.00")} ${persisted?.unitCode ?? ""} já distribuídos.`,
+          },
+        ];
+      }),
+    [metrics, project.quantityBaseline.items],
+  );
+  const visibleQuantityBaselineIssues = [
+    ...quantityBaselineAllocationIssues,
+    ...quantityBaselineIssues,
+  ];
   const [selectedStartFrontIds, setSelectedStartFrontIds] = React.useState<
     string[]
-  >([]);
+  >(() => eligibleStartFrontIds(project));
+  const projectSnapshotIdentityRef = React.useRef({
+    id: project.id,
+    status: project.status,
+  });
+  const knownEligibleFrontIdsRef = React.useRef(
+    new Set(eligibleStartFrontIds(project)),
+  );
   const [openModal, setOpenModal] = React.useState<
+    | "planningDates"
+    | "quantityBaseline"
     | "accountability"
     | "team"
     | "machines"
@@ -1864,7 +1922,15 @@ export function ProjectDetail({
 
   /* eslint-disable react-hooks/set-state-in-effect -- ProjectDetail resets its edit buffers when the selected project snapshot changes. */
   React.useEffect(() => {
+    const previousIdentity = projectSnapshotIdentityRef.current;
+    const projectChanged = previousIdentity.id !== project.id;
+    const statusChanged = previousIdentity.status !== project.status;
+    const eligibleIds = eligibleStartFrontIds(project);
+    const eligibleSet = new Set(eligibleIds);
+    const previouslyEligible = knownEligibleFrontIdsRef.current;
+
     readinessForm.reset(projectToCommand(project));
+    setPlannedStartDate(project.baseline?.plannedStartDate ?? "");
     setPlannedEndDate(project.baseline?.plannedEndDate ?? "");
     setMetrics(metricInitialState(project));
     setFuelAddDraft(null);
@@ -1881,15 +1947,33 @@ export function ProjectDetail({
     setMaterialIssues([]);
     setPaymentTermRows(project.compensationPaymentTerms);
     setPaymentTerms(paymentInitialState(project));
-    setPlanningDirty(false);
+    setPlannedDatesDirty(false);
+    setQuantityBaselineDirty(false);
+    setPlannedDateIssues([]);
+    setQuantityBaselineIssues([]);
     setFuelDirty(false);
     setPaymentDirty(false);
     setFrontName("");
     setFrontLocation("");
     setFrontQuantities({});
     setFrontIssues([]);
-    setSelectedStartFrontIds([]);
-    setActiveTab(project.status === "active" ? "overview" : "planning");
+    if (projectChanged || statusChanged) {
+      setSelectedStartFrontIds(eligibleIds);
+      setActiveTab(project.status === "active" ? "overview" : "planning");
+    } else {
+      setSelectedStartFrontIds((current) => {
+        const selectedEligible = current.filter((id) => eligibleSet.has(id));
+        const newlyEligible = eligibleIds.filter(
+          (id) => !previouslyEligible.has(id),
+        );
+        return [...new Set([...selectedEligible, ...newlyEligible])];
+      });
+    }
+    projectSnapshotIdentityRef.current = {
+      id: project.id,
+      status: project.status,
+    };
+    knownEligibleFrontIdsRef.current = eligibleSet;
   }, [project, readinessForm]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
@@ -1942,7 +2026,8 @@ export function ProjectDetail({
   );
   const materialDirty = materialView !== "list";
   const hasUnsavedChanges =
-    planningDirty ||
+    plannedDatesDirty ||
+    quantityBaselineDirty ||
     fuelDirty ||
     materialDirty ||
     paymentDirty ||
@@ -1953,8 +2038,11 @@ export function ProjectDetail({
     project.manager &&
     project.technicalResponsibilities.length > 0,
   );
+  const datesReady = Boolean(
+    project.baseline?.plannedStartDate && project.baseline.plannedEndDate,
+  );
   const planningReady = Boolean(
-    project.baseline?.plannedEndDate && project.quantityBaseline.items.length,
+    datesReady && project.quantityBaseline.items.length,
   );
   const teamReady = project.employeeAllocations.length > 0;
   const machinesReady = project.machineAllocations.length > 0;
@@ -1962,12 +2050,18 @@ export function ProjectDetail({
     paymentTermRows.length > 0 &&
     paymentTermRows.length === paymentModes.length;
   const fuelReady = fuelOffers.length > 0;
-  const planningStatus = planningDirty
+  const planningStatus =
+    plannedDatesDirty || quantityBaselineDirty
+      ? ({ label: "Alterado", tone: "dirty" } as const)
+      : planningReady
+        ? ({ label: "OK", tone: "ready" } as const)
+        : ({ label: "Pendente", tone: "pending" } as const);
+  const plannedDatesStatus = plannedDatesDirty
     ? ({ label: "Alterado", tone: "dirty" } as const)
-    : planningReady
+    : datesReady
       ? ({ label: "OK", tone: "ready" } as const)
       : ({ label: "Pendente", tone: "pending" } as const);
-  const metricsStatus = planningDirty
+  const metricsStatus = quantityBaselineDirty
     ? ({ label: "Alterado", tone: "dirty" } as const)
     : project.quantityBaseline.items.length
       ? ({ label: "OK", tone: "ready" } as const)
@@ -2163,7 +2257,91 @@ export function ProjectDetail({
     });
   };
 
-  const savePlanning = () => {
+  const openPlannedDatesModal = () => {
+    setPlannedStartDate(project.baseline?.plannedStartDate ?? "");
+    setPlannedEndDate(project.baseline?.plannedEndDate ?? "");
+    setPlannedDatesDirty(false);
+    setPlannedDateIssues([]);
+    setOpenModal("planningDates");
+  };
+
+  const closePlannedDatesModal = () => {
+    if (isPending) return;
+    setPlannedDatesDirty(false);
+    setPlannedDateIssues([]);
+    setOpenModal(null);
+  };
+
+  const savePlannedDates = () => {
+    const issues: React.ComponentProps<typeof FormErrorDeclaration>["issues"] =
+      [];
+    if (!plannedStartDate)
+      issues.push({
+        location: "Datas planejadas",
+        field: "Início",
+        message: "Informe a data planejada de início.",
+      });
+    if (!plannedEndDate)
+      issues.push({
+        location: "Datas planejadas",
+        field: "Fim",
+        message: "Informe a data planejada de fim.",
+      });
+    if (plannedStartDate && plannedEndDate && plannedEndDate < plannedStartDate)
+      issues.push({
+        location: "Datas planejadas",
+        field: "Fim",
+        message: "A data final não pode ser anterior à data inicial.",
+      });
+    if (issues.length) {
+      setPlannedDateIssues(issues);
+      return;
+    }
+    setPlannedDateIssues([]);
+    startTransition(async () => {
+      const result = await saveProjectReadinessAction(project.id, {
+        plannedStartDate,
+        plannedEndDate,
+      });
+      if (result.kind === "success") {
+        toast.success("Datas planejadas salvas.");
+        setPlannedDatesDirty(false);
+        setOpenModal(null);
+        router.refresh();
+        return;
+      }
+      setPlannedDateIssues(
+        result.kind === "recoverable-conflict" && result.blockers?.length
+          ? result.blockers.map((blocker) => ({
+              location: "Datas planejadas",
+              field: blocker.section,
+              message: blocker.message,
+            }))
+          : [
+              {
+                location: "Datas planejadas",
+                message: result.message,
+              },
+            ],
+      );
+    });
+  };
+
+  const openQuantityBaselineModal = () => {
+    setMetrics(metricInitialState(project));
+    setQuantityBaselineDirty(false);
+    setQuantityBaselineIssues([]);
+    setOpenModal("quantityBaseline");
+  };
+
+  const closeQuantityBaselineModal = () => {
+    if (isPending) return;
+    setQuantityBaselineDirty(false);
+    setQuantityBaselineIssues([]);
+    setOpenModal(null);
+  };
+
+  const saveQuantityBaseline = () => {
     const items = metrics
       .filter((metric) => metric.enabled)
       .map((metric) => ({
@@ -2176,26 +2354,46 @@ export function ProjectDetail({
         total: integerInputToCanonicalDecimal(metric.targetTotal),
       }))
       .filter((metric) => metric.total && metric.total !== "0.00");
-    if (!plannedEndDate) {
-      toast.warning("Informe a data prevista de fim antes de salvar.");
+    if (quantityBaselineAllocationIssues.length) {
+      setQuantityBaselineIssues([]);
       return;
     }
     if (items.length === 0) {
-      toast.warning("Selecione ao menos um quantitativo de referência.");
+      setQuantityBaselineIssues([
+        {
+          location: "Quantitativos",
+          message: "Selecione ao menos um serviço e informe seu total.",
+        },
+      ]);
       return;
     }
+    setQuantityBaselineIssues([]);
     startTransition(async () => {
-      const [dateResult, baselineResult] = await Promise.all([
-        saveProjectReadinessAction(project.id, { plannedEndDate }),
-        saveProjectQuantityBaselineAction(project.id, { items }),
-      ]);
-      if (dateResult.kind === "success" && baselineResult.kind === "success") {
-        toast.success("Datas e quantitativos de referência salvos.");
-        setPlanningDirty(false);
+      const result = await saveProjectQuantityBaselineAction(project.id, {
+        items,
+      });
+      if (result.kind === "success") {
+        toast.success("Quantitativos de referência salvos.");
+        setQuantityBaselineDirty(false);
+        setOpenModal(null);
         router.refresh();
         return;
       }
-      toast.error("Não foi possível salvar o planejamento.");
+      setQuantityBaselineIssues(
+        result.kind === "recoverable-conflict" && result.blockers?.length
+          ? result.blockers.map((blocker) => ({
+              location: "Quantitativos",
+              field:
+                blocker.section === "metrics" ? undefined : blocker.section,
+              message: blocker.message,
+            }))
+          : [
+              {
+                location: "Quantitativos",
+                message: result.message,
+              },
+            ],
+      );
     });
   };
 
@@ -2911,46 +3109,35 @@ export function ProjectDetail({
               <Section
                 icon={CalendarDays}
                 title="Datas planejadas"
-                description="A data final é obrigatória para liberar o início operacional."
-                status={planningStatus}
+                description="Período de referência usado para organizar a mobilização e liberar o início operacional."
+                status={plannedDatesStatus}
                 action={
                   isEditable && (
                     <Button
                       type="button"
                       variant="outline"
                       className="min-h-10"
-                      disabled={isPending || !planningDirty}
-                      onClick={savePlanning}
+                      disabled={isPending}
+                      onClick={openPlannedDatesModal}
                     >
-                      <Save className="size-4" />
-                      Salvar datas/metas
+                      <Pencil className="size-4" />
+                      Editar datas
                     </Button>
                   )
                 }
               >
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="grid gap-1.5 text-sm font-semibold">
-                    <span>Início planejado</span>
-                    <Input
-                      className="h-11"
-                      value={project.baseline?.plannedStartDate ?? ""}
-                      disabled
-                    />
-                  </label>
-                  <label className="grid gap-1.5 text-sm font-semibold">
-                    <span>Fim previsto</span>
-                    <Input
-                      className="h-11"
-                      type="date"
-                      value={plannedEndDate}
-                      disabled={!isEditable}
-                      onChange={(event) => {
-                        setPlannedEndDate(event.target.value);
-                        setPlanningDirty(true);
-                      }}
-                    />
-                  </label>
-                </div>
+                <dl className="grid gap-3 sm:grid-cols-2">
+                  <DetailRow
+                    label="Início planejado"
+                    value={formatDate(
+                      project.baseline?.plannedStartDate ?? null,
+                    )}
+                  />
+                  <DetailRow
+                    label="Fim planejado"
+                    value={formatDate(project.baseline?.plannedEndDate ?? null)}
+                  />
+                </dl>
               </Section>
 
               <Section
@@ -2958,69 +3145,73 @@ export function ProjectDetail({
                 title="Quantitativos de referência"
                 description="Este é o total aprovado da obra. As frentes distribuem esse total e não o substituem."
                 status={metricsStatus}
-              >
-                <div className="grid gap-3">
-                  {metrics.map((metric, index) => (
-                    <div
-                      key={metric.code}
-                      className={cn(
-                        "grid gap-3 rounded-md border border-border bg-background px-3 py-3 md:grid-cols-[minmax(0,1fr)_180px]",
-                        metric.enabled && "border-primary bg-primary/5",
-                      )}
+                action={
+                  isEditable && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="min-h-10"
+                      disabled={isPending}
+                      onClick={openQuantityBaselineModal}
                     >
-                      <label className="flex min-w-0 items-start gap-3">
-                        <input
-                          type="checkbox"
-                          className="mt-1 size-4 accent-primary"
-                          checked={metric.enabled}
-                          disabled={!isEditable}
-                          onChange={(event) => {
-                            setMetrics((current) =>
-                              current.map((item, itemIndex) =>
-                                itemIndex === index
-                                  ? { ...item, enabled: event.target.checked }
-                                  : item,
-                              ),
-                            );
-                            setPlanningDirty(true);
-                          }}
-                        />
-                        <span className="min-w-0">
-                          <span className="block text-sm font-bold">
-                            {metric.label}
-                          </span>
-                          <span className="mt-1 block text-sm leading-5 text-muted-foreground">
-                            {metric.description}
-                          </span>
-                        </span>
-                      </label>
-                      <label className="grid gap-1.5 text-sm font-semibold">
-                        <span>Total de referência ({metric.unit})</span>
-                        <Input
-                          className="h-11"
-                          inputMode="numeric"
-                          value={metric.targetTotal}
-                          disabled={!isEditable || !metric.enabled}
-                          onChange={(event) => {
-                            setMetrics((current) =>
-                              current.map((item, itemIndex) =>
-                                itemIndex === index
-                                  ? {
-                                      ...item,
-                                      targetTotal: formatBrazilianIntegerInput(
-                                        event.target.value,
-                                      ),
-                                    }
-                                  : item,
-                              ),
-                            );
-                            setPlanningDirty(true);
-                          }}
-                        />
-                      </label>
+                      <Pencil className="size-4" />
+                      Editar quantitativos
+                    </Button>
+                  )
+                }
+              >
+                {project.quantityBaseline.items.length ? (
+                  <div className="overflow-hidden rounded-md border border-border">
+                    <div className="hidden grid-cols-[minmax(0,1fr)_repeat(3,minmax(110px,0.55fr))] gap-3 bg-secondary/45 px-3 py-2 text-xs font-bold text-muted-foreground md:grid">
+                      <span>Serviço</span>
+                      <span>Total</span>
+                      <span>Distribuído</span>
+                      <span>Saldo</span>
                     </div>
-                  ))}
-                </div>
+                    <div className="divide-y divide-border">
+                      {project.quantityBaseline.items.map((item) => (
+                        <div
+                          key={item.serviceCode}
+                          className="grid gap-3 bg-background px-3 py-3 text-sm md:grid-cols-[minmax(0,1fr)_repeat(3,minmax(110px,0.55fr))] md:items-center"
+                        >
+                          <div className="min-w-0">
+                            <p className="font-bold">
+                              {metricDefinitions.find(
+                                (metric) => metric.code === item.serviceCode,
+                              )?.label ?? item.serviceCode}
+                            </p>
+                            <p className="mt-1 text-xs text-muted-foreground md:hidden">
+                              {item.unitCode}
+                            </p>
+                          </div>
+                          <p>
+                            <span className="font-bold md:hidden">Total: </span>
+                            <strong>
+                              {canonicalDecimalToBrazilianInteger(item.total)}
+                            </strong>{" "}
+                            {item.unitCode}
+                          </p>
+                          <p>
+                            <span className="font-bold md:hidden">
+                              Distribuído:{" "}
+                            </span>
+                            {canonicalDecimalToBrazilianInteger(item.allocated)}
+                          </p>
+                          <p>
+                            <span className="font-bold md:hidden">Saldo: </span>
+                            {canonicalDecimalToBrazilianInteger(
+                              item.unallocated,
+                            )}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <EmptyBlock>
+                    Nenhum quantitativo de referência configurado.
+                  </EmptyBlock>
+                )}
               </Section>
             </div>
           )}
@@ -3488,6 +3679,232 @@ export function ProjectDetail({
           )}
         </div>
       </section>
+
+      <OperationsModal
+        icon={CalendarDays}
+        open={openModal === "planningDates"}
+        onOpenChange={(open) => {
+          if (!open) closePlannedDatesModal();
+        }}
+        size="md"
+        title="Editar datas planejadas"
+        description="Ajuste o período previsto da obra. A data final não pode ser anterior ao início."
+        footer={
+          <>
+            <p className="text-xs font-medium leading-5 text-muted-foreground">
+              As datas salvas passam a orientar o planejamento vigente.
+            </p>
+            <div className="flex flex-col-reverse gap-2 sm:flex-row">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isPending}
+                onClick={closePlannedDatesModal}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                disabled={isPending || !plannedDatesDirty}
+                onClick={savePlannedDates}
+              >
+                <Save className="size-4" />
+                {isPending ? "Salvando..." : "Salvar datas"}
+              </Button>
+            </div>
+          </>
+        }
+      >
+        <div className="grid gap-5">
+          <FormErrorDeclaration
+            issues={plannedDateIssues}
+            title="Não foi possível salvar as datas."
+            description="Corrija os pontos indicados e tente novamente."
+          />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="grid gap-1.5 text-sm font-semibold">
+              <span>Início planejado</span>
+              <Input
+                autoFocus
+                className="h-11"
+                type="date"
+                value={plannedStartDate}
+                disabled={isPending}
+                aria-invalid={plannedDateIssues.some(
+                  (issue) => issue.field === "Início",
+                )}
+                onChange={(event) => {
+                  setPlannedStartDate(event.target.value);
+                  setPlannedDatesDirty(true);
+                  if (plannedDateIssues.length) setPlannedDateIssues([]);
+                }}
+              />
+            </label>
+            <label className="grid gap-1.5 text-sm font-semibold">
+              <span>Fim planejado</span>
+              <Input
+                className="h-11"
+                type="date"
+                value={plannedEndDate}
+                disabled={isPending}
+                aria-invalid={plannedDateIssues.some(
+                  (issue) => issue.field === "Fim",
+                )}
+                onChange={(event) => {
+                  setPlannedEndDate(event.target.value);
+                  setPlannedDatesDirty(true);
+                  if (plannedDateIssues.length) setPlannedDateIssues([]);
+                }}
+              />
+            </label>
+          </div>
+        </div>
+      </OperationsModal>
+
+      <OperationsModal
+        icon={Gauge}
+        open={openModal === "quantityBaseline"}
+        onOpenChange={(open) => {
+          if (!open) closeQuantityBaselineModal();
+        }}
+        size="xl"
+        title="Editar quantitativos de referência"
+        description="Selecione os serviços contratados e informe o total aprovado para cada um."
+        footer={
+          <>
+            <p className="text-xs font-medium leading-5 text-muted-foreground">
+              O salvamento cria uma nova revisão da linha de base.
+            </p>
+            <div className="flex flex-col-reverse gap-2 sm:flex-row">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isPending}
+                onClick={closeQuantityBaselineModal}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                disabled={
+                  isPending ||
+                  !quantityBaselineDirty ||
+                  quantityBaselineAllocationIssues.length > 0
+                }
+                onClick={saveQuantityBaseline}
+              >
+                <Save className="size-4" />
+                {isPending ? "Salvando..." : "Salvar quantitativos"}
+              </Button>
+            </div>
+          </>
+        }
+      >
+        <div className="grid gap-5">
+          <FormErrorDeclaration
+            issues={visibleQuantityBaselineIssues}
+            title={
+              quantityBaselineAllocationIssues.length
+                ? "Total abaixo do volume distribuído."
+                : "Não foi possível salvar os quantitativos."
+            }
+            description={
+              quantityBaselineAllocationIssues.length
+                ? "Ajuste os totais indicados antes de salvar a revisão."
+                : "Corrija os pontos indicados e tente novamente."
+            }
+          />
+          <div className="grid gap-3">
+            {metrics.map((metric, index) => {
+              const persisted = project.quantityBaseline.items.find(
+                (item) => item.serviceCode === metric.code,
+              );
+              const allocated = canonicalDecimalToHundredths(
+                persisted?.allocated ?? "0.00",
+              );
+              const hasAllocated = allocated !== null && allocated > BigInt(0);
+              const hasIssue = quantityBaselineAllocationIssues.some(
+                (issue) => issue.field === metric.label,
+              );
+              return (
+                <div
+                  key={metric.code}
+                  className={cn(
+                    "grid gap-3 rounded-md border border-border bg-background px-3 py-3 md:grid-cols-[minmax(0,1fr)_190px] md:items-center",
+                    metric.enabled && "border-primary bg-primary/5",
+                  )}
+                >
+                  <label className="flex min-w-0 items-start gap-3">
+                    <input
+                      type="checkbox"
+                      className="mt-1 size-4 shrink-0 accent-primary"
+                      checked={metric.enabled}
+                      disabled={isPending || hasAllocated}
+                      onChange={(event) => {
+                        setMetrics((current) =>
+                          current.map((item, itemIndex) =>
+                            itemIndex === index
+                              ? { ...item, enabled: event.target.checked }
+                              : item,
+                          ),
+                        );
+                        setQuantityBaselineDirty(true);
+                        if (quantityBaselineIssues.length)
+                          setQuantityBaselineIssues([]);
+                      }}
+                    />
+                    <span className="min-w-0">
+                      <span className="block text-sm font-bold">
+                        {metric.label}
+                      </span>
+                      <span className="mt-1 block text-sm leading-5 text-muted-foreground">
+                        {metric.description}
+                      </span>
+                      {hasAllocated && persisted && (
+                        <span className="mt-1.5 block text-xs font-semibold text-foreground">
+                          Já distribuído:{" "}
+                          {canonicalDecimalToBrazilianInteger(
+                            persisted.allocated,
+                          )}{" "}
+                          {persisted.unitCode}. Este serviço não pode ser
+                          removido.
+                        </span>
+                      )}
+                    </span>
+                  </label>
+                  <label className="grid gap-1.5 text-sm font-semibold">
+                    <span>Total de referência ({metric.unit})</span>
+                    <Input
+                      className="h-11"
+                      inputMode="numeric"
+                      value={metric.targetTotal}
+                      disabled={isPending || !metric.enabled}
+                      aria-invalid={hasIssue}
+                      onChange={(event) => {
+                        setMetrics((current) =>
+                          current.map((item, itemIndex) =>
+                            itemIndex === index
+                              ? {
+                                  ...item,
+                                  targetTotal: formatBrazilianIntegerInput(
+                                    event.target.value,
+                                  ),
+                                }
+                              : item,
+                          ),
+                        );
+                        setQuantityBaselineDirty(true);
+                        if (quantityBaselineIssues.length)
+                          setQuantityBaselineIssues([]);
+                      }}
+                    />
+                  </label>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </OperationsModal>
 
       <OperationsModal
         icon={HardHat}

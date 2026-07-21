@@ -8,6 +8,8 @@ Uma **frente de serviço** é uma área operacional da obra (trecho, setor, esta
 
 A soma dos quantitativos das frentes não canceladas não pode ultrapassar o total da linha de base atual. O formulário avisa e bloqueia o envio assim que identifica um valor acima do saldo. A API repete a validação em transação serializável, evitando que cadastros simultâneos consumam o mesmo saldo. Um valor exatamente igual ao saldo é permitido; ao cancelar uma frente, sua parcela volta a ficar disponível.
 
+O inverso também é protegido: uma revisão da linha de base não pode remover um serviço já distribuído nem reduzir seu total para menos do que a soma das frentes não canceladas. Datas planejadas e quantitativos são consultados na tab de planejamento e editados em modais independentes, com salvamentos separados.
+
 Cada serviço carrega sua própria unidade. Os serviços iniciais são:
 
 - corte (`M3`);
@@ -25,7 +27,7 @@ Troca de solo não é um único volume: a remoção do material impróprio e o a
 2. Cadastre uma ou mais frentes e distribua somente a parcela que será mobilizada.
 3. A frente é elegível quando seus serviços existem na linha de base, usam a mesma unidade e a distribuição não excede o total.
 4. Para iniciar a obra, o checklist operacional atual deve estar completo, deve haver ao menos uma frente elegível, uma pessoa mobilizada e uma máquina com operador.
-5. A pessoa responsável escolhe quais frentes elegíveis começam no mesmo ato da ativação da obra.
+5. Todas as frentes elegíveis vêm selecionadas para iniciar com a obra; a pessoa responsável pode desmarcar as que não devem começar nesse ato.
 6. Durante a obra ativa, novas frentes podem ser cadastradas e iniciadas. Produção, abastecimento, RDO, custos reais e medições ainda não são lançados nesta etapa.
 
 ## Estados

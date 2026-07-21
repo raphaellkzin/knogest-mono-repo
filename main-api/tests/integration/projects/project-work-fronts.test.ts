@@ -233,6 +233,66 @@ describe("project work-front quantities", () => {
     expect(updated.statusCode, updated.body).toBe(200);
   });
 
+  it("updates both planned dates through readiness", async () => {
+    const scope = await setup();
+    const response = await app.inject({
+      method: "PUT",
+      url: `/api/v1/projects/${scope.projectId}/readiness`,
+      headers: { authorization: scope.authorization },
+      payload: {
+        plannedStartDate: "2026-07-02",
+        plannedEndDate: "2026-12-30",
+      },
+    });
+
+    expect(response.statusCode, response.body).toBe(200);
+    expect(response.json().data.baseline).toEqual(
+      expect.objectContaining({
+        plannedStartDate: "2026-07-02",
+        plannedEndDate: "2026-12-30",
+      }),
+    );
+  });
+
+  it("blocks a baseline revision below the allocated quantity", async () => {
+    const scope = await setup();
+    const created = await createFront(
+      scope.authorization,
+      scope.projectId,
+      "Frente alocada",
+      "60.00",
+    );
+    expect(created.statusCode, created.body).toBe(200);
+
+    const belowAllocated = await app.inject({
+      method: "POST",
+      url: `/api/v1/projects/${scope.projectId}/quantity-baseline-revisions`,
+      headers: { authorization: scope.authorization },
+      payload: {
+        items: [{ serviceCode: "cut", unitCode: "M3", total: "59.00" }],
+      },
+    });
+    expect(belowAllocated.statusCode, belowAllocated.body).toBe(422);
+    expect(belowAllocated.json()).toEqual(
+      expect.objectContaining({
+        code: "PROJECT_QUANTITY_BASELINE_BELOW_ALLOCATED",
+        details: expect.objectContaining({
+          blockers: [expect.objectContaining({ section: "metrics" })],
+        }),
+      }),
+    );
+
+    const exactAllocated = await app.inject({
+      method: "POST",
+      url: `/api/v1/projects/${scope.projectId}/quantity-baseline-revisions`,
+      headers: { authorization: scope.authorization },
+      payload: {
+        items: [{ serviceCode: "cut", unitCode: "M3", total: "60.00" }],
+      },
+    });
+    expect(exactAllocated.statusCode, exactAllocated.body).toBe(200);
+  });
+
   it("serializes concurrent allocations so only one can consume the balance", async () => {
     const scope = await setup();
     const responses = await Promise.all([
@@ -244,5 +304,24 @@ describe("project work-front quantities", () => {
       responses.map((response) => response.statusCode).sort(),
       JSON.stringify(responses.map((response) => response.json())),
     ).toEqual([200, 422]);
+  });
+
+  it("serializes a baseline reduction against a concurrent allocation", async () => {
+    const scope = await setup();
+    const responses = await Promise.all([
+      createFront(scope.authorization, scope.projectId, "Frente A", "60.00"),
+      app.inject({
+        method: "POST",
+        url: `/api/v1/projects/${scope.projectId}/quantity-baseline-revisions`,
+        headers: { authorization: scope.authorization },
+        payload: {
+          items: [{ serviceCode: "cut", unitCode: "M3", total: "50.00" }],
+        },
+      }),
+    ]);
+
+    expect(responses.map((response) => response.statusCode).sort()).toEqual([
+      200, 422,
+    ]);
   });
 });

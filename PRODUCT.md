@@ -41,7 +41,7 @@ It must not rely on fragile, low-contrast UI, tiny labels, decorative gradients,
 3. Prefer confident density over ERP clutter. Dashboards and admin screens may be information-rich, but every table, filter, card, and chart must have a clear job.
 4. Use familiar product patterns. Workspace selection, admin navigation, forms, filters, tables, tabs, and project dashboards should behave predictably.
 5. Show project truth quickly. The project dashboard should surface progress, production, equipment, labor, suppliers, and alerts in a way that supports decisions, not decoration.
-6. Preserve the planning baseline. Project quantities are approved reference values; service fronts allocate portions of them, never silently replace them, and cannot consume more than the available balance.
+6. Preserve the planning baseline. Project quantities are approved reference values; service fronts allocate portions of them, never silently replace them, cannot consume more than the available balance, and prevent later revisions from dropping below allocated work.
 
 ## Accessibility & Inclusion
 

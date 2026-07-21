@@ -33,6 +33,7 @@ A empresa vai ter as seguintes relações
   -> Escala: Seg. a Sáb.
   -> HORAS EXTRAS FIXAS (ex: sempre paga 1h extra pra todo mundo)
   -> Quantitativos de referência por serviço, versionados e independentes da distribuição operacional
+  -> Datas planejadas e quantitativos são consultados no planejamento e editados em modais com salvamentos independentes
   -> Nivelamento de terreno (metro quadrado)
 
   -> Top Soil (metro cúbico/Km)
@@ -41,7 +42,9 @@ A empresa vai ter as seguintes relações
   -- Nome e localização operacional
   -- Serviços e quantitativos distribuídos
   -- A soma das frentes não canceladas não pode ultrapassar o saldo da linha de base; o valor exato do saldo é permitido
+  -- A linha de base não pode ser reduzida abaixo do quantitativo já distribuído
   -- Uma frente elegível é obrigatória para iniciar a obra
+  -- Frentes elegíveis vêm selecionadas por padrão para iniciar junto com a obra
   -- Troca de solo registra remoção de solo impróprio e aterro de substituição como serviços distintos
 
   \_> EQUIPAMENTOS: OS EQUIPAMENTOS PERTECENTES A EMPRESA QUE PARTICIPAM DA OBRA

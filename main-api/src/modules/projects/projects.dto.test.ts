@@ -157,6 +157,20 @@ describe("Projects DTO", () => {
       }).success,
     ).toBe(false);
   });
+  it("accepts planned date updates and rejects a reversed readiness period", () => {
+    expect(
+      projectReadinessCommandSchema.safeParse({
+        plannedStartDate: "2026-07-02",
+        plannedEndDate: "2026-08-02",
+      }).success,
+    ).toBe(true);
+    expect(
+      projectReadinessCommandSchema.safeParse({
+        plannedStartDate: "2026-08-02",
+        plannedEndDate: "2026-07-02",
+      }).success,
+    ).toBe(false);
+  });
   it("rejects unknown properties and over-limit collections", () => {
     expect(
       projectCommandSchema.safeParse({

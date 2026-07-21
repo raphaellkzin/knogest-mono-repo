@@ -192,8 +192,8 @@ const projectOptions: ProjectReadinessOptions = {
   supplierOffers: fuelOptions,
 };
 
-function renderProjectDetail(project: ProjectDetailSnapshot) {
-  return render(
+function projectDetailElement(project: ProjectDetailSnapshot) {
+  return (
     <ProjectDetail
       lookupSuppliedItemOfferSuppliersAction={
         lookupSuppliedItemOfferSuppliersAction
@@ -203,8 +203,12 @@ function renderProjectDetail(project: ProjectDetailSnapshot) {
       lookupSuppliersAction={lookupSuppliersAction}
       options={projectOptions}
       project={project}
-    />,
+    />
   );
+}
+
+function renderProjectDetail(project: ProjectDetailSnapshot) {
+  return render(projectDetailElement(project));
 }
 
 const lookupSuppliedItemsAction: React.ComponentProps<
@@ -391,12 +395,68 @@ describe("Project detail fuel editors", () => {
 });
 
 describe("Project detail planning metrics", () => {
-  it("shows integer reference quantities and saves them with canonical zero cents", async () => {
+  it("edits and saves planned dates through their modal", async () => {
     const saveReadiness = vi.mocked(saveProjectReadinessAction);
     saveReadiness.mockResolvedValue({
       kind: "success",
       project: projectSnapshot,
     });
+    const user = userEvent.setup();
+
+    renderProjectDetail(projectSnapshot);
+
+    expect(screen.queryByLabelText("Início planejado")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Editar datas" }));
+    const modal = screen.getByRole("dialog");
+    const startInput = within(modal).getByLabelText(
+      "Início planejado",
+    ) as HTMLInputElement;
+    const endInput = within(modal).getByLabelText(
+      "Fim planejado",
+    ) as HTMLInputElement;
+    expect(startInput.value).toBe("2026-07-01");
+    expect(endInput.value).toBe("2026-08-01");
+
+    fireEvent.change(startInput, { target: { value: "2026-07-02" } });
+    fireEvent.change(endInput, { target: { value: "2026-08-02" } });
+    await user.click(
+      within(modal).getByRole("button", { name: "Salvar datas" }),
+    );
+
+    await waitFor(() =>
+      expect(saveReadiness).toHaveBeenCalledWith(projectSnapshot.id, {
+        plannedStartDate: "2026-07-02",
+        plannedEndDate: "2026-08-02",
+      }),
+    );
+    expect(saveProjectQuantityBaselineAction).not.toHaveBeenCalled();
+  });
+
+  it("blocks a planned end date earlier than the planned start date", async () => {
+    const saveReadiness = vi.mocked(saveProjectReadinessAction);
+    const user = userEvent.setup();
+
+    renderProjectDetail(projectSnapshot);
+    await user.click(screen.getByRole("button", { name: "Editar datas" }));
+    const modal = screen.getByRole("dialog");
+    const startInput = within(modal).getByLabelText("Início planejado");
+    const endInput = within(modal).getByLabelText("Fim planejado");
+
+    fireEvent.change(startInput, { target: { value: "2026-09-01" } });
+    fireEvent.change(endInput, { target: { value: "2026-08-01" } });
+    await user.click(
+      within(modal).getByRole("button", { name: "Salvar datas" }),
+    );
+
+    expect(
+      within(modal).getByText(
+        "A data final não pode ser anterior à data inicial.",
+      ),
+    ).toBeTruthy();
+    expect(saveReadiness).not.toHaveBeenCalled();
+  });
+
+  it("shows integer quantities and saves a separate baseline revision", async () => {
     const saveBaseline = vi.mocked(saveProjectQuantityBaselineAction);
     saveBaseline.mockResolvedValue({
       kind: "success",
@@ -405,8 +465,12 @@ describe("Project detail planning metrics", () => {
     const user = userEvent.setup();
 
     renderProjectDetail(projectSnapshot);
+    await user.click(
+      screen.getByRole("button", { name: "Editar quantitativos" }),
+    );
+    const modal = screen.getByRole("dialog");
 
-    const targetInput = screen.getAllByLabelText(
+    const targetInput = within(modal).getAllByLabelText(
       /Total de referência/u,
     )[0] as HTMLInputElement;
     expect(targetInput.value).toBe("1.234");
@@ -417,17 +481,56 @@ describe("Project detail planning metrics", () => {
     expect(targetInput.value).toBe("1.234.567");
 
     await user.click(
-      screen.getByRole("button", { name: /Salvar datas\/metas/u }),
+      within(modal).getByRole("button", { name: "Salvar quantitativos" }),
     );
 
     await waitFor(() =>
-      expect(saveReadiness).toHaveBeenCalledWith(projectSnapshot.id, {
-        plannedEndDate: "2026-08-01",
+      expect(saveBaseline).toHaveBeenCalledWith(projectSnapshot.id, {
+        items: [{ serviceCode: "cut", unitCode: "M3", total: "1234567.00" }],
       }),
     );
-    expect(saveBaseline).toHaveBeenCalledWith(projectSnapshot.id, {
-      items: [{ serviceCode: "cut", unitCode: "M3", total: "1234567.00" }],
-    });
+    expect(saveProjectReadinessAction).not.toHaveBeenCalled();
+  });
+
+  it("blocks a baseline total below the quantity already distributed", async () => {
+    const user = userEvent.setup();
+    const allocatedProject: ProjectDetailSnapshot = {
+      ...projectSnapshot,
+      quantityBaseline: {
+        ...projectSnapshot.quantityBaseline,
+        items: [
+          {
+            ...projectSnapshot.quantityBaseline.items[0],
+            allocated: "500.00",
+            unallocated: "734.00",
+          },
+        ],
+      },
+    };
+
+    renderProjectDetail(allocatedProject);
+    await user.click(
+      screen.getByRole("button", { name: "Editar quantitativos" }),
+    );
+    const modal = screen.getByRole("dialog");
+    const targetInput = within(modal).getAllByLabelText(
+      /Total de referência/u,
+    )[0] as HTMLInputElement;
+    await user.clear(targetInput);
+    await user.type(targetInput, "499");
+
+    expect(
+      within(modal).getByText("Total abaixo do volume distribuído."),
+    ).toBeTruthy();
+    expect(targetInput.getAttribute("aria-invalid")).toBe("true");
+    expect(
+      (
+        within(modal).getByRole("button", {
+          name: "Salvar quantitativos",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(saveProjectQuantityBaselineAction).not.toHaveBeenCalled();
   });
 });
 
@@ -570,6 +673,57 @@ describe("Project work fronts", () => {
         services: [{ serviceCode: "cut", unitCode: "M3", quantity: "1234.00" }],
       }),
     );
+  });
+
+  it("keeps the fronts tab and selects eligible fronts by default", async () => {
+    const user = userEvent.setup();
+    const firstFront: ProjectDetailSnapshot["workFronts"][number] = {
+      id: "00000000-0000-4000-8000-000000000911",
+      name: "Frente norte",
+      location: "Trecho A",
+      notes: null,
+      plannedStartDate: null,
+      plannedEndDate: null,
+      status: "planned",
+      actualStartedAt: null,
+      services: [{ serviceCode: "cut", unitCode: "M3", quantity: "250.00" }],
+      eligibility: { canStart: true, blockers: [] },
+    };
+    const initialProject = { ...projectSnapshot, workFronts: [firstFront] };
+    const { rerender } = renderProjectDetail(initialProject);
+
+    await user.click(screen.getByRole("tab", { name: /Frentes/u }));
+    const firstSelection = screen.getByLabelText(
+      "Iniciar com a obra",
+    ) as HTMLInputElement;
+    expect(firstSelection.checked).toBe(true);
+    await user.click(firstSelection);
+    expect(firstSelection.checked).toBe(false);
+
+    const secondFront = {
+      ...firstFront,
+      id: "00000000-0000-4000-8000-000000000912",
+      name: "Frente sul",
+    };
+    rerender(
+      projectDetailElement({
+        ...initialProject,
+        workFronts: [firstFront, secondFront],
+      }),
+    );
+
+    await waitFor(() => {
+      const selections = screen.getAllByLabelText(
+        "Iniciar com a obra",
+      ) as HTMLInputElement[];
+      expect(selections[0].checked).toBe(false);
+      expect(selections[1].checked).toBe(true);
+    });
+    expect(
+      screen
+        .getByRole("tab", { name: /Frentes/u })
+        .getAttribute("aria-selected"),
+    ).toBe("true");
   });
 });
 
