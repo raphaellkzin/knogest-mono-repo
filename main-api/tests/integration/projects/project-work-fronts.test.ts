@@ -11,6 +11,7 @@ import type { FastifyInstance } from "fastify";
 describe("project work-front quantities", () => {
   const syntheticEmployeeCpfFixture = "111.444.777-35";
   const syntheticClientCnpjFixture = "12.345.678/0001-95";
+  const syntheticFuelSupplierCpfFixture = "529.982.247-25";
   let app: FastifyInstance;
   let organization: OrganizationService;
 
@@ -150,7 +151,88 @@ describe("project work-front quantities", () => {
         total: "100.00",
       },
     });
-    return { authorization, projectId: project.projectId };
+    return {
+      authorization,
+      projectId: project.projectId,
+      corporationId: pilot.corporation.id,
+      companyId,
+      userId: pilot.administrator.id,
+      employmentId,
+      jobRoleId: role.id,
+    };
+  }
+
+  async function prepareProjectResources(
+    scope: Awaited<ReturnType<typeof setup>>,
+    activateDirectly = true,
+  ) {
+    const machine = await app.prisma.machine.create({
+      data: {
+        corporationId: scope.corporationId,
+        name: "Escavadeira de teste",
+        type: "YELLOW_LINE",
+        manufacturer: "Teste",
+        model: "EX-01",
+        meterType: "HOUR_METER",
+      },
+    });
+    await app.prisma.machineOwnershipPeriod.create({
+      data: {
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        machineId: machine.id,
+      },
+    });
+    const reading = await app.prisma.machineMeterReading.create({
+      data: {
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        machineId: machine.id,
+        readingSequence: 1,
+        value: "10.00",
+        purpose: "INITIAL",
+        actorUserId: scope.userId,
+      },
+    });
+    const employees = await app.inject({
+      method: "PUT",
+      url: `/api/v1/projects/${scope.projectId}/mobilization/employees`,
+      headers: { authorization: scope.authorization },
+      payload: {
+        allocations: [
+          {
+            employmentId: scope.employmentId,
+            confirmedJobRoleId: scope.jobRoleId,
+            expectedDailyWorkloadMinutes: 480,
+            compensationMode: "monthly",
+            compensationValue: "5000.00",
+            overtimeRate: "30.00",
+          },
+        ],
+      },
+    });
+    expect(employees.statusCode, employees.body).toBe(200);
+    const machines = await app.inject({
+      method: "PUT",
+      url: `/api/v1/projects/${scope.projectId}/mobilization/machines`,
+      headers: { authorization: scope.authorization },
+      payload: {
+        allocations: [
+          {
+            machineId: machine.id,
+            startMeterReadingId: reading.id,
+            operatorEmploymentId: scope.employmentId,
+          },
+        ],
+      },
+    });
+    expect(machines.statusCode, machines.body).toBe(200);
+    if (activateDirectly)
+      await app.prisma.project.update({
+        where: { id: scope.projectId },
+        data: { status: "ACTIVE", actualStartedAt: new Date() },
+      });
+    return { machineId: machine.id };
   }
 
   function createFront(
@@ -165,6 +247,8 @@ describe("project work-front quantities", () => {
       headers: { authorization },
       payload: {
         name,
+        requiresEmployees: true,
+        requiresMachines: true,
         services: [{ serviceCode: "cut", unitCode: "M3", quantity }],
       },
     });
@@ -227,6 +311,8 @@ describe("project work-front quantities", () => {
       headers: { authorization: scope.authorization },
       payload: {
         name: "Frente editável",
+        requiresEmployees: true,
+        requiresMachines: true,
         services: [{ serviceCode: "cut", unitCode: "M3", quantity: "100.00" }],
       },
     });
@@ -323,5 +409,222 @@ describe("project work-front quantities", () => {
     expect(responses.map((response) => response.statusCode).sort()).toEqual([
       200, 422,
     ]);
+  });
+
+  it("activates the project without starting or mobilizing its valid front", async () => {
+    const scope = await setup();
+    const created = await createFront(
+      scope.authorization,
+      scope.projectId,
+      "Frente posterior à mobilização",
+      "40.00",
+    );
+    expect(created.statusCode, created.body).toBe(200);
+    const frontId = created.json().data.workFronts[0].id as string;
+    await prepareProjectResources(scope, false);
+
+    const supplier = await app.inject({
+      method: "POST",
+      url: "/api/v1/suppliers",
+      headers: { authorization: scope.authorization },
+      payload: {
+        entityType: "individual",
+        document: syntheticFuelSupplierCpfFixture,
+        fullName: "Posto da obra",
+      },
+    });
+    expect(supplier.statusCode, supplier.body).toBe(201);
+    const fuelCategory = await app.prisma.suppliedItemCategory.findFirstOrThrow(
+      {
+        where: {
+          corporationId: scope.corporationId,
+          companyId: scope.companyId,
+          systemKey: "fuel",
+        },
+      },
+    );
+    const item = await app.inject({
+      method: "POST",
+      url: "/api/v1/supplied-items",
+      headers: { authorization: scope.authorization },
+      payload: {
+        name: "Diesel de ativação",
+        baseUnitId: "00000000-0000-4000-8000-00000000a003",
+        categoryId: fuelCategory.id,
+      },
+    });
+    expect(item.statusCode, item.body).toBe(201);
+    const offer = await app.inject({
+      method: "POST",
+      url: `/api/v1/suppliers/${supplier.json().data.id}/offers`,
+      headers: { authorization: scope.authorization },
+      payload: {
+        itemId: item.json().data.id,
+        baseUnitId: "00000000-0000-4000-8000-00000000a003",
+        purchaseUnitId: "00000000-0000-4000-8000-00000000a003",
+        conversionToBase: "1.000000",
+        price: "6.5000",
+      },
+    });
+    expect(offer.statusCode, offer.body).toBe(201);
+    const readiness = await app.inject({
+      method: "PUT",
+      url: `/api/v1/projects/${scope.projectId}/readiness`,
+      headers: { authorization: scope.authorization },
+      payload: {
+        fuelOffers: [
+          {
+            mode: "existing",
+            sourceOfferId: offer.json().data.id,
+            price: "6.5000",
+          },
+        ],
+        compensationPaymentTerms: [
+          { compensationMode: "monthly", daysAfterPeriodEnd: 5 },
+        ],
+      },
+    });
+    expect(readiness.statusCode, readiness.body).toBe(200);
+    expect(readiness.json().data.readiness.canActivate).toBe(true);
+
+    const activated = await app.inject({
+      method: "POST",
+      url: `/api/v1/projects/${scope.projectId}/activate`,
+      headers: { authorization: scope.authorization },
+    });
+    expect(activated.statusCode, activated.body).toBe(200);
+    expect(activated.json().data.status).toBe("active");
+    expect(
+      activated
+        .json()
+        .data.workFronts.find((front: { id: string }) => front.id === frontId),
+    ).toEqual(
+      expect.objectContaining({
+        status: "planned",
+        actualStartedAt: null,
+        employeeAssignments: [],
+        machineAssignments: [],
+      }),
+    );
+  });
+
+  it("prepares, starts and demobilizes a front without changing its active status", async () => {
+    const scope = await setup();
+    const created = await createFront(
+      scope.authorization,
+      scope.projectId,
+      "Frente operacional",
+      "40.00",
+    );
+    expect(created.statusCode, created.body).toBe(200);
+    const frontId = created.json().data.workFronts[0].id as string;
+    const resources = await prepareProjectResources(scope);
+
+    const mobilized = await app.inject({
+      method: "PUT",
+      url: `/api/v1/projects/${scope.projectId}/fronts/${frontId}/mobilization`,
+      headers: { authorization: scope.authorization },
+      payload: { employmentIds: [], machineIds: [resources.machineId] },
+    });
+    expect(mobilized.statusCode, mobilized.body).toBe(200);
+    const preparedFront = mobilized
+      .json()
+      .data.workFronts.find((front: { id: string }) => front.id === frontId);
+    expect(preparedFront).toEqual(
+      expect.objectContaining({
+        requiresEmployees: true,
+        requiresMachines: true,
+        eligibility: { canStart: true, blockers: [] },
+        employeeAssignments: [
+          expect.objectContaining({ source: "machine_operator" }),
+        ],
+        machineAssignments: [expect.any(Object)],
+      }),
+    );
+
+    const started = await app.inject({
+      method: "POST",
+      url: `/api/v1/projects/${scope.projectId}/fronts/${frontId}/start`,
+      headers: { authorization: scope.authorization },
+    });
+    expect(started.statusCode, started.body).toBe(200);
+    expect(
+      started
+        .json()
+        .data.workFronts.find((front: { id: string }) => front.id === frontId)
+        .status,
+    ).toBe("active");
+
+    const demobilized = await app.inject({
+      method: "PUT",
+      url: `/api/v1/projects/${scope.projectId}/fronts/${frontId}/mobilization`,
+      headers: { authorization: scope.authorization },
+      payload: { employmentIds: [], machineIds: [] },
+    });
+    expect(demobilized.statusCode, demobilized.body).toBe(200);
+    const activeFront = demobilized
+      .json()
+      .data.workFronts.find((front: { id: string }) => front.id === frontId);
+    expect(activeFront.status).toBe("active");
+    expect(activeFront.employeeAssignments).toEqual([]);
+    expect(activeFront.machineAssignments).toEqual([]);
+
+    const history = await app.inject({
+      method: "GET",
+      url: `/api/v1/projects/${scope.projectId}/mobilization-history?resourceType=employee&frontId=${frontId}`,
+      headers: { authorization: scope.authorization },
+    });
+    expect(history.statusCode, history.body).toBe(200);
+    expect(history.json().data.data).toEqual([
+      expect.objectContaining({
+        resourceType: "employee",
+        source: "machine_operator",
+        effectiveTo: expect.any(String),
+      }),
+    ]);
+  });
+
+  it("blocks an occupied resource from being assigned to another front", async () => {
+    const scope = await setup();
+    const [firstResponse, secondResponse] = await Promise.all([
+      createFront(scope.authorization, scope.projectId, "Frente A", "40.00"),
+      createFront(scope.authorization, scope.projectId, "Frente B", "40.00"),
+    ]);
+    expect(firstResponse.statusCode, firstResponse.body).toBe(200);
+    expect(secondResponse.statusCode, secondResponse.body).toBe(200);
+    const frontIds = [
+      ...(firstResponse.json().data.workFronts as { id: string }[]),
+      ...(secondResponse.json().data.workFronts as { id: string }[]),
+    ]
+      .map((front) => front.id)
+      .filter((id, index, ids) => ids.indexOf(id) === index);
+    const resources = await prepareProjectResources(scope);
+
+    const first = await app.inject({
+      method: "PUT",
+      url: `/api/v1/projects/${scope.projectId}/fronts/${frontIds[0]}/mobilization`,
+      headers: { authorization: scope.authorization },
+      payload: { employmentIds: [], machineIds: [resources.machineId] },
+    });
+    expect(first.statusCode, first.body).toBe(200);
+    const occupied = await app.inject({
+      method: "PUT",
+      url: `/api/v1/projects/${scope.projectId}/fronts/${frontIds[1]}/mobilization`,
+      headers: { authorization: scope.authorization },
+      payload: { employmentIds: [], machineIds: [resources.machineId] },
+    });
+    expect(occupied.statusCode, occupied.body).toBe(409);
+    expect(occupied.json()).toEqual(
+      expect.objectContaining({
+        details: expect.objectContaining({
+          resources: [
+            expect.objectContaining({
+              section: "fronts",
+              reason: "assigned-to-front",
+            }),
+          ],
+        }),
+      }),
+    );
   });
 });

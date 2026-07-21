@@ -5,11 +5,14 @@ import {
 } from "./handlers/projects.handler";
 import type {
   ProjectCommand,
+  ProjectEmployeeMobilizationCommand,
   ProjectListQuery,
+  ProjectMachineMobilizationCommand,
+  ProjectMobilizationHistoryQuery,
   ProjectReadinessCommand,
-  ProjectActivateCommand,
   ProjectQuantityBaselineRevisionCommand,
   ProjectWorkFrontCommand,
+  ProjectWorkFrontMobilizationCommand,
 } from "./projects.dto";
 
 export type { ProjectScope } from "./handlers/projects.handler";
@@ -75,6 +78,44 @@ export class ProjectsService {
     return this.handler.updateWorkFront(scope, projectId, frontId, command);
   }
 
+  saveWorkFrontMobilization(
+    scope: ProjectScope,
+    projectId: string,
+    frontId: string,
+    command: ProjectWorkFrontMobilizationCommand,
+  ) {
+    return this.handler.saveWorkFrontMobilization(
+      scope,
+      projectId,
+      frontId,
+      command,
+    );
+  }
+
+  saveEmployeeMobilization(
+    scope: ProjectScope,
+    projectId: string,
+    command: ProjectEmployeeMobilizationCommand,
+  ) {
+    return this.handler.saveEmployeeMobilization(scope, projectId, command);
+  }
+
+  saveMachineMobilization(
+    scope: ProjectScope,
+    projectId: string,
+    command: ProjectMachineMobilizationCommand,
+  ) {
+    return this.handler.saveMachineMobilization(scope, projectId, command);
+  }
+
+  mobilizationHistory(
+    scope: ProjectScope,
+    projectId: string,
+    query: ProjectMobilizationHistoryQuery,
+  ) {
+    return this.handler.mobilizationHistory(scope, projectId, query);
+  }
+
   startWorkFront(scope: ProjectScope, projectId: string, frontId: string) {
     return this.handler.startWorkFront(scope, projectId, frontId);
   }
@@ -83,11 +124,7 @@ export class ProjectsService {
     return this.handler.cancelWorkFront(scope, projectId, frontId);
   }
 
-  activate(
-    scope: ProjectScope,
-    projectId: string,
-    command: ProjectActivateCommand,
-  ) {
-    return this.handler.activate(scope, projectId, command);
+  activate(scope: ProjectScope, projectId: string) {
+    return this.handler.activate(scope, projectId);
   }
 }

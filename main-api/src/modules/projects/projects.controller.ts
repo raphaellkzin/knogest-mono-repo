@@ -2,13 +2,16 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { jsonResponse } from "../../lib/utils/jsonResponse";
 import {
   projectCommandSchema,
-  projectActivateCommandSchema,
+  projectEmployeeMobilizationCommandSchema,
   projectIdempotencyKeySchema,
   projectListQuerySchema,
+  projectMachineMobilizationCommandSchema,
+  projectMobilizationHistoryQuerySchema,
   projectParamsSchema,
   projectQuantityBaselineRevisionCommandSchema,
   projectReadinessCommandSchema,
   projectWorkFrontCommandSchema,
+  projectWorkFrontMobilizationCommandSchema,
   projectWorkFrontParamsSchema,
 } from "./projects.dto";
 import { ProjectsService, type ProjectScope } from "./projects.service";
@@ -409,13 +412,15 @@ const projectQuantityBaselineRevisionCommandOpenApiSchema = {
 const projectWorkFrontCommandOpenApiSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["name", "services"],
+  required: ["name", "requiresEmployees", "requiresMachines", "services"],
   properties: {
     name: { type: "string", minLength: 1, maxLength: 160 },
     location: { type: "string", nullable: true, maxLength: 240 },
     notes: { type: "string", nullable: true, maxLength: 1000 },
     plannedStartDate: { type: "string", format: "date", nullable: true },
     plannedEndDate: { type: "string", format: "date", nullable: true },
+    requiresEmployees: { type: "boolean" },
+    requiresMachines: { type: "boolean" },
     services: {
       type: "array",
       minItems: 1,
@@ -433,6 +438,70 @@ const projectWorkFrontCommandOpenApiSchema = {
               .items.properties.unitCode,
           quantity: { type: "string" },
         },
+      },
+    },
+  },
+} as const;
+
+const projectWorkFrontMobilizationOpenApiSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["employmentIds", "machineIds"],
+  properties: {
+    employmentIds: {
+      type: "array",
+      maxItems: 200,
+      uniqueItems: true,
+      items: uuid,
+    },
+    machineIds: {
+      type: "array",
+      maxItems: 100,
+      uniqueItems: true,
+      items: uuid,
+    },
+    reason: { type: "string", nullable: true, maxLength: 500 },
+  },
+} as const;
+
+const projectEmployeeMobilizationOpenApiSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["allocations"],
+  properties: {
+    allocations:
+      projectReadinessCommandOpenApiSchema.properties.employeeAllocations,
+    reason: { type: "string", nullable: true, maxLength: 500 },
+  },
+} as const;
+
+const projectMachineMobilizationOpenApiSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["allocations"],
+  properties: {
+    allocations:
+      projectReadinessCommandOpenApiSchema.properties.machineAllocations,
+    reason: { type: "string", nullable: true, maxLength: 500 },
+  },
+} as const;
+
+const mobilizationHistoryPageSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["data", "pageInfo"],
+  properties: {
+    data: {
+      type: "array",
+      items: { type: "object", additionalProperties: true },
+    },
+    pageInfo: {
+      type: "object",
+      additionalProperties: false,
+      required: ["hasNextPage", "nextCursor"],
+      properties: {
+        hasNextPage: { type: "boolean" },
+        nextCursor: { type: "string", nullable: true },
       },
     },
   },
@@ -1006,6 +1075,200 @@ export async function v1ProjectsController(app: FastifyInstance) {
     },
   );
 
+  app.put<{ Params: { projectId: string } }>(
+    "/projects/:projectId/mobilization/employees",
+    {
+      preHandler: app.requireCompanyScope,
+      schema: {
+        tags: ["Projects"],
+        summary: "Reconcile employees mobilized to a Project",
+        security: [{ bearerAuth: [] }],
+        body: projectEmployeeMobilizationOpenApiSchema,
+        response: {
+          200: successSchema(projectDetailSchema),
+          400: errorSchema,
+          404: errorSchema,
+          409: errorSchema,
+          422: errorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const params = projectParamsSchema.safeParse(request.params);
+      const body = projectEmployeeMobilizationCommandSchema.safeParse(
+        request.body,
+      );
+      if (!params.success || !body.success)
+        return jsonResponse.error({
+          reply,
+          statusCode: 400,
+          code: "VALIDATION_ERROR",
+          message: "Invalid employee mobilization command",
+        });
+      try {
+        return jsonResponse.success({
+          reply,
+          data: await service.saveEmployeeMobilization(
+            scope(request),
+            params.data.projectId,
+            body.data,
+          ),
+        });
+      } catch (error) {
+        return jsonResponse.fromError({ reply, error });
+      }
+    },
+  );
+
+  app.put<{ Params: { projectId: string } }>(
+    "/projects/:projectId/mobilization/machines",
+    {
+      preHandler: app.requireCompanyScope,
+      schema: {
+        tags: ["Projects"],
+        summary: "Reconcile machines mobilized to a Project",
+        security: [{ bearerAuth: [] }],
+        body: projectMachineMobilizationOpenApiSchema,
+        response: {
+          200: successSchema(projectDetailSchema),
+          400: errorSchema,
+          404: errorSchema,
+          409: errorSchema,
+          422: errorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const params = projectParamsSchema.safeParse(request.params);
+      const body = projectMachineMobilizationCommandSchema.safeParse(
+        request.body,
+      );
+      if (!params.success || !body.success)
+        return jsonResponse.error({
+          reply,
+          statusCode: 400,
+          code: "VALIDATION_ERROR",
+          message: "Invalid machine mobilization command",
+        });
+      try {
+        return jsonResponse.success({
+          reply,
+          data: await service.saveMachineMobilization(
+            scope(request),
+            params.data.projectId,
+            body.data,
+          ),
+        });
+      } catch (error) {
+        return jsonResponse.fromError({ reply, error });
+      }
+    },
+  );
+
+  app.put<{ Params: { projectId: string; frontId: string } }>(
+    "/projects/:projectId/fronts/:frontId/mobilization",
+    {
+      preHandler: app.requireCompanyScope,
+      schema: {
+        tags: ["Projects"],
+        summary: "Prepare resources mobilized to a work front",
+        security: [{ bearerAuth: [] }],
+        body: projectWorkFrontMobilizationOpenApiSchema,
+        response: {
+          200: successSchema(projectDetailSchema),
+          400: errorSchema,
+          404: errorSchema,
+          409: errorSchema,
+          422: errorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const params = projectWorkFrontParamsSchema.safeParse(request.params);
+      const body = projectWorkFrontMobilizationCommandSchema.safeParse(
+        request.body,
+      );
+      if (!params.success || !body.success)
+        return jsonResponse.error({
+          reply,
+          statusCode: 400,
+          code: "VALIDATION_ERROR",
+          message: "Invalid work front mobilization command",
+        });
+      try {
+        return jsonResponse.success({
+          reply,
+          data: await service.saveWorkFrontMobilization(
+            scope(request),
+            params.data.projectId,
+            params.data.frontId,
+            body.data,
+          ),
+        });
+      } catch (error) {
+        return jsonResponse.fromError({ reply, error });
+      }
+    },
+  );
+
+  app.get<{
+    Params: { projectId: string };
+    Querystring: Record<string, unknown>;
+  }>(
+    "/projects/:projectId/mobilization-history",
+    {
+      preHandler: app.requireCompanyScope,
+      schema: {
+        tags: ["Projects"],
+        summary: "List Project or work-front mobilization history",
+        security: [{ bearerAuth: [] }],
+        querystring: {
+          type: "object",
+          additionalProperties: false,
+          required: ["resourceType"],
+          properties: {
+            limit: { type: "integer", minimum: 1, maximum: 100, default: 25 },
+            cursor: { type: "string", maxLength: 2048 },
+            resourceType: { enum: ["employee", "machine"] },
+            frontId: uuid,
+            sortBy: { enum: ["effectiveFrom"], default: "effectiveFrom" },
+            sortDirection: { enum: ["asc", "desc"], default: "desc" },
+          },
+        },
+        response: {
+          200: successSchema(mobilizationHistoryPageSchema),
+          400: errorSchema,
+          404: errorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const params = projectParamsSchema.safeParse(request.params);
+      const query = projectMobilizationHistoryQuerySchema.safeParse(
+        request.query,
+      );
+      if (!params.success || !query.success)
+        return jsonResponse.error({
+          reply,
+          statusCode: 400,
+          code: "VALIDATION_ERROR",
+          message: "Invalid mobilization history query",
+        });
+      try {
+        return jsonResponse.success({
+          reply,
+          data: await service.mobilizationHistory(
+            scope(request),
+            params.data.projectId,
+            query.data,
+          ),
+        });
+      } catch (error) {
+        return jsonResponse.fromError({ reply, error });
+      }
+    },
+  );
+
   for (const action of ["start", "cancel"] as const)
     app.post<{ Params: { projectId: string; frontId: string } }>(
       `/projects/:projectId/fronts/:frontId/${action}`,
@@ -1066,20 +1329,6 @@ export async function v1ProjectsController(app: FastifyInstance) {
           required: ["projectId"],
           properties: { projectId: { type: "string", format: "uuid" } },
         },
-        body: {
-          type: "object",
-          additionalProperties: false,
-          required: ["frontIds"],
-          properties: {
-            frontIds: {
-              type: "array",
-              minItems: 1,
-              maxItems: 100,
-              uniqueItems: true,
-              items: uuid,
-            },
-          },
-        },
         response: {
           200: successSchema(projectDetailSchema),
           400: errorSchema,
@@ -1090,8 +1339,7 @@ export async function v1ProjectsController(app: FastifyInstance) {
     },
     async (request, reply) => {
       const parsedParams = projectParamsSchema.safeParse(request.params);
-      const parsedBody = projectActivateCommandSchema.safeParse(request.body);
-      if (!parsedParams.success || !parsedBody.success)
+      if (!parsedParams.success)
         return jsonResponse.error({
           reply,
           statusCode: 400,
@@ -1104,7 +1352,6 @@ export async function v1ProjectsController(app: FastifyInstance) {
           data: await service.activate(
             scope(request),
             parsedParams.data.projectId,
-            parsedBody.data,
           ),
         });
       } catch (error) {

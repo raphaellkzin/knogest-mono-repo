@@ -286,16 +286,28 @@ describe("Projects DTO", () => {
     expect(
       projectWorkFrontCommandSchema.safeParse({
         name: "Frente Norte",
+        requiresEmployees: true,
+        requiresMachines: true,
         services: [{ serviceCode: "cut", unitCode: "M3", quantity: "50.00" }],
       }).success,
     ).toBe(true);
     expect(
       projectWorkFrontCommandSchema.safeParse({
         name: "Frente Norte",
+        requiresEmployees: true,
+        requiresMachines: true,
         services: [
           { serviceCode: "cut", unitCode: "M3", quantity: "50.00" },
           { serviceCode: "cut", unitCode: "M3", quantity: "10.00" },
         ],
+      }).success,
+    ).toBe(false);
+    expect(
+      projectWorkFrontCommandSchema.safeParse({
+        name: "Frente sem recursos",
+        requiresEmployees: false,
+        requiresMachines: false,
+        services: [{ serviceCode: "cut", unitCode: "M3", quantity: "10.00" }],
       }).success,
     ).toBe(false);
   });

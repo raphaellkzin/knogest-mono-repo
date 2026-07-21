@@ -54,9 +54,14 @@ import { cn } from "@/lib/utils";
 import {
   activateProjectAction,
   createProjectWorkFrontAction,
+  getProjectMobilizationHistoryAction,
+  saveProjectEmployeeMobilizationAction,
+  saveProjectMachineMobilizationAction,
   saveProjectQuantityBaselineAction,
   saveProjectReadinessAction,
+  saveProjectWorkFrontMobilizationAction,
   startProjectWorkFrontAction,
+  updateProjectWorkFrontAction,
   type ProjectReadinessActionInput,
 } from "../projects.actions";
 import { emptyProjectCommand, type ProjectCommand } from "../projects-schema";
@@ -65,6 +70,7 @@ import type {
   FuelSupplierOption,
   EarthworksServiceCode,
   ProjectDetailSnapshot,
+  ProjectMobilizationHistoryItem,
   ProjectOfferSnapshot,
   ProjectReadinessOptions,
   ProjectSuppliedItemOfferOption,
@@ -147,6 +153,10 @@ function canonicalDecimalToHundredths(value: string) {
   return (
     BigInt(match[1]) * BigInt(100) + BigInt((match[2] ?? "").padEnd(2, "0"))
   );
+}
+
+function hundredthsToCanonicalDecimal(value: bigint) {
+  return `${value / BigInt(100)}.${String(value % BigInt(100)).padStart(2, "0")}`;
 }
 
 const compensationLabels: Record<CompensationMode, string> = {
@@ -305,13 +315,6 @@ function metricInitialState(project: ProjectDetailSnapshot) {
       ? canonicalDecimalToBrazilianInteger(existing.get(metric.code)!)
       : "",
   }));
-}
-
-function eligibleStartFrontIds(project: ProjectDetailSnapshot) {
-  if (project.status !== "planned") return [];
-  return project.workFronts
-    .filter((front) => front.eligibility.canStart)
-    .map((front) => front.id);
 }
 
 function paymentTermsToState(
@@ -1813,12 +1816,21 @@ export function ProjectDetail({
   );
   const [frontName, setFrontName] = React.useState("");
   const [frontLocation, setFrontLocation] = React.useState("");
+  const [editingFrontId, setEditingFrontId] = React.useState<string | null>(
+    null,
+  );
+  const [frontRequiresEmployees, setFrontRequiresEmployees] =
+    React.useState(true);
+  const [frontRequiresMachines, setFrontRequiresMachines] =
+    React.useState(true);
   const [frontQuantities, setFrontQuantities] = React.useState<
     Record<string, string>
   >({});
   const [frontIssues, setFrontIssues] = React.useState<
     React.ComponentProps<typeof FormErrorDeclaration>["issues"]
   >([]);
+  const editingFront =
+    project.workFronts.find((front) => front.id === editingFrontId) ?? null;
   const frontExcessIssues = React.useMemo<
     React.ComponentProps<typeof FormErrorDeclaration>["issues"]
   >(
@@ -1828,7 +1840,16 @@ export function ProjectDetail({
           frontQuantities[item.serviceCode] ?? "",
         );
         const requested = canonicalDecimalToHundredths(quantity);
-        const available = canonicalDecimalToHundredths(item.unallocated);
+        const unallocated = canonicalDecimalToHundredths(item.unallocated);
+        const current = canonicalDecimalToHundredths(
+          editingFront?.services.find(
+            (service) => service.serviceCode === item.serviceCode,
+          )?.quantity ?? "0.00",
+        );
+        const available =
+          unallocated === null || current === null
+            ? null
+            : unallocated + current;
         if (requested === null || available === null || requested <= available)
           return [];
         const label =
@@ -1838,11 +1859,11 @@ export function ProjectDetail({
           {
             location: "Quantitativos",
             field: label,
-            message: `Solicitado ${canonicalDecimalToBrazilianInteger(quantity)} ${item.unitCode}; saldo disponível ${canonicalDecimalToBrazilianInteger(item.unallocated)} ${item.unitCode}.`,
+            message: `Solicitado ${canonicalDecimalToBrazilianInteger(quantity)} ${item.unitCode}; saldo disponível ${canonicalDecimalToBrazilianInteger(hundredthsToCanonicalDecimal(available))} ${item.unitCode}.`,
           },
         ];
       }),
-    [frontQuantities, project.quantityBaseline.items],
+    [editingFront, frontQuantities, project.quantityBaseline.items],
   );
   const visibleFrontIssues = [...frontExcessIssues, ...frontIssues];
   const quantityBaselineAllocationIssues = React.useMemo<
@@ -1877,16 +1898,32 @@ export function ProjectDetail({
     ...quantityBaselineAllocationIssues,
     ...quantityBaselineIssues,
   ];
-  const [selectedStartFrontIds, setSelectedStartFrontIds] = React.useState<
-    string[]
-  >(() => eligibleStartFrontIds(project));
   const projectSnapshotIdentityRef = React.useRef({
     id: project.id,
     status: project.status,
   });
-  const knownEligibleFrontIdsRef = React.useRef(
-    new Set(eligibleStartFrontIds(project)),
+  const [mobilizingFrontId, setMobilizingFrontId] = React.useState<
+    string | null
+  >(null);
+  const [frontEmploymentIds, setFrontEmploymentIds] = React.useState<string[]>(
+    [],
   );
+  const [frontMachineIds, setFrontMachineIds] = React.useState<string[]>([]);
+  const [frontMobilizationIssues, setFrontMobilizationIssues] = React.useState<
+    React.ComponentProps<typeof FormErrorDeclaration>["issues"]
+  >([]);
+  const [historyResourceType, setHistoryResourceType] = React.useState<
+    "employee" | "machine"
+  >("employee");
+  const [historyFrontId, setHistoryFrontId] = React.useState<string | null>(
+    null,
+  );
+  const [historyItems, setHistoryItems] = React.useState<
+    ProjectMobilizationHistoryItem[]
+  >([]);
+  const [historyNextCursor, setHistoryNextCursor] = React.useState<
+    string | null
+  >(null);
   const [openModal, setOpenModal] = React.useState<
     | "planningDates"
     | "quantityBaseline"
@@ -1898,6 +1935,8 @@ export function ProjectDetail({
     | "materials"
     | "payments"
     | "frontCreate"
+    | "frontMobilization"
+    | "mobilizationHistory"
     | null
   >(null);
   const readinessForm = useForm<ProjectCommand>({
@@ -1925,9 +1964,6 @@ export function ProjectDetail({
     const previousIdentity = projectSnapshotIdentityRef.current;
     const projectChanged = previousIdentity.id !== project.id;
     const statusChanged = previousIdentity.status !== project.status;
-    const eligibleIds = eligibleStartFrontIds(project);
-    const eligibleSet = new Set(eligibleIds);
-    const previouslyEligible = knownEligibleFrontIdsRef.current;
 
     readinessForm.reset(projectToCommand(project));
     setPlannedStartDate(project.baseline?.plannedStartDate ?? "");
@@ -1955,25 +1991,21 @@ export function ProjectDetail({
     setPaymentDirty(false);
     setFrontName("");
     setFrontLocation("");
+    setFrontRequiresEmployees(true);
+    setFrontRequiresMachines(true);
     setFrontQuantities({});
     setFrontIssues([]);
+    setMobilizingFrontId(null);
+    setFrontEmploymentIds([]);
+    setFrontMachineIds([]);
+    setFrontMobilizationIssues([]);
     if (projectChanged || statusChanged) {
-      setSelectedStartFrontIds(eligibleIds);
       setActiveTab(project.status === "active" ? "overview" : "planning");
-    } else {
-      setSelectedStartFrontIds((current) => {
-        const selectedEligible = current.filter((id) => eligibleSet.has(id));
-        const newlyEligible = eligibleIds.filter(
-          (id) => !previouslyEligible.has(id),
-        );
-        return [...new Set([...selectedEligible, ...newlyEligible])];
-      });
     }
     projectSnapshotIdentityRef.current = {
       id: project.id,
       status: project.status,
     };
-    knownEligibleFrontIdsRef.current = eligibleSet;
   }, [project, readinessForm]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
@@ -2018,6 +2050,38 @@ export function ProjectDetail({
   }, [watchedEmployeeAllocations]);
 
   const isEditable = project.status === "planned";
+  const canManageMobilization =
+    project.status === "planned" || project.status === "active";
+  const mobilizingFront = project.workFronts.find(
+    (front) => front.id === mobilizingFrontId,
+  );
+  const employeeOccupation = new Map(
+    project.workFronts.flatMap((front) =>
+      front.employeeAssignments.flatMap((assignment) =>
+        assignment.employment
+          ? [[assignment.employment.id, front] as const]
+          : [],
+      ),
+    ),
+  );
+  const machineOccupation = new Map(
+    project.workFronts.flatMap((front) =>
+      front.machineAssignments.flatMap((assignment) =>
+        assignment.machine ? [[assignment.machine.id, front] as const] : [],
+      ),
+    ),
+  );
+  const selectedMachineOperatorIds = new Set(
+    project.machineAllocations
+      .filter((allocation) =>
+        allocation.machine
+          ? frontMachineIds.includes(allocation.machine.id)
+          : false,
+      )
+      .flatMap((allocation) =>
+        allocation.operator ? [allocation.operator.id] : [],
+      ),
+  );
   const canManageFronts =
     project.status === "planned" || project.status === "active";
   const fuelOptions = React.useMemo(
@@ -2130,7 +2194,9 @@ export function ProjectDetail({
         <TabLabel
           label="Frentes"
           status={
-            project.workFronts.some((front) => front.eligibility.canStart)
+            project.workFronts.some(
+              (front) => front.planningEligibility.isValid,
+            )
               ? { label: "OK", tone: "ready" }
               : { label: "Pendente", tone: "pending" }
           }
@@ -2611,6 +2677,25 @@ export function ProjectDetail({
 
   const saveTeam = () => {
     const values = readinessForm.getValues();
+    if (project.status === "active") {
+      startTransition(async () => {
+        const result = await saveProjectEmployeeMobilizationAction(
+          project.id,
+          values.initialEmployeeAllocations,
+        );
+        if (result.kind === "success") {
+          toast.success("Equipe mobilizada atualizada.");
+          readinessForm.reset(values);
+          setOpenModal(null);
+          router.refresh();
+          return;
+        }
+        toast.error("Não foi possível atualizar a equipe mobilizada.", {
+          description: result.message,
+        });
+      });
+      return;
+    }
     savePatch(
       {
         employeeAllocations: values.initialEmployeeAllocations,
@@ -2628,6 +2713,25 @@ export function ProjectDetail({
 
   const saveMachines = () => {
     const values = readinessForm.getValues();
+    if (project.status === "active") {
+      startTransition(async () => {
+        const result = await saveProjectMachineMobilizationAction(
+          project.id,
+          values.initialMachineAllocations,
+        );
+        if (result.kind === "success") {
+          toast.success("Máquinas mobilizadas atualizadas.");
+          readinessForm.reset(values);
+          setOpenModal(null);
+          router.refresh();
+          return;
+        }
+        toast.error("Não foi possível atualizar as máquinas mobilizadas.", {
+          description: result.message,
+        });
+      });
+      return;
+    }
     savePatch(
       { machineAllocations: values.initialMachineAllocations },
       "Máquinas e operadores salvos.",
@@ -2668,18 +2772,8 @@ export function ProjectDetail({
       toast.warning("Salve as alterações abertas antes de iniciar a obra.");
       return;
     }
-    if (!selectedStartFrontIds.length) {
-      toast.warning(
-        "Selecione ao menos uma frente elegível para iniciar junto com a obra.",
-      );
-      setActiveTab("fronts");
-      return;
-    }
     startTransition(async () => {
-      const result = await activateProjectAction(
-        project.id,
-        selectedStartFrontIds,
-      );
+      const result = await activateProjectAction(project.id);
       if (result.kind === "success") {
         toast.success("Obra iniciada.");
         router.refresh();
@@ -2713,27 +2807,50 @@ export function ProjectDetail({
       setFrontIssues([]);
       return;
     }
-    if (!frontName.trim() || !services.length) {
+    if (
+      !frontName.trim() ||
+      !services.length ||
+      (!frontRequiresEmployees && !frontRequiresMachines)
+    ) {
       setFrontIssues([
         {
           location: "Frente",
           message:
-            "Informe o nome e ao menos um quantitativo distribuído para a frente.",
+            !frontRequiresEmployees && !frontRequiresMachines
+              ? "Selecione ao menos uma exigência de mobilização."
+              : "Informe o nome e ao menos um quantitativo distribuído para a frente.",
         },
       ]);
       return;
     }
     setFrontIssues([]);
     startTransition(async () => {
-      const result = await createProjectWorkFrontAction(project.id, {
+      const command = {
         name: frontName,
         location: frontLocation || null,
+        notes: editingFront?.notes ?? null,
+        plannedStartDate: editingFront?.plannedStartDate ?? null,
+        plannedEndDate: editingFront?.plannedEndDate ?? null,
+        requiresEmployees: frontRequiresEmployees,
+        requiresMachines: frontRequiresMachines,
         services,
-      });
+      };
+      const result = editingFront
+        ? await updateProjectWorkFrontAction(
+            project.id,
+            editingFront.id,
+            command,
+          )
+        : await createProjectWorkFrontAction(project.id, command);
       if (result.kind === "success") {
-        toast.success("Frente cadastrada.");
+        toast.success(
+          editingFront ? "Frente atualizada." : "Frente cadastrada.",
+        );
+        setEditingFrontId(null);
         setFrontName("");
         setFrontLocation("");
+        setFrontRequiresEmployees(true);
+        setFrontRequiresMachines(true);
         setFrontQuantities({});
         setFrontIssues([]);
         setOpenModal(null);
@@ -2761,17 +2878,141 @@ export function ProjectDetail({
   };
 
   const openWorkFrontModal = () => {
+    setEditingFrontId(null);
     setFrontName("");
     setFrontLocation("");
+    setFrontRequiresEmployees(true);
+    setFrontRequiresMachines(true);
     setFrontQuantities({});
+    setFrontIssues([]);
+    setOpenModal("frontCreate");
+  };
+
+  const openEditWorkFrontModal = (
+    front: ProjectDetailSnapshot["workFronts"][number],
+  ) => {
+    setEditingFrontId(front.id);
+    setFrontName(front.name);
+    setFrontLocation(front.location ?? "");
+    setFrontRequiresEmployees(front.requiresEmployees);
+    setFrontRequiresMachines(front.requiresMachines);
+    setFrontQuantities(
+      Object.fromEntries(
+        front.services.map((service) => [
+          service.serviceCode,
+          canonicalDecimalToBrazilianInteger(service.quantity),
+        ]),
+      ),
+    );
     setFrontIssues([]);
     setOpenModal("frontCreate");
   };
 
   const closeWorkFrontModal = () => {
     if (isPending) return;
+    setEditingFrontId(null);
+    setFrontRequiresEmployees(true);
+    setFrontRequiresMachines(true);
     setFrontIssues([]);
     setOpenModal(null);
+  };
+
+  const openFrontMobilizationModal = (
+    front: ProjectDetailSnapshot["workFronts"][number],
+  ) => {
+    setMobilizingFrontId(front.id);
+    setFrontEmploymentIds(
+      front.employeeAssignments
+        .filter((assignment) => assignment.source !== "machine_operator")
+        .flatMap((assignment) =>
+          assignment.employment ? [assignment.employment.id] : [],
+        ),
+    );
+    setFrontMachineIds(
+      front.machineAssignments.flatMap((assignment) =>
+        assignment.machine ? [assignment.machine.id] : [],
+      ),
+    );
+    setFrontMobilizationIssues([]);
+    setOpenModal("frontMobilization");
+  };
+
+  const closeFrontMobilizationModal = () => {
+    if (isPending) return;
+    setMobilizingFrontId(null);
+    setFrontEmploymentIds([]);
+    setFrontMachineIds([]);
+    setFrontMobilizationIssues([]);
+    setOpenModal(null);
+  };
+
+  const saveFrontMobilization = () => {
+    if (!mobilizingFrontId) return;
+    setFrontMobilizationIssues([]);
+    startTransition(async () => {
+      const result = await saveProjectWorkFrontMobilizationAction(
+        project.id,
+        mobilizingFrontId,
+        {
+          employmentIds: frontEmploymentIds,
+          machineIds: frontMachineIds,
+        },
+      );
+      if (result.kind === "success") {
+        toast.success("Mobilização da frente salva.");
+        setMobilizingFrontId(null);
+        setFrontEmploymentIds([]);
+        setFrontMachineIds([]);
+        setFrontMobilizationIssues([]);
+        setOpenModal(null);
+        router.refresh();
+        return;
+      }
+      setFrontMobilizationIssues(
+        result.kind === "recoverable-conflict" && result.blockers?.length
+          ? result.blockers.map((blocker) => ({
+              location: "Mobilização",
+              field: blocker.section,
+              message: blocker.message,
+            }))
+          : [{ location: "Mobilização", message: result.message }],
+      );
+    });
+  };
+
+  const loadMobilizationHistory = (
+    resourceType: "employee" | "machine",
+    frontId: string | null,
+    cursor?: string,
+  ) => {
+    startTransition(async () => {
+      try {
+        const page = await getProjectMobilizationHistoryAction({
+          projectId: project.id,
+          resourceType,
+          frontId: frontId ?? undefined,
+          cursor,
+        });
+        setHistoryItems((current) =>
+          cursor ? [...current, ...page.data] : page.data,
+        );
+        setHistoryNextCursor(page.pageInfo.nextCursor);
+      } catch {
+        toast.error("Não foi possível carregar o histórico de mobilização.");
+      }
+    });
+  };
+
+  const openMobilizationHistory = (
+    resourceType: "employee" | "machine",
+    frontId: string | null = null,
+  ) => {
+    setHistoryResourceType(resourceType);
+    setHistoryFrontId(frontId);
+    setHistoryItems([]);
+    setHistoryNextCursor(null);
+    setOpenModal("mobilizationHistory");
+    loadMobilizationHistory(resourceType, frontId);
   };
 
   const setFuelDraftWithDirty =
@@ -3221,9 +3462,11 @@ export function ProjectDetail({
               <Section
                 icon={HardHat}
                 title="Frentes de serviço"
-                description="Cadastre a área de atuação e distribua somente a parcela que será mobilizada agora. O saldo continua disponível para novas frentes."
+                description="Cadastre a área de atuação e distribua a parcela planejada para cada frente. O saldo continua disponível para novas frentes."
                 status={
-                  project.workFronts.some((front) => front.eligibility.canStart)
+                  project.workFronts.some(
+                    (front) => front.planningEligibility.isValid,
+                  )
                     ? { label: "Frente elegível", tone: "ready" }
                     : { label: "Pendente", tone: "pending" }
                 }
@@ -3245,7 +3488,7 @@ export function ProjectDetail({
               >
                 <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
                   {project.quantityBaseline.items.length
-                    ? "Distribua somente os serviços mobilizados nesta etapa. O saldo permanece disponível para as próximas frentes."
+                    ? "Distribua somente os serviços planejados para esta área. O saldo permanece disponível para as próximas frentes."
                     : "Salve os quantitativos de referência antes de distribuir serviços em uma frente."}
                 </p>
               </Section>
@@ -3263,30 +3506,41 @@ export function ProjectDetail({
                             {front.location ?? "Localização não informada"}
                           </p>
                         </div>
-                        {isEditable && front.eligibility.canStart && (
-                          <label className="flex items-center gap-2 text-sm font-semibold">
-                            <input
-                              type="checkbox"
-                              className="size-4 accent-primary"
-                              checked={selectedStartFrontIds.includes(front.id)}
-                              onChange={(event) =>
-                                setSelectedStartFrontIds((current) =>
-                                  event.target.checked
-                                    ? [...current, front.id]
-                                    : current.filter((id) => id !== front.id),
-                                )
-                              }
-                            />
-                            Iniciar com a obra
-                          </label>
-                        )}
+                        <div className="flex flex-wrap gap-2">
+                          {front.requiresEmployees && (
+                            <span className="rounded-sm bg-secondary px-2 py-1 text-xs font-bold">
+                              Exige equipe
+                            </span>
+                          )}
+                          {front.requiresMachines && (
+                            <span className="rounded-sm bg-secondary px-2 py-1 text-xs font-bold">
+                              Exige máquinas
+                            </span>
+                          )}
+                          {front.status === "planned" && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={isPending}
+                              onClick={() => openEditWorkFrontModal(front)}
+                            >
+                              <Pencil className="size-4" />
+                              Editar frente
+                            </Button>
+                          )}
+                        </div>
                       </div>
                       <p className="mt-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">
                         {front.status === "active"
                           ? "Em execução"
-                          : front.eligibility.canStart
-                            ? "Elegível para início"
-                            : front.eligibility.blockers.join(" ")}
+                          : project.status === "planned"
+                            ? front.planningEligibility.isValid
+                              ? "Planejada e válida"
+                              : front.planningEligibility.blockers.join(" ")
+                            : front.eligibility.canStart
+                              ? "Pronta para iniciar"
+                              : front.eligibility.blockers.join(" ")}
                       </p>
                       <div className="mt-3 flex flex-wrap gap-2">
                         {front.services.map((service) => (
@@ -3305,35 +3559,77 @@ export function ProjectDetail({
                           </span>
                         ))}
                       </div>
-                      {project.status === "active" &&
-                        front.eligibility.canStart && (
+                      {project.status === "active" && (
+                        <div className="mt-3 grid gap-2 rounded-md border border-border bg-secondary/20 p-3 text-sm">
+                          <p className="font-bold">Mobilização atual</p>
+                          <p className="text-muted-foreground">
+                            {front.employeeAssignments.length} pessoa(s) ·{" "}
+                            {front.machineAssignments.length} máquina(s)
+                          </p>
+                          {front.status === "active" &&
+                            !front.mobilizationRecorded && (
+                              <p className="font-semibold text-amber-800">
+                                Mobilização histórica ainda não registrada.
+                              </p>
+                            )}
+                        </div>
+                      )}
+                      {project.status === "active" && (
+                        <div className="mt-3 flex flex-wrap gap-2">
                           <Button
                             type="button"
                             size="sm"
-                            className="mt-3"
+                            variant="outline"
+                            disabled={isPending}
+                            onClick={() => openFrontMobilizationModal(front)}
+                          >
+                            <UsersRound className="size-4" />
+                            {front.mobilizationRecorded
+                              ? "Editar mobilização"
+                              : "Preparar mobilização"}
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
                             disabled={isPending}
                             onClick={() =>
-                              startTransition(async () => {
-                                const result =
-                                  await startProjectWorkFrontAction(
-                                    project.id,
-                                    front.id,
-                                  );
-                                if (result.kind === "success") {
-                                  toast.success("Frente iniciada.");
-                                  router.refresh();
-                                  return;
-                                }
-                                toast.error(
-                                  "Não foi possível iniciar esta frente.",
-                                );
-                              })
+                              openMobilizationHistory("employee", front.id)
                             }
                           >
-                            <Play className="size-4" />
-                            Iniciar frente
+                            Histórico
                           </Button>
-                        )}
+                          {front.status === "planned" && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              disabled={
+                                isPending || !front.eligibility.canStart
+                              }
+                              onClick={() =>
+                                startTransition(async () => {
+                                  const result =
+                                    await startProjectWorkFrontAction(
+                                      project.id,
+                                      front.id,
+                                    );
+                                  if (result.kind === "success") {
+                                    toast.success("Frente iniciada.");
+                                    router.refresh();
+                                    return;
+                                  }
+                                  toast.error(
+                                    "Não foi possível iniciar esta frente.",
+                                  );
+                                })
+                              }
+                            >
+                              <Play className="size-4" />
+                              Iniciar frente
+                            </Button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ))
                 ) : (
@@ -3489,17 +3785,27 @@ export function ProjectDetail({
               description="Funcionários mobilizados com função, jornada e remuneração."
               status={teamStatus}
               action={
-                isEditable && (
+                <div className="flex flex-wrap gap-2">
                   <Button
                     type="button"
                     variant="outline"
                     className="min-h-10"
-                    onClick={() => setOpenModal("team")}
+                    onClick={() => openMobilizationHistory("employee")}
                   >
-                    <Pencil className="size-4" />
-                    Editar
+                    Histórico
                   </Button>
-                )
+                  {canManageMobilization && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="min-h-10"
+                      onClick={() => setOpenModal("team")}
+                    >
+                      <Pencil className="size-4" />
+                      Editar
+                    </Button>
+                  )}
+                </div>
               }
             >
               {project.employeeAllocations.length ? (
@@ -3537,17 +3843,27 @@ export function ProjectDetail({
               description="Cada máquina precisa de operador presente na equipe."
               status={machinesStatus}
               action={
-                isEditable && (
+                <div className="flex flex-wrap gap-2">
                   <Button
                     type="button"
                     variant="outline"
                     className="min-h-10"
-                    onClick={() => setOpenModal("machines")}
+                    onClick={() => openMobilizationHistory("machine")}
                   >
-                    <Pencil className="size-4" />
-                    Editar
+                    Histórico
                   </Button>
-                )
+                  {canManageMobilization && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="min-h-10"
+                      onClick={() => setOpenModal("machines")}
+                    >
+                      <Pencil className="size-4" />
+                      Editar
+                    </Button>
+                  )}
+                </div>
               }
             >
               <div className="grid gap-2 text-sm">
@@ -3907,14 +4223,266 @@ export function ProjectDetail({
       </OperationsModal>
 
       <OperationsModal
+        icon={UsersRound}
+        open={openModal === "frontMobilization"}
+        onOpenChange={(open) => {
+          if (!open) closeFrontMobilizationModal();
+        }}
+        size="xl"
+        title={`Mobilização${mobilizingFront ? ` — ${mobilizingFront.name}` : ""}`}
+        description="Destine recursos já mobilizados na obra. Recursos ocupados precisam ser liberados na frente atual primeiro."
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isPending}
+              onClick={closeFrontMobilizationModal}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              disabled={isPending}
+              onClick={saveFrontMobilization}
+            >
+              <Save className="size-4" />
+              Salvar mobilização
+            </Button>
+          </>
+        }
+      >
+        <div className="grid gap-5">
+          <FormErrorDeclaration
+            issues={frontMobilizationIssues}
+            title="Não foi possível salvar a mobilização."
+            description="Revise os recursos indicados e tente novamente."
+          />
+          {mobilizingFront && (
+            <div className="flex flex-wrap gap-2 text-xs font-bold">
+              {mobilizingFront.requiresEmployees && (
+                <span className="rounded-sm bg-secondary px-2 py-1">
+                  Exige equipe
+                </span>
+              )}
+              {mobilizingFront.requiresMachines && (
+                <span className="rounded-sm bg-secondary px-2 py-1">
+                  Exige máquinas
+                </span>
+              )}
+            </div>
+          )}
+          <FormSection
+            title="Equipe da frente"
+            description="Operadores das máquinas selecionadas entram automaticamente e também contam como equipe."
+          >
+            <div className="grid gap-2">
+              {project.employeeAllocations.map((allocation) => {
+                const employment = allocation.employment;
+                if (!employment) return null;
+                const occupied = employeeOccupation.get(employment.id);
+                const occupiedElsewhere =
+                  occupied && occupied.id !== mobilizingFrontId;
+                const includedByMachine = selectedMachineOperatorIds.has(
+                  employment.id,
+                );
+                const checked =
+                  frontEmploymentIds.includes(employment.id) ||
+                  includedByMachine;
+                return (
+                  <label
+                    key={allocation.id}
+                    className={cn(
+                      "flex min-h-11 items-start gap-3 rounded-md border border-border px-3 py-2 text-sm",
+                      occupiedElsewhere && "opacity-60",
+                    )}
+                  >
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 size-4 accent-primary"
+                      checked={checked}
+                      disabled={
+                        isPending ||
+                        Boolean(occupiedElsewhere) ||
+                        includedByMachine
+                      }
+                      onChange={(event) =>
+                        setFrontEmploymentIds((current) =>
+                          event.target.checked
+                            ? [...current, employment.id]
+                            : current.filter((id) => id !== employment.id),
+                        )
+                      }
+                    />
+                    <span>
+                      <strong className="block">{employment.name}</strong>
+                      <span className="text-muted-foreground">
+                        {includedByMachine
+                          ? "Incluído como operador"
+                          : occupiedElsewhere
+                            ? `Ocupado em ${occupied.name}`
+                            : allocation.jobRole}
+                      </span>
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          </FormSection>
+          <FormSection
+            title="Máquinas da frente"
+            description="A máquina leva consigo o operador definido na mobilização geral da obra."
+          >
+            <div className="grid gap-2">
+              {project.machineAllocations.map((allocation) => {
+                const machine = allocation.machine;
+                if (!machine) return null;
+                const occupied = machineOccupation.get(machine.id);
+                const occupiedElsewhere =
+                  occupied && occupied.id !== mobilizingFrontId;
+                return (
+                  <label
+                    key={allocation.id}
+                    className={cn(
+                      "flex min-h-11 items-start gap-3 rounded-md border border-border px-3 py-2 text-sm",
+                      occupiedElsewhere && "opacity-60",
+                    )}
+                  >
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 size-4 accent-primary"
+                      checked={frontMachineIds.includes(machine.id)}
+                      disabled={isPending || Boolean(occupiedElsewhere)}
+                      onChange={(event) =>
+                        setFrontMachineIds((current) =>
+                          event.target.checked
+                            ? [...current, machine.id]
+                            : current.filter((id) => id !== machine.id),
+                        )
+                      }
+                    />
+                    <span>
+                      <strong className="block">{machine.name}</strong>
+                      <span className="text-muted-foreground">
+                        {occupiedElsewhere
+                          ? `Ocupada em ${occupied.name}`
+                          : `Operador: ${allocation.operator?.name ?? "não informado"}`}
+                      </span>
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          </FormSection>
+        </div>
+      </OperationsModal>
+
+      <OperationsModal
+        icon={CalendarDays}
+        open={openModal === "mobilizationHistory"}
+        onOpenChange={(open) => {
+          if (!open && !isPending) setOpenModal(null);
+        }}
+        size="xl"
+        title="Histórico de mobilização"
+        description={
+          historyFrontId
+            ? "Períodos registrados para a frente selecionada."
+            : "Períodos de mobilização geral da obra."
+        }
+        footer={
+          <Button
+            type="button"
+            variant="outline"
+            disabled={isPending}
+            onClick={() => setOpenModal(null)}
+          >
+            Fechar
+          </Button>
+        }
+      >
+        <div className="grid gap-4">
+          <div className="flex gap-2">
+            {(["employee", "machine"] as const).map((resourceType) => (
+              <Button
+                key={resourceType}
+                type="button"
+                size="sm"
+                variant={
+                  historyResourceType === resourceType ? "default" : "outline"
+                }
+                disabled={isPending}
+                onClick={() => {
+                  setHistoryResourceType(resourceType);
+                  setHistoryItems([]);
+                  setHistoryNextCursor(null);
+                  loadMobilizationHistory(resourceType, historyFrontId);
+                }}
+              >
+                {resourceType === "employee" ? "Equipe" : "Máquinas"}
+              </Button>
+            ))}
+          </div>
+          <div className="grid gap-2">
+            {historyItems.map((item) => (
+              <div
+                key={item.id}
+                className="rounded-md border border-border bg-background px-3 py-3 text-sm"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <strong>{item.resource.name}</strong>
+                  <span className="font-semibold text-muted-foreground">
+                    {item.effectiveTo ? "Encerrada" : "Atual"}
+                  </span>
+                </div>
+                <p className="mt-1 text-muted-foreground">
+                  {formatDateTime(item.effectiveFrom)} —{" "}
+                  {item.effectiveTo
+                    ? formatDateTime(item.effectiveTo)
+                    : "em andamento"}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Registrado por {item.createdBy?.email ?? "sistema"}
+                  {item.endedReason ? ` · ${item.endedReason}` : ""}
+                </p>
+              </div>
+            ))}
+            {!historyItems.length && !isPending && (
+              <EmptyBlock>Nenhum período registrado.</EmptyBlock>
+            )}
+          </div>
+          {historyNextCursor && (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isPending}
+              onClick={() =>
+                loadMobilizationHistory(
+                  historyResourceType,
+                  historyFrontId,
+                  historyNextCursor,
+                )
+              }
+            >
+              Carregar mais
+            </Button>
+          )}
+        </div>
+      </OperationsModal>
+
+      <OperationsModal
         icon={HardHat}
         open={openModal === "frontCreate"}
         onOpenChange={(open) => {
           if (!open) closeWorkFrontModal();
         }}
         size="lg"
-        title="Cadastrar frente de serviço"
-        description="Defina a área de atuação e distribua os quantitativos que serão mobilizados agora."
+        title={
+          editingFront
+            ? "Editar frente de serviço"
+            : "Cadastrar frente de serviço"
+        }
+        description="Defina a área de atuação, os requisitos de início e os quantitativos planejados para esta frente."
         footer={
           <>
             <p className="text-xs font-medium leading-5 text-muted-foreground">
@@ -3931,11 +4499,19 @@ export function ProjectDetail({
               </Button>
               <Button
                 type="button"
-                disabled={isPending || frontExcessIssues.length > 0}
+                disabled={
+                  isPending ||
+                  frontExcessIssues.length > 0 ||
+                  (!frontRequiresEmployees && !frontRequiresMachines)
+                }
                 onClick={saveWorkFront}
               >
                 <Save className="size-4" />
-                {isPending ? "Cadastrando..." : "Cadastrar frente"}
+                {isPending
+                  ? "Salvando..."
+                  : editingFront
+                    ? "Salvar frente"
+                    : "Cadastrar frente"}
               </Button>
             </div>
           </>
@@ -3947,11 +4523,13 @@ export function ProjectDetail({
             title={
               frontExcessIssues.length
                 ? "Quantitativo acima do saldo disponível."
-                : "Não foi possível cadastrar a frente."
+                : editingFront
+                  ? "Não foi possível atualizar a frente."
+                  : "Não foi possível cadastrar a frente."
             }
             description={
               frontExcessIssues.length
-                ? "Reduza os valores indicados para cadastrar a frente."
+                ? "Reduza os valores indicados antes de salvar a frente."
                 : "Corrija os pontos indicados e tente novamente."
             }
           />
@@ -3988,6 +4566,31 @@ export function ProjectDetail({
             </label>
           </div>
 
+          <FormSection
+            title="Exigências para iniciar"
+            description="Defina quais recursos precisam estar mobilizados antes do início desta frente."
+          >
+            <div className="grid gap-2 sm:grid-cols-2">
+              <SelectableRow
+                checked={frontRequiresEmployees}
+                onChange={setFrontRequiresEmployees}
+              >
+                Exige equipe mobilizada
+              </SelectableRow>
+              <SelectableRow
+                checked={frontRequiresMachines}
+                onChange={setFrontRequiresMachines}
+              >
+                Exige máquinas mobilizadas
+              </SelectableRow>
+            </div>
+            {!frontRequiresEmployees && !frontRequiresMachines && (
+              <p className="mt-2 text-sm font-semibold text-destructive">
+                Selecione ao menos uma exigência.
+              </p>
+            )}
+          </FormSection>
+
           <div className="grid gap-2">
             <div>
               <h3 className="text-sm font-bold">Quantitativos desta frente</h3>
@@ -4008,7 +4611,18 @@ export function ProjectDetail({
                   </strong>
                   <span className="mt-1 block text-muted-foreground">
                     Saldo disponível:{" "}
-                    {canonicalDecimalToBrazilianInteger(item.unallocated)}{" "}
+                    {canonicalDecimalToBrazilianInteger(
+                      hundredthsToCanonicalDecimal(
+                        (canonicalDecimalToHundredths(item.unallocated) ??
+                          BigInt(0)) +
+                          (canonicalDecimalToHundredths(
+                            editingFront?.services.find(
+                              (service) =>
+                                service.serviceCode === item.serviceCode,
+                            )?.quantity ?? "0.00",
+                          ) ?? BigInt(0)),
+                      ),
+                    )}{" "}
                     {item.unitCode}
                   </span>
                 </span>

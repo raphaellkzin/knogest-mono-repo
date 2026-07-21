@@ -18,7 +18,7 @@ KnoGest is a multi-tenant SaaS for managing earthmoving operations. It gives eac
 
 The initial product should support login with company/workspace selection, a company admin panel for managing employees, projects, suppliers, machines, and equipment, and a project dashboard that summarizes the operational state of an obra.
 
-Success means users can understand the state of a project quickly, keep core operational records organized, and make decisions without fighting generic ERP complexity. Before a project starts, its approved quantities must be explicit and at least one eligible work front must be selected for mobilization.
+Success means users can understand the state of a project quickly, keep core operational records organized, and make decisions without fighting generic ERP complexity. Before a project starts, its approved quantities must be explicit and at least one valid work front must exist. Activating the project never starts a work front automatically.
 
 ## Brand Personality
 
@@ -42,6 +42,7 @@ It must not rely on fragile, low-contrast UI, tiny labels, decorative gradients,
 4. Use familiar product patterns. Workspace selection, admin navigation, forms, filters, tables, tabs, and project dashboards should behave predictably.
 5. Show project truth quickly. The project dashboard should surface progress, production, equipment, labor, suppliers, and alerts in a way that supports decisions, not decoration.
 6. Preserve the planning baseline. Project quantities are approved reference values; service fronts allocate portions of them, never silently replace them, cannot consume more than the available balance, and prevent later revisions from dropping below allocated work.
+7. Separate project activation from field execution. Resources join the project pool first, are then assigned exclusively to a work front, and only a separately confirmed action starts that front. Every assignment change preserves an auditable effective-period history.
 
 ## Accessibility & Inclusion
 

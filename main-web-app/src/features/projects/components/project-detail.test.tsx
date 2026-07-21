@@ -15,8 +15,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("../projects.actions", () => ({
   activateProjectAction: vi.fn(),
   createProjectWorkFrontAction: vi.fn(),
+  getProjectMobilizationHistoryAction: vi.fn(),
+  saveProjectEmployeeMobilizationAction: vi.fn(),
+  saveProjectMachineMobilizationAction: vi.fn(),
   saveProjectQuantityBaselineAction: vi.fn(),
   saveProjectReadinessAction: vi.fn(),
+  saveProjectWorkFrontMobilizationAction: vi.fn(),
+  startProjectWorkFrontAction: vi.fn(),
+  updateProjectWorkFrontAction: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -25,8 +31,11 @@ vi.mock("next/navigation", () => ({
 
 import {
   createProjectWorkFrontAction,
+  getProjectMobilizationHistoryAction,
   saveProjectQuantityBaselineAction,
   saveProjectReadinessAction,
+  saveProjectWorkFrontMobilizationAction,
+  updateProjectWorkFrontAction,
 } from "../projects.actions";
 import type {
   ProjectDetailSnapshot,
@@ -567,6 +576,11 @@ describe("Project work fronts", () => {
       expect(createFront).toHaveBeenCalledWith(projectSnapshot.id, {
         name: "Frente norte",
         location: null,
+        notes: null,
+        plannedStartDate: null,
+        plannedEndDate: null,
+        requiresEmployees: true,
+        requiresMachines: true,
         services: [{ serviceCode: "cut", unitCode: "M3", quantity: "250.00" }],
       }),
     );
@@ -670,12 +684,17 @@ describe("Project work fronts", () => {
       expect(createFront).toHaveBeenCalledWith(projectSnapshot.id, {
         name: "Frente saldo total",
         location: null,
+        notes: null,
+        plannedStartDate: null,
+        plannedEndDate: null,
+        requiresEmployees: true,
+        requiresMachines: true,
         services: [{ serviceCode: "cut", unitCode: "M3", quantity: "1234.00" }],
       }),
     );
   });
 
-  it("keeps the fronts tab and selects eligible fronts by default", async () => {
+  it("keeps the fronts tab without offering to start a front with the project", async () => {
     const user = userEvent.setup();
     const firstFront: ProjectDetailSnapshot["workFronts"][number] = {
       id: "00000000-0000-4000-8000-000000000911",
@@ -684,21 +703,25 @@ describe("Project work fronts", () => {
       notes: null,
       plannedStartDate: null,
       plannedEndDate: null,
+      requiresEmployees: true,
+      requiresMachines: true,
       status: "planned",
       actualStartedAt: null,
       services: [{ serviceCode: "cut", unitCode: "M3", quantity: "250.00" }],
-      eligibility: { canStart: true, blockers: [] },
+      employeeAssignments: [],
+      machineAssignments: [],
+      mobilizationRecorded: false,
+      planningEligibility: { isValid: true, blockers: [] },
+      eligibility: {
+        canStart: false,
+        blockers: ["Inicie a obra antes de preparar esta frente."],
+      },
     };
     const initialProject = { ...projectSnapshot, workFronts: [firstFront] };
     const { rerender } = renderProjectDetail(initialProject);
 
     await user.click(screen.getByRole("tab", { name: /Frentes/u }));
-    const firstSelection = screen.getByLabelText(
-      "Iniciar com a obra",
-    ) as HTMLInputElement;
-    expect(firstSelection.checked).toBe(true);
-    await user.click(firstSelection);
-    expect(firstSelection.checked).toBe(false);
+    expect(screen.queryByLabelText("Iniciar com a obra")).toBeNull();
 
     const secondFront = {
       ...firstFront,
@@ -712,18 +735,239 @@ describe("Project work fronts", () => {
       }),
     );
 
-    await waitFor(() => {
-      const selections = screen.getAllByLabelText(
-        "Iniciar com a obra",
-      ) as HTMLInputElement[];
-      expect(selections[0].checked).toBe(false);
-      expect(selections[1].checked).toBe(true);
-    });
+    await waitFor(() => expect(screen.getByText("Frente sul")).toBeTruthy());
     expect(
       screen
         .getByRole("tab", { name: /Frentes/u })
         .getAttribute("aria-selected"),
     ).toBe("true");
+  });
+
+  it("edits requirements and quantities using the front's own balance", async () => {
+    const updateFront = vi.mocked(updateProjectWorkFrontAction);
+    const front: ProjectDetailSnapshot["workFronts"][number] = {
+      id: "00000000-0000-4000-8000-000000000913",
+      name: "Frente norte",
+      location: "Trecho A",
+      notes: null,
+      plannedStartDate: null,
+      plannedEndDate: null,
+      requiresEmployees: true,
+      requiresMachines: true,
+      status: "planned",
+      actualStartedAt: null,
+      services: [{ serviceCode: "cut", unitCode: "M3", quantity: "250.00" }],
+      employeeAssignments: [],
+      machineAssignments: [],
+      mobilizationRecorded: false,
+      planningEligibility: { isValid: true, blockers: [] },
+      eligibility: {
+        canStart: false,
+        blockers: ["Inicie a obra antes de preparar esta frente."],
+      },
+    };
+    const projectWithFront: ProjectDetailSnapshot = {
+      ...projectSnapshot,
+      quantityBaseline: {
+        ...projectSnapshot.quantityBaseline,
+        items: [
+          {
+            serviceCode: "cut",
+            unitCode: "M3",
+            total: "1234.00",
+            allocated: "250.00",
+            unallocated: "984.00",
+          },
+        ],
+      },
+      workFronts: [front],
+    };
+    updateFront.mockResolvedValue({
+      kind: "success",
+      project: projectWithFront,
+    });
+    const user = userEvent.setup();
+
+    renderProjectDetail(projectWithFront);
+    await user.click(screen.getByRole("tab", { name: /Frentes/u }));
+    await user.click(screen.getByRole("button", { name: "Editar frente" }));
+    const modal = screen.getByRole("dialog");
+    expect(within(modal).getByText(/Saldo disponível: 1.234 M3/u)).toBeTruthy();
+    await user.click(
+      within(modal).getByRole("checkbox", {
+        name: "Exige máquinas mobilizadas",
+      }),
+    );
+    const quantity = within(modal).getByLabelText("Quantidade para Corte");
+    await user.clear(quantity);
+    await user.type(quantity, "1200");
+    await user.click(
+      within(modal).getByRole("button", { name: "Salvar frente" }),
+    );
+
+    await waitFor(() =>
+      expect(updateFront).toHaveBeenCalledWith(projectSnapshot.id, front.id, {
+        name: "Frente norte",
+        location: "Trecho A",
+        notes: null,
+        plannedStartDate: null,
+        plannedEndDate: null,
+        requiresEmployees: true,
+        requiresMachines: false,
+        services: [{ serviceCode: "cut", unitCode: "M3", quantity: "1200.00" }],
+      }),
+    );
+  });
+});
+
+describe("Project active work-front mobilization", () => {
+  const employee = {
+    id: "00000000-0000-4000-8000-000000000921",
+    name: "Operador João",
+    jobRole: "Operador",
+    isActive: true,
+  };
+  const machine = {
+    id: "00000000-0000-4000-8000-000000000922",
+    name: "Escavadeira 01",
+    meterType: "hour_meter",
+    identifier: null,
+    isActive: true,
+  };
+  const frontId = "00000000-0000-4000-8000-000000000923";
+  const activeProject: ProjectDetailSnapshot = {
+    ...projectSnapshot,
+    status: "active",
+    actualStartedAt: "2026-07-20T12:00:00.000Z",
+    employeeAllocations: [
+      {
+        id: "00000000-0000-4000-8000-000000000924",
+        employment: employee,
+        jobRole: "Operador",
+        expectedDailyWorkloadMinutes: 480,
+        compensationMode: "monthly",
+        compensationValue: "5000.00",
+        overtimeRate: "30.00",
+        effectiveFrom: "2026-07-20T12:00:00.000Z",
+      },
+    ],
+    machineAllocations: [
+      {
+        id: "00000000-0000-4000-8000-000000000925",
+        machine,
+        operator: employee,
+        startMeterReading: {
+          id: "00000000-0000-4000-8000-000000000926",
+          value: "10.00",
+        },
+        effectiveFrom: "2026-07-20T12:00:00.000Z",
+      },
+    ],
+    workFronts: [
+      {
+        id: frontId,
+        name: "Frente operacional",
+        location: "Trecho A",
+        notes: null,
+        plannedStartDate: null,
+        plannedEndDate: null,
+        requiresEmployees: true,
+        requiresMachines: true,
+        status: "planned",
+        actualStartedAt: null,
+        services: [{ serviceCode: "cut", unitCode: "M3", quantity: "100.00" }],
+        employeeAssignments: [],
+        machineAssignments: [],
+        mobilizationRecorded: false,
+        planningEligibility: { isValid: true, blockers: [] },
+        eligibility: {
+          canStart: false,
+          blockers: [
+            "Mobilize ao menos uma pessoa nesta frente.",
+            "Mobilize ao menos uma máquina nesta frente.",
+          ],
+        },
+      },
+    ],
+  };
+
+  it("prepares a front separately and includes the machine operator", async () => {
+    const saveMobilization = vi.mocked(saveProjectWorkFrontMobilizationAction);
+    saveMobilization.mockResolvedValue({
+      kind: "success",
+      project: activeProject,
+    });
+    const user = userEvent.setup();
+
+    renderProjectDetail(activeProject);
+    await user.click(screen.getByRole("tab", { name: /Produção/u }));
+    expect(screen.queryByText("Iniciar com a obra")).toBeNull();
+    await user.click(
+      screen.getByRole("button", { name: "Preparar mobilização" }),
+    );
+    const modal = screen.getByRole("dialog");
+    const machineCheckbox = within(modal).getByRole("checkbox", {
+      name: /Escavadeira 01/u,
+    });
+    await user.click(machineCheckbox);
+    const operatorCheckbox = within(modal)
+      .getAllByRole("checkbox", { name: /Operador João/u })
+      .find((checkbox) => (checkbox as HTMLInputElement).disabled) as
+      | HTMLInputElement
+      | undefined;
+    expect(operatorCheckbox).toBeDefined();
+    if (!operatorCheckbox) {
+      throw new Error("Operator checkbox was not auto-selected");
+    }
+    expect(operatorCheckbox.checked).toBe(true);
+    expect(operatorCheckbox.disabled).toBe(true);
+    await user.click(
+      within(modal).getByRole("button", { name: "Salvar mobilização" }),
+    );
+
+    await waitFor(() =>
+      expect(saveMobilization).toHaveBeenCalledWith(activeProject.id, frontId, {
+        employmentIds: [],
+        machineIds: [machine.id],
+      }),
+    );
+  });
+
+  it("loads the auditable mobilization history", async () => {
+    const getHistory = vi.mocked(getProjectMobilizationHistoryAction);
+    getHistory.mockResolvedValue({
+      data: [
+        {
+          id: "00000000-0000-4000-8000-000000000927",
+          layer: "project",
+          resourceType: "employee",
+          resource: { id: employee.id, name: employee.name },
+          source: null,
+          effectiveFrom: "2026-07-20T12:00:00.000Z",
+          effectiveTo: null,
+          createdBy: { id: employee.id, email: "admin@example.com" },
+          endedBy: null,
+          endedReason: null,
+        },
+      ],
+      pageInfo: { hasNextPage: false, nextCursor: null },
+    });
+    const user = userEvent.setup();
+
+    renderProjectDetail(activeProject);
+    await user.click(screen.getByRole("tab", { name: /Equipe/u }));
+    await user.click(screen.getByRole("button", { name: "Histórico" }));
+
+    const historyModal = await screen.findByRole("dialog", {
+      name: /Histórico de mobilização/u,
+    });
+    expect(within(historyModal).getByText("Operador João")).toBeTruthy();
+    expect(getHistory).toHaveBeenCalledWith({
+      projectId: activeProject.id,
+      resourceType: "employee",
+      frontId: undefined,
+      cursor: undefined,
+    });
   });
 });
 

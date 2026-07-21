@@ -145,6 +145,8 @@ export type ProjectDetailSnapshot = {
     notes: string | null;
     plannedStartDate: string | null;
     plannedEndDate: string | null;
+    requiresEmployees: boolean;
+    requiresMachines: boolean;
     status: "planned" | "active" | "paused" | "completed" | "cancelled";
     actualStartedAt: string | null;
     services: {
@@ -152,6 +154,26 @@ export type ProjectDetailSnapshot = {
       unitCode: "M3" | "M2" | "M3_KM";
       quantity: string;
     }[];
+    employeeAssignments: {
+      id: string;
+      source: "direct" | "machine_operator" | "both";
+      employment: ProjectEmployeeSummary | null;
+      effectiveFrom: string;
+    }[];
+    machineAssignments: {
+      id: string;
+      machine: {
+        id: string;
+        name: string;
+        meterType: string;
+        identifier: { kind: string; value: string } | null;
+        isActive: boolean;
+      } | null;
+      operator: ProjectEmployeeSummary | null;
+      effectiveFrom: string;
+    }[];
+    mobilizationRecorded: boolean;
+    planningEligibility: { isValid: boolean; blockers: string[] };
     eligibility: { canStart: boolean; blockers: string[] };
   }[];
   compensationPaymentTerms: {
@@ -173,6 +195,25 @@ export type ProjectDetailSnapshot = {
       message: string;
     }[];
   };
+};
+
+export type ProjectMobilizationHistoryItem = {
+  id: string;
+  layer: "project" | "front";
+  resourceType: "employee" | "machine";
+  resource: { id: string; name: string };
+  source: "direct" | "machine_operator" | "both" | null;
+  operatorEmploymentId?: string;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  createdBy: { id: string; email: string } | null;
+  endedBy: { id: string; email: string } | null;
+  endedReason: string | null;
+};
+
+export type ProjectMobilizationHistoryPage = {
+  data: ProjectMobilizationHistoryItem[];
+  pageInfo: { hasNextPage: boolean; nextCursor: string | null };
 };
 
 export type ProjectOption = {

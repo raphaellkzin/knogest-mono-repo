@@ -16,12 +16,15 @@ import {
 } from "../../commercial/catalog-classification";
 import {
   formatProjectAddress,
-  type ProjectActivateCommand,
   type ProjectCommand,
+  type ProjectEmployeeMobilizationCommand,
   type ProjectListQuery,
+  type ProjectMachineMobilizationCommand,
+  type ProjectMobilizationHistoryQuery,
   type ProjectQuantityBaselineRevisionCommand,
   type ProjectReadinessCommand,
   type ProjectWorkFrontCommand,
+  type ProjectWorkFrontMobilizationCommand,
 } from "../projects.dto";
 
 export type ProjectScope = {
@@ -1062,6 +1065,7 @@ async function replaceEmployeeAllocations(
   projectId: string,
   allocations: ReadinessEmployeeAllocation[],
   now: Date,
+  reason = "Atualização da mobilização da obra",
 ) {
   const employmentIds = allocations.map((item) => item.employmentId);
   const jobRoleIds = allocations
@@ -1151,7 +1155,64 @@ async function replaceEmployeeAllocations(
   }
 
   const scopeWhere = projectScopeWhere(scope, projectId);
-  await tx.prisma.projectEmployeeAllocation.deleteMany({ where: scopeWhere });
+  const desiredEmploymentIds = new Set(
+    allocations.map((allocation) => allocation.employmentId),
+  );
+  const currentAllocations = await tx.prisma.projectEmployeeAllocation.findMany(
+    {
+      where: { ...scopeWhere, effectiveTo: null },
+      select: { employmentId: true },
+    },
+  );
+  const removedEmploymentIds = currentAllocations
+    .map((allocation) => allocation.employmentId)
+    .filter((employmentId) => !desiredEmploymentIds.has(employmentId));
+  if (removedEmploymentIds.length) {
+    const [assigned, operatedMachine] = await Promise.all([
+      tx.prisma.projectWorkFrontEmployeeAssignment.findFirst({
+        where: {
+          ...scopeWhere,
+          employmentId: { in: removedEmploymentIds },
+          effectiveTo: null,
+        },
+        select: { employmentId: true, workFrontId: true },
+      }),
+      tx.prisma.projectMachineAllocation.findFirst({
+        where: {
+          ...scopeWhere,
+          operatorEmploymentId: { in: removedEmploymentIds },
+          effectiveTo: null,
+        },
+        select: { operatorEmploymentId: true, machineId: true },
+      }),
+    ]);
+    if (assigned)
+      throw conflict([
+        resource(
+          "employee",
+          assigned.employmentId,
+          "fronts",
+          "assigned-to-front",
+        ),
+      ]);
+    if (operatedMachine)
+      throw conflict([
+        resource(
+          "employee",
+          operatedMachine.operatorEmploymentId,
+          "machines",
+          "already-allocated",
+        ),
+      ]);
+  }
+  await tx.prisma.projectEmployeeAllocation.updateMany({
+    where: { ...scopeWhere, effectiveTo: null },
+    data: {
+      effectiveTo: now,
+      endedByUserId: scope.userId,
+      endedReason: reason,
+    },
+  });
   if (!allocations.length) return;
   for (const allocation of allocations) {
     const employment = employmentMap.get(allocation.employmentId)!;
@@ -1196,6 +1257,7 @@ async function replaceMachineAllocations(
   projectId: string,
   allocations: ReadinessMachineAllocation[],
   now: Date,
+  reason = "Atualização da mobilização da obra",
 ) {
   const scopeWhere = projectScopeWhere(scope, projectId);
   const teamRows = await tx.prisma.projectEmployeeAllocation.findMany({
@@ -1267,22 +1329,58 @@ async function replaceMachineAllocations(
   }
 
   const current = await tx.prisma.projectMachineAllocation.findMany({
-    where: scopeWhere,
-    select: { id: true },
+    where: { ...scopeWhere, effectiveTo: null },
+    select: {
+      id: true,
+      machineId: true,
+      startMeterReadingId: true,
+      operatorEmploymentId: true,
+    },
   });
-  if (current.length)
-    await tx.prisma.machineMeterReadingReference.deleteMany({
-      where: {
-        corporationId: scope.corporationId,
-        companyId: scope.companyId,
-        sourceType: "PROJECT_ALLOCATION",
-        sourceId: { in: current.map((item) => item.id) },
-      },
-    });
-  await tx.prisma.projectMachineAllocation.deleteMany({ where: scopeWhere });
+  const desiredByMachine = new Map(
+    allocations.map((allocation) => [allocation.machineId, allocation]),
+  );
+  const changedMachineIds = current
+    .filter((item) => {
+      const desired = desiredByMachine.get(item.machineId);
+      return (
+        !desired ||
+        desired.startMeterReadingId !== item.startMeterReadingId ||
+        desired.operatorEmploymentId !== item.operatorEmploymentId
+      );
+    })
+    .map((item) => item.machineId);
+  if (changedMachineIds.length) {
+    const assigned =
+      await tx.prisma.projectWorkFrontMachineAssignment.findFirst({
+        where: {
+          ...scopeWhere,
+          machineId: { in: changedMachineIds },
+          effectiveTo: null,
+        },
+        select: { machineId: true, workFrontId: true },
+      });
+    if (assigned)
+      throw conflict([
+        resource("machine", assigned.machineId, "fronts", "assigned-to-front"),
+      ]);
+  }
+  await tx.prisma.projectMachineAllocation.updateMany({
+    where: { ...scopeWhere, effectiveTo: null },
+    data: {
+      effectiveTo: now,
+      endedByUserId: scope.userId,
+      endedReason: reason,
+    },
+  });
   for (const allocation of allocations) {
     const row = await tx.prisma.projectMachineAllocation.create({
-      data: { ...scopeWhere, effectiveFrom: now, ...allocation },
+      data: {
+        ...scopeWhere,
+        effectiveFrom: now,
+        createdByUserId: scope.userId,
+        ...allocation,
+      },
       select: { id: true },
     });
     await tx.prisma.machineMeterReadingReference.create({
@@ -1789,6 +1887,8 @@ async function buildProjectSnapshot(
     quantityBaselineRevision,
     workFronts,
     workFrontServices,
+    workFrontEmployeeAssignments,
+    workFrontMachineAssignments,
   ] = await Promise.all([
     context.prisma.projectBaseline.findFirst({
       where: { ...scopeWhere, effectiveTo: null },
@@ -1840,6 +1940,14 @@ async function buildProjectSnapshot(
       where: scopeWhere,
       orderBy: { serviceCode: "asc" },
     }),
+    context.prisma.projectWorkFrontEmployeeAssignment.findMany({
+      where: { ...scopeWhere, effectiveTo: null },
+      orderBy: { effectiveFrom: "asc" },
+    }),
+    context.prisma.projectWorkFrontMachineAssignment.findMany({
+      where: { ...scopeWhere, effectiveTo: null },
+      orderBy: { effectiveFrom: "asc" },
+    }),
   ]);
 
   const quantityBaselineItems = quantityBaselineRevision
@@ -1875,8 +1983,13 @@ async function buildProjectSnapshot(
     ...technicalResponsibilities.map((item) => item.employmentId),
     ...employeeAllocations.map((item) => item.employmentId),
     ...machineAllocations.map((item) => item.operatorEmploymentId),
+    ...workFrontEmployeeAssignments.map((item) => item.employmentId),
+    ...workFrontMachineAssignments.map((item) => item.operatorEmploymentId),
   ].filter((id): id is string => Boolean(id));
-  const machineIds = machineAllocations.map((item) => item.machineId);
+  const machineIds = [
+    ...machineAllocations.map((item) => item.machineId),
+    ...workFrontMachineAssignments.map((item) => item.machineId),
+  ];
   const readingIds = machineAllocations.map((item) => item.startMeterReadingId);
   const fuelSupplierIds = supplierOffers.map((item) => item.supplierId);
   const supplierItemIds = supplierOffers.map((item) => item.itemId);
@@ -2207,7 +2320,7 @@ async function buildProjectSnapshot(
         unitCode: service.unitCode,
         quantity: decimalString(service.quantity, 2),
       }));
-    const blockers = services.flatMap((service) => {
+    const planningBlockers = services.flatMap((service) => {
       const baseline = baselineByService.get(service.serviceCode);
       if (!baseline) return ["Serviço não está na linha de base atual."];
       if (baseline.unitCode !== service.unitCode)
@@ -2220,7 +2333,43 @@ async function buildProjectSnapshot(
         ];
       return [];
     });
-    if (!services.length) blockers.push("Informe ao menos um serviço.");
+    if (!services.length) planningBlockers.push("Informe ao menos um serviço.");
+    if (!front.requiresEmployees && !front.requiresMachines)
+      planningBlockers.push("Defina ao menos uma exigência de mobilização.");
+    const employeeAssignments = workFrontEmployeeAssignments
+      .filter((assignment) => assignment.workFrontId === front.id)
+      .map((assignment) => ({
+        id: assignment.id,
+        source: assignment.source.toLowerCase(),
+        employment: employeeDto(assignment.employmentId),
+        effectiveFrom: assignment.effectiveFrom.toISOString(),
+      }));
+    const machineAssignments = workFrontMachineAssignments
+      .filter((assignment) => assignment.workFrontId === front.id)
+      .map((assignment) => {
+        const machine = machineMap.get(assignment.machineId);
+        return {
+          id: assignment.id,
+          machine: machine
+            ? {
+                id: machine.id,
+                name: machine.name,
+                meterType: machine.meterType.toLowerCase(),
+                identifier: machine.identifiers[0] ?? null,
+                isActive: machine.isActive,
+              }
+            : null,
+          operator: employeeDto(assignment.operatorEmploymentId),
+          effectiveFrom: assignment.effectiveFrom.toISOString(),
+        };
+      });
+    const startBlockers = [...planningBlockers];
+    if (project.status !== "ACTIVE")
+      startBlockers.push("Inicie a obra antes de preparar esta frente.");
+    if (front.requiresEmployees && employeeAssignments.length === 0)
+      startBlockers.push("Mobilize ao menos uma pessoa nesta frente.");
+    if (front.requiresMachines && machineAssignments.length === 0)
+      startBlockers.push("Mobilize ao menos uma máquina nesta frente.");
     return {
       id: front.id,
       name: front.name,
@@ -2228,12 +2377,22 @@ async function buildProjectSnapshot(
       notes: front.notes,
       plannedStartDate: civilDateString(front.plannedStartDate),
       plannedEndDate: civilDateString(front.plannedEndDate),
+      requiresEmployees: front.requiresEmployees,
+      requiresMachines: front.requiresMachines,
       status: front.status.toLowerCase(),
       actualStartedAt: front.actualStartedAt?.toISOString() ?? null,
       services,
+      employeeAssignments,
+      machineAssignments,
+      mobilizationRecorded:
+        employeeAssignments.length > 0 || machineAssignments.length > 0,
+      planningEligibility: {
+        isValid: front.status === "PLANNED" && planningBlockers.length === 0,
+        blockers: planningBlockers,
+      },
       eligibility: {
-        canStart: front.status === "PLANNED" && blockers.length === 0,
-        blockers,
+        canStart: front.status === "PLANNED" && startBlockers.length === 0,
+        blockers: startBlockers,
       },
     };
   });
@@ -2249,10 +2408,10 @@ async function buildProjectSnapshot(
       section: "metrics",
       message: "Selecione ao menos uma métrica de produção com meta total.",
     });
-  if (!workFrontDtos.some((front) => front.eligibility.canStart))
+  if (!workFrontDtos.some((front) => front.planningEligibility.isValid))
     blockers.push({
       section: "fronts",
-      message: "Cadastre uma frente elegível para iniciar a obra.",
+      message: "Cadastre uma frente planejada válida para iniciar a obra.",
     });
   if (
     fuelOfferDtos.length === 0 ||
@@ -2938,6 +3097,8 @@ export class ProjectsHandler {
           plannedEndDate: command.plannedEndDate
             ? new Date(`${command.plannedEndDate}T00:00:00.000Z`)
             : null,
+          requiresEmployees: command.requiresEmployees,
+          requiresMachines: command.requiresMachines,
         },
         select: { id: true },
       });
@@ -2993,6 +3154,8 @@ export class ProjectsHandler {
           plannedEndDate: command.plannedEndDate
             ? new Date(`${command.plannedEndDate}T00:00:00.000Z`)
             : null,
+          requiresEmployees: command.requiresEmployees,
+          requiresMachines: command.requiresMachines,
         },
       });
       await tx.prisma.projectWorkFrontService.deleteMany({
@@ -3011,12 +3174,291 @@ export class ProjectsHandler {
     });
   }
 
+  async saveEmployeeMobilization(
+    scope: ProjectScope,
+    projectId: string,
+    command: ProjectEmployeeMobilizationCommand,
+  ) {
+    return runSerializable(this.context, async (tx) => {
+      await lockProjectQuantityAllocation(tx, projectId);
+      const project = await tx.prisma.project.findFirst({
+        where: {
+          id: projectId,
+          corporationId: scope.corporationId,
+          companyId: scope.companyId,
+        },
+        select: { status: true },
+      });
+      if (!project) projectNotFound();
+      if (!["PLANNED", "ACTIVE"].includes(project.status))
+        projectLifecycleConflict(
+          "Project does not accept mobilization changes",
+        );
+      await replaceEmployeeAllocations(
+        tx,
+        scope,
+        projectId,
+        command.allocations,
+        new Date(),
+        command.reason ?? "Atualização da equipe mobilizada na obra",
+      );
+      return buildProjectSnapshot(tx, scope, projectId);
+    });
+  }
+
+  async saveMachineMobilization(
+    scope: ProjectScope,
+    projectId: string,
+    command: ProjectMachineMobilizationCommand,
+  ) {
+    return runSerializable(this.context, async (tx) => {
+      await lockProjectQuantityAllocation(tx, projectId);
+      const project = await tx.prisma.project.findFirst({
+        where: {
+          id: projectId,
+          corporationId: scope.corporationId,
+          companyId: scope.companyId,
+        },
+        select: { status: true },
+      });
+      if (!project) projectNotFound();
+      if (!["PLANNED", "ACTIVE"].includes(project.status))
+        projectLifecycleConflict(
+          "Project does not accept mobilization changes",
+        );
+      await replaceMachineAllocations(
+        tx,
+        scope,
+        projectId,
+        command.allocations,
+        new Date(),
+        command.reason ?? "Atualização das máquinas mobilizadas na obra",
+      );
+      return buildProjectSnapshot(tx, scope, projectId);
+    });
+  }
+
+  async saveWorkFrontMobilization(
+    scope: ProjectScope,
+    projectId: string,
+    frontId: string,
+    command: ProjectWorkFrontMobilizationCommand,
+  ) {
+    return runSerializable(this.context, async (tx) => {
+      await lockProjectQuantityAllocation(tx, projectId);
+      const scopeWhere = projectScopeWhere(scope, projectId);
+      const [project, front, employeePool, machinePool] = await Promise.all([
+        tx.prisma.project.findFirst({
+          where: {
+            id: projectId,
+            corporationId: scope.corporationId,
+            companyId: scope.companyId,
+          },
+          select: { status: true },
+        }),
+        tx.prisma.projectWorkFront.findFirst({
+          where: { id: frontId, ...scopeWhere },
+          select: { status: true },
+        }),
+        tx.prisma.projectEmployeeAllocation.findMany({
+          where: {
+            ...scopeWhere,
+            employmentId: { in: command.employmentIds },
+            effectiveTo: null,
+          },
+          select: { employmentId: true },
+        }),
+        tx.prisma.projectMachineAllocation.findMany({
+          where: {
+            ...scopeWhere,
+            machineId: { in: command.machineIds },
+            effectiveTo: null,
+          },
+          select: { machineId: true, operatorEmploymentId: true },
+        }),
+      ]);
+      if (!project || !front) projectNotFound();
+      if (project.status !== "ACTIVE")
+        projectLifecycleConflict(
+          "Start the Project before preparing a work front",
+        );
+      if (!["PLANNED", "ACTIVE"].includes(front.status))
+        projectLifecycleConflict("Work front does not accept mobilization");
+      if (employeePool.length !== command.employmentIds.length)
+        throw conflict([
+          resource(
+            "employee",
+            command.employmentIds.find(
+              (id) => !employeePool.some((item) => item.employmentId === id),
+            ) ?? projectId,
+            "fronts",
+          ),
+        ]);
+      if (machinePool.length !== command.machineIds.length)
+        throw conflict([
+          resource(
+            "machine",
+            command.machineIds.find(
+              (id) => !machinePool.some((item) => item.machineId === id),
+            ) ?? projectId,
+            "fronts",
+          ),
+        ]);
+
+      const directEmployees = new Set(command.employmentIds);
+      const operatorEmployees = new Set(
+        machinePool.map((item) => item.operatorEmploymentId),
+      );
+      const desiredEmployees = new Set([
+        ...directEmployees,
+        ...operatorEmployees,
+      ]);
+      const [occupiedEmployee, occupiedMachine] = await Promise.all([
+        desiredEmployees.size
+          ? tx.prisma.projectWorkFrontEmployeeAssignment.findFirst({
+              where: {
+                ...scopeWhere,
+                employmentId: { in: [...desiredEmployees] },
+                effectiveTo: null,
+                NOT: { workFrontId: frontId },
+              },
+              select: { employmentId: true, workFrontId: true },
+            })
+          : null,
+        command.machineIds.length
+          ? tx.prisma.projectWorkFrontMachineAssignment.findFirst({
+              where: {
+                ...scopeWhere,
+                machineId: { in: command.machineIds },
+                effectiveTo: null,
+                NOT: { workFrontId: frontId },
+              },
+              select: { machineId: true, workFrontId: true },
+            })
+          : null,
+      ]);
+      if (occupiedEmployee)
+        throw conflict([
+          resource(
+            "employee",
+            occupiedEmployee.employmentId,
+            "fronts",
+            "assigned-to-front",
+          ),
+        ]);
+      if (occupiedMachine)
+        throw conflict([
+          resource(
+            "machine",
+            occupiedMachine.machineId,
+            "fronts",
+            "assigned-to-front",
+          ),
+        ]);
+
+      const [currentEmployees, currentMachines] = await Promise.all([
+        tx.prisma.projectWorkFrontEmployeeAssignment.findMany({
+          where: { ...scopeWhere, workFrontId: frontId, effectiveTo: null },
+        }),
+        tx.prisma.projectWorkFrontMachineAssignment.findMany({
+          where: { ...scopeWhere, workFrontId: frontId, effectiveTo: null },
+        }),
+      ]);
+      const sourceFor = (employmentId: string) =>
+        directEmployees.has(employmentId) && operatorEmployees.has(employmentId)
+          ? ("BOTH" as const)
+          : directEmployees.has(employmentId)
+            ? ("DIRECT" as const)
+            : ("MACHINE_OPERATOR" as const);
+      const employeeRowsToClose = currentEmployees.filter(
+        (item) =>
+          !desiredEmployees.has(item.employmentId) ||
+          item.source !== sourceFor(item.employmentId),
+      );
+      const desiredMachineMap = new Map(
+        machinePool.map((item) => [item.machineId, item]),
+      );
+      const machineRowsToClose = currentMachines.filter((item) => {
+        const desired = desiredMachineMap.get(item.machineId);
+        return (
+          !desired || desired.operatorEmploymentId !== item.operatorEmploymentId
+        );
+      });
+      const now = new Date();
+      const endedReason =
+        command.reason ?? "Atualização da mobilização da frente";
+      if (employeeRowsToClose.length)
+        await tx.prisma.projectWorkFrontEmployeeAssignment.updateMany({
+          where: { id: { in: employeeRowsToClose.map((item) => item.id) } },
+          data: {
+            effectiveTo: now,
+            endedByUserId: scope.userId,
+            endedReason,
+          },
+        });
+      if (machineRowsToClose.length)
+        await tx.prisma.projectWorkFrontMachineAssignment.updateMany({
+          where: { id: { in: machineRowsToClose.map((item) => item.id) } },
+          data: {
+            effectiveTo: now,
+            endedByUserId: scope.userId,
+            endedReason,
+          },
+        });
+
+      const remainingEmployeeIds = new Set(
+        currentEmployees
+          .filter(
+            (item) => !employeeRowsToClose.some((row) => row.id === item.id),
+          )
+          .map((item) => item.employmentId),
+      );
+      const employeesToCreate = [...desiredEmployees].filter(
+        (employmentId) => !remainingEmployeeIds.has(employmentId),
+      );
+      if (employeesToCreate.length)
+        await tx.prisma.projectWorkFrontEmployeeAssignment.createMany({
+          data: employeesToCreate.map((employmentId) => ({
+            ...scopeWhere,
+            workFrontId: frontId,
+            employmentId,
+            source: sourceFor(employmentId),
+            effectiveFrom: now,
+            createdByUserId: scope.userId,
+          })),
+        });
+      const remainingMachineIds = new Set(
+        currentMachines
+          .filter(
+            (item) => !machineRowsToClose.some((row) => row.id === item.id),
+          )
+          .map((item) => item.machineId),
+      );
+      const machinesToCreate = machinePool.filter(
+        (item) => !remainingMachineIds.has(item.machineId),
+      );
+      if (machinesToCreate.length)
+        await tx.prisma.projectWorkFrontMachineAssignment.createMany({
+          data: machinesToCreate.map((item) => ({
+            ...scopeWhere,
+            workFrontId: frontId,
+            machineId: item.machineId,
+            operatorEmploymentId: item.operatorEmploymentId,
+            effectiveFrom: now,
+            createdByUserId: scope.userId,
+          })),
+        });
+      return buildProjectSnapshot(tx, scope, projectId);
+    });
+  }
+
   async startWorkFront(
     scope: ProjectScope,
     projectId: string,
     frontId: string,
   ) {
     return runSerializable(this.context, async (tx) => {
+      await lockProjectQuantityAllocation(tx, projectId);
       const snapshot = await buildProjectSnapshot(tx, scope, projectId);
       if (snapshot.status !== "active")
         projectLifecycleConflict(
@@ -3083,6 +3525,32 @@ export class ProjectsHandler {
         data: { status: "CANCELLED" },
       });
       if (updated.count !== 1) projectLifecycleConflict("Work front changed");
+      await Promise.all([
+        tx.prisma.projectWorkFrontEmployeeAssignment.updateMany({
+          where: {
+            ...projectScopeWhere(scope, projectId),
+            workFrontId: frontId,
+            effectiveTo: null,
+          },
+          data: {
+            effectiveTo: now,
+            endedByUserId: scope.userId,
+            endedReason: "Cancelamento da frente",
+          },
+        }),
+        tx.prisma.projectWorkFrontMachineAssignment.updateMany({
+          where: {
+            ...projectScopeWhere(scope, projectId),
+            workFrontId: frontId,
+            effectiveTo: null,
+          },
+          data: {
+            effectiveTo: now,
+            endedByUserId: scope.userId,
+            endedReason: "Cancelamento da frente",
+          },
+        }),
+      ]);
       await tx.prisma.projectWorkFrontLifecycleEvent.create({
         data: {
           ...projectScopeWhere(scope, projectId),
@@ -3098,12 +3566,9 @@ export class ProjectsHandler {
     });
   }
 
-  async activate(
-    scope: ProjectScope,
-    projectId: string,
-    command: ProjectActivateCommand,
-  ) {
+  async activate(scope: ProjectScope, projectId: string) {
     return runSerializable(this.context, async (tx) => {
+      await lockProjectQuantityAllocation(tx, projectId);
       const snapshot = await buildProjectSnapshot(tx, scope, projectId);
       if (snapshot.status !== "planned")
         projectLifecycleConflict("Project is not planned");
@@ -3116,30 +3581,6 @@ export class ProjectsHandler {
             fields: [],
             resources: [],
             blockers: snapshot.readiness.blockers,
-          },
-        });
-
-      const selectedFronts = snapshot.workFronts.filter((front) =>
-        command.frontIds.includes(front.id),
-      );
-      if (selectedFronts.length !== command.frontIds.length)
-        throw new AppError({
-          code: "WORK_FRONT_NOT_FOUND",
-          statusCode: 404,
-          message: "Selected work front was not found",
-        });
-      const ineligible = selectedFronts.filter(
-        (front) => !front.eligibility.canStart,
-      );
-      if (ineligible.length)
-        throw new AppError({
-          code: "WORK_FRONT_NOT_ELIGIBLE",
-          statusCode: 422,
-          message: "Selected work front is not eligible to start",
-          data: {
-            fields: [],
-            resources: [],
-            blockers: ineligible.flatMap((front) => front.eligibility.blockers),
           },
         });
 
@@ -3170,27 +3611,245 @@ export class ProjectsHandler {
           reason: null,
         },
       });
-      await tx.prisma.projectWorkFront.updateMany({
-        where: {
-          id: { in: command.frontIds },
-          ...projectScopeWhere(scope, projectId),
-          status: "PLANNED",
-        },
-        data: { status: "ACTIVE", actualStartedAt: now },
-      });
-      await tx.prisma.projectWorkFrontLifecycleEvent.createMany({
-        data: command.frontIds.map((workFrontId) => ({
-          ...projectScopeWhere(scope, projectId),
-          workFrontId,
-          fromStatus: "PLANNED" as const,
-          toStatus: "ACTIVE" as const,
-          occurredAt: now,
-          actorUserId: scope.userId,
-          reason: "Início da obra",
-        })),
-      });
       return buildProjectSnapshot(tx, scope, projectId);
     });
+  }
+
+  async mobilizationHistory(
+    scope: ProjectScope,
+    projectId: string,
+    query: ProjectMobilizationHistoryQuery,
+  ) {
+    const scopeWhere = projectScopeWhere(scope, projectId);
+    const project = await this.context.prisma.project.findFirst({
+      where: {
+        id: projectId,
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+      },
+      select: { id: true },
+    });
+    if (!project) projectNotFound();
+    if (query.frontId) {
+      const front = await this.context.prisma.projectWorkFront.findFirst({
+        where: { id: query.frontId, ...scopeWhere },
+        select: { id: true },
+      });
+      if (!front) projectNotFound();
+    }
+    const resource = `project-${query.resourceType}-mobilization-history`;
+    const queryBinding = { resourceType: query.resourceType };
+    const cursorScope = {
+      corporationId: scope.corporationId,
+      companyId: scope.companyId,
+      projectId,
+      frontId: query.frontId ?? null,
+    };
+    const boundary = parseBoundCursor({
+      cursor: query.cursor,
+      resource,
+      scope: cursorScope,
+      query: queryBinding,
+      sortBy: query.sortBy,
+      sortDirection: query.sortDirection,
+    });
+    const comparison = query.sortDirection === "asc" ? "gt" : "lt";
+    const cursorWhere = boundary
+      ? {
+          OR: [
+            {
+              effectiveFrom: { [comparison]: new Date(String(boundary.value)) },
+            },
+            {
+              effectiveFrom: new Date(String(boundary.value)),
+              id: { [comparison]: boundary.id },
+            },
+          ],
+        }
+      : undefined;
+    const page = <T extends { id: string; effectiveFrom: Date }>(items: T[]) =>
+      buildCursorPage({
+        items,
+        limit: query.limit,
+        resource,
+        scope: cursorScope,
+        query: queryBinding,
+        sortBy: query.sortBy,
+        sortDirection: query.sortDirection,
+        getLast: (item) => ({
+          value: item.effectiveFrom.toISOString(),
+          id: item.id,
+        }),
+      });
+
+    if (query.resourceType === "employee") {
+      type EmployeeHistoryRow = {
+        id: string;
+        employmentId: string;
+        source: string | null;
+        effectiveFrom: Date;
+        effectiveTo: Date | null;
+        createdBy: { id: string; email: string } | null;
+        endedBy: { id: string; email: string } | null;
+        endedReason: string | null;
+      };
+      let rows: EmployeeHistoryRow[];
+      if (query.frontId) {
+        const found =
+          await this.context.prisma.projectWorkFrontEmployeeAssignment.findMany(
+            {
+              where: {
+                ...scopeWhere,
+                workFrontId: query.frontId,
+                AND: cursorWhere,
+              },
+              include: {
+                createdBy: { select: { id: true, email: true } },
+                endedBy: { select: { id: true, email: true } },
+              },
+              orderBy: [
+                { effectiveFrom: query.sortDirection },
+                { id: query.sortDirection },
+              ],
+              take: query.limit + 1,
+            },
+          );
+        rows = found.map((row) => ({
+          ...row,
+          source: row.source.toLowerCase(),
+        }));
+      } else {
+        const found =
+          await this.context.prisma.projectEmployeeAllocation.findMany({
+            where: { ...scopeWhere, AND: cursorWhere },
+            include: {
+              createdBy: { select: { id: true, email: true } },
+              endedBy: { select: { id: true, email: true } },
+            },
+            orderBy: [
+              { effectiveFrom: query.sortDirection },
+              { id: query.sortDirection },
+            ],
+            take: query.limit + 1,
+          });
+        rows = found.map((row) => ({ ...row, source: null }));
+      }
+      const employmentIds = [...new Set(rows.map((row) => row.employmentId))];
+      const employments = employmentIds.length
+        ? await this.context.prisma.employment.findMany({
+            where: {
+              id: { in: employmentIds },
+              corporationId: scope.corporationId,
+              companyId: scope.companyId,
+            },
+            select: { id: true, person: { select: { displayName: true } } },
+          })
+        : [];
+      const names = new Map(
+        employments.map((item) => [item.id, item.person.displayName]),
+      );
+      const built = page(rows);
+      return {
+        data: built.data.map((row) => ({
+          id: row.id,
+          layer: query.frontId ? ("front" as const) : ("project" as const),
+          resourceType: "employee" as const,
+          resource: {
+            id: row.employmentId,
+            name: names.get(row.employmentId) ?? "Funcionário",
+          },
+          source: row.source,
+          effectiveFrom: row.effectiveFrom.toISOString(),
+          effectiveTo: row.effectiveTo?.toISOString() ?? null,
+          createdBy: row.createdBy
+            ? { id: row.createdBy.id, email: row.createdBy.email }
+            : null,
+          endedBy: row.endedBy
+            ? { id: row.endedBy.id, email: row.endedBy.email }
+            : null,
+          endedReason: row.endedReason,
+        })),
+        pageInfo: built.pageInfo,
+      };
+    }
+
+    type MachineHistoryRow = {
+      id: string;
+      machineId: string;
+      operatorEmploymentId: string;
+      effectiveFrom: Date;
+      effectiveTo: Date | null;
+      createdBy: { id: string; email: string } | null;
+      endedBy: { id: string; email: string } | null;
+      endedReason: string | null;
+    };
+    let rows: MachineHistoryRow[];
+    if (query.frontId) {
+      rows =
+        await this.context.prisma.projectWorkFrontMachineAssignment.findMany({
+          where: {
+            ...scopeWhere,
+            workFrontId: query.frontId,
+            AND: cursorWhere,
+          },
+          include: {
+            createdBy: { select: { id: true, email: true } },
+            endedBy: { select: { id: true, email: true } },
+          },
+          orderBy: [
+            { effectiveFrom: query.sortDirection },
+            { id: query.sortDirection },
+          ],
+          take: query.limit + 1,
+        });
+    } else {
+      rows = await this.context.prisma.projectMachineAllocation.findMany({
+        where: { ...scopeWhere, AND: cursorWhere },
+        include: {
+          createdBy: { select: { id: true, email: true } },
+          endedBy: { select: { id: true, email: true } },
+        },
+        orderBy: [
+          { effectiveFrom: query.sortDirection },
+          { id: query.sortDirection },
+        ],
+        take: query.limit + 1,
+      });
+    }
+    const machineIds = [...new Set(rows.map((row) => row.machineId))];
+    const machines = machineIds.length
+      ? await this.context.prisma.machine.findMany({
+          where: {
+            id: { in: machineIds },
+            corporationId: scope.corporationId,
+          },
+          select: { id: true, name: true },
+        })
+      : [];
+    const names = new Map(machines.map((item) => [item.id, item.name]));
+    const built = page(rows);
+    return {
+      data: built.data.map((row) => ({
+        id: row.id,
+        layer: query.frontId ? ("front" as const) : ("project" as const),
+        resourceType: "machine" as const,
+        resource: {
+          id: row.machineId,
+          name: names.get(row.machineId) ?? "Máquina",
+        },
+        operatorEmploymentId: row.operatorEmploymentId,
+        effectiveFrom: row.effectiveFrom.toISOString(),
+        effectiveTo: row.effectiveTo?.toISOString() ?? null,
+        createdBy: row.createdBy
+          ? { id: row.createdBy.id, email: row.createdBy.email }
+          : null,
+        endedBy: row.endedBy
+          ? { id: row.endedBy.id, email: row.endedBy.email }
+          : null,
+        endedReason: row.endedReason,
+      })),
+      pageInfo: built.pageInfo,
+    };
   }
 
   async list(scope: ProjectScope, query: ProjectListQuery) {

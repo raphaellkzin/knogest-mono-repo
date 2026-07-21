@@ -10,6 +10,7 @@ import type {
   EarthworksServiceCode,
   FuelSupplierOption,
   ProjectDetailSnapshot,
+  ProjectMobilizationHistoryPage,
   ProjectSuppliedItemOffersPage,
   SuppliedItemSelectorPage,
 } from "./projects.types";
@@ -40,6 +41,7 @@ const resourceSchema = z.object({
     "supplierOffer",
     "workspace",
     "jobRole",
+    "workFront",
   ]),
   id: z.string(),
   section: z.enum([
@@ -51,6 +53,7 @@ const resourceSchema = z.object({
     "fuelOffers",
     "materialOffers",
     "supplierOffers",
+    "fronts",
   ]),
   reason: z.string(),
 });
@@ -118,27 +121,43 @@ const quantityBaselineActionSchema = z.object({
     .min(1)
     .max(20),
 });
-const workFrontActionSchema = z.object({
-  name: z.string().trim().min(1).max(160),
-  location: z.string().trim().max(240).nullable().optional(),
-  notes: z.string().trim().max(1000).nullable().optional(),
-  plannedStartDate: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/u)
-    .nullable()
-    .optional(),
-  plannedEndDate: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/u)
-    .nullable()
-    .optional(),
-  services: z.array(frontServiceSchema).min(1).max(20),
+const workFrontActionSchema = z
+  .object({
+    name: z.string().trim().min(1).max(160),
+    location: z.string().trim().max(240).nullable().optional(),
+    notes: z.string().trim().max(1000).nullable().optional(),
+    plannedStartDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/u)
+      .nullable()
+      .optional(),
+    plannedEndDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/u)
+      .nullable()
+      .optional(),
+    requiresEmployees: z.boolean(),
+    requiresMachines: z.boolean(),
+    services: z.array(frontServiceSchema).min(1).max(20),
+  })
+  .refine((value) => value.requiresEmployees || value.requiresMachines, {
+    path: ["requiresEmployees"],
+    message: "Selecione ao menos uma exigência de mobilização.",
+  });
+
+const workFrontMobilizationActionSchema = z.object({
+  employmentIds: z.array(z.string().uuid()).max(200),
+  machineIds: z.array(z.string().uuid()).max(100),
+  reason: z.string().trim().max(500).nullable().optional(),
 });
 
 export type QuantityBaselineActionInput = z.infer<
   typeof quantityBaselineActionSchema
 >;
 export type WorkFrontActionInput = z.infer<typeof workFrontActionSchema>;
+export type WorkFrontMobilizationActionInput = z.infer<
+  typeof workFrontMobilizationActionSchema
+>;
 export type WorkFrontServiceInput = {
   serviceCode: EarthworksServiceCode;
   unitCode: "M3" | "M2" | "M3_KM";
@@ -552,12 +571,8 @@ export async function saveProjectReadinessAction(
 
 export async function activateProjectAction(
   projectId: string,
-  frontIds: string[],
 ): Promise<ProjectReadinessMutationResult> {
   const id = z.string().uuid().parse(projectId);
-  const command = z
-    .object({ frontIds: z.array(z.string().uuid()).min(1) })
-    .parse({ frontIds });
   try {
     const response = await client<{
       success: true;
@@ -565,11 +580,59 @@ export async function activateProjectAction(
     }>({
       url: `/api/v1/projects/${id}/activate`,
       method: "POST",
-      data: command,
-      headers: { "content-type": "application/json" },
     });
     revalidatePath(`/home/obras/${id}`);
     revalidatePath("/home/obras");
+    return { kind: "success", project: response.data.data };
+  } catch (error) {
+    return parseProjectError(error);
+  }
+}
+
+export async function saveProjectEmployeeMobilizationAction(
+  projectId: string,
+  allocations: NonNullable<ProjectReadinessActionInput["employeeAllocations"]>,
+): Promise<ProjectReadinessMutationResult> {
+  const id = z.string().uuid().parse(projectId);
+  const parsed = projectReadinessActionSchema.parse({
+    employeeAllocations: allocations,
+  }).employeeAllocations!;
+  try {
+    const response = await client<{
+      success: true;
+      data: ProjectDetailSnapshot;
+    }>({
+      url: `/api/v1/projects/${id}/mobilization/employees`,
+      method: "PUT",
+      data: { allocations: parsed },
+      headers: { "content-type": "application/json" },
+    });
+    revalidatePath(`/home/obras/${id}`);
+    return { kind: "success", project: response.data.data };
+  } catch (error) {
+    return parseProjectError(error);
+  }
+}
+
+export async function saveProjectMachineMobilizationAction(
+  projectId: string,
+  allocations: NonNullable<ProjectReadinessActionInput["machineAllocations"]>,
+): Promise<ProjectReadinessMutationResult> {
+  const id = z.string().uuid().parse(projectId);
+  const parsed = projectReadinessActionSchema.parse({
+    machineAllocations: allocations,
+  }).machineAllocations!;
+  try {
+    const response = await client<{
+      success: true;
+      data: ProjectDetailSnapshot;
+    }>({
+      url: `/api/v1/projects/${id}/mobilization/machines`,
+      method: "PUT",
+      data: { allocations: parsed },
+      headers: { "content-type": "application/json" },
+    });
+    revalidatePath(`/home/obras/${id}`);
     return { kind: "success", project: response.data.data };
   } catch (error) {
     return parseProjectError(error);
@@ -622,6 +685,31 @@ export async function createProjectWorkFrontAction(
   }
 }
 
+export async function updateProjectWorkFrontAction(
+  projectId: string,
+  frontId: string,
+  input: WorkFrontActionInput,
+): Promise<ProjectReadinessMutationResult> {
+  const id = z.string().uuid().parse(projectId);
+  const front = z.string().uuid().parse(frontId);
+  const command = workFrontActionSchema.parse(input);
+  try {
+    const response = await client<{
+      success: true;
+      data: ProjectDetailSnapshot;
+    }>({
+      url: `/api/v1/projects/${id}/fronts/${front}`,
+      method: "PATCH",
+      data: command,
+      headers: { "content-type": "application/json" },
+    });
+    revalidatePath(`/home/obras/${id}`);
+    return { kind: "success", project: response.data.data };
+  } catch (error) {
+    return parseProjectError(error);
+  }
+}
+
 export async function startProjectWorkFrontAction(
   projectId: string,
   frontId: string,
@@ -641,4 +729,59 @@ export async function startProjectWorkFrontAction(
   } catch (error) {
     return parseProjectError(error);
   }
+}
+
+export async function saveProjectWorkFrontMobilizationAction(
+  projectId: string,
+  frontId: string,
+  input: WorkFrontMobilizationActionInput,
+): Promise<ProjectReadinessMutationResult> {
+  const id = z.string().uuid().parse(projectId);
+  const front = z.string().uuid().parse(frontId);
+  const command = workFrontMobilizationActionSchema.parse(input);
+  try {
+    const response = await client<{
+      success: true;
+      data: ProjectDetailSnapshot;
+    }>({
+      url: `/api/v1/projects/${id}/fronts/${front}/mobilization`,
+      method: "PUT",
+      data: command,
+      headers: { "content-type": "application/json" },
+    });
+    revalidatePath(`/home/obras/${id}`);
+    return { kind: "success", project: response.data.data };
+  } catch (error) {
+    return parseProjectError(error);
+  }
+}
+
+export async function getProjectMobilizationHistoryAction(input: {
+  projectId: string;
+  resourceType: "employee" | "machine";
+  frontId?: string;
+  cursor?: string;
+}): Promise<ProjectMobilizationHistoryPage> {
+  const parsed = z
+    .object({
+      projectId: z.string().uuid(),
+      resourceType: z.enum(["employee", "machine"]),
+      frontId: z.string().uuid().optional(),
+      cursor: z.string().max(2048).optional(),
+    })
+    .parse(input);
+  const response = await client<{
+    success: true;
+    data: ProjectMobilizationHistoryPage;
+  }>({
+    url: `/api/v1/projects/${parsed.projectId}/mobilization-history`,
+    method: "GET",
+    params: {
+      resourceType: parsed.resourceType,
+      frontId: parsed.frontId,
+      cursor: parsed.cursor,
+      limit: 25,
+    },
+  });
+  return response.data.data;
 }

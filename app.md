@@ -43,8 +43,12 @@ A empresa vai ter as seguintes relações
   -- Serviços e quantitativos distribuídos
   -- A soma das frentes não canceladas não pode ultrapassar o saldo da linha de base; o valor exato do saldo é permitido
   -- A linha de base não pode ser reduzida abaixo do quantitativo já distribuído
-  -- Uma frente elegível é obrigatória para iniciar a obra
-  -- Frentes elegíveis vêm selecionadas por padrão para iniciar junto com a obra
+  -- Uma frente válida no planejamento é obrigatória para iniciar a obra
+  -- Iniciar a obra não inicia nenhuma frente; cada frente é mobilizada e iniciada depois, em ações separadas
+  -- Cada frente exige equipe, máquinas ou ambas as classes de recurso
+  -- Recursos são primeiro mobilizados para o pool da obra e depois destinados a uma única frente por vez
+  -- Selecionar uma máquina para a frente inclui automaticamente seu operador, que também conta como equipe
+  -- Mobilizações e desmobilizações preservam períodos históricos auditáveis
   -- Troca de solo registra remoção de solo impróprio e aterro de substituição como serviços distintos
 
   \_> EQUIPAMENTOS: OS EQUIPAMENTOS PERTECENTES A EMPRESA QUE PARTICIPAM DA OBRA

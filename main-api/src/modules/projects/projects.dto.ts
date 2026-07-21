@@ -441,6 +441,8 @@ export const projectWorkFrontCommandSchema = z
     notes: optionalNullableText(1000),
     plannedStartDate: z.iso.date().nullable().optional(),
     plannedEndDate: z.iso.date().nullable().optional(),
+    requiresEmployees: z.boolean(),
+    requiresMachines: z.boolean(),
     services: z.array(workFrontServiceSchema).min(1).max(20),
   })
   .strict()
@@ -462,23 +464,53 @@ export const projectWorkFrontCommandSchema = z
         path: ["plannedEndDate"],
         message: "Planned end date must be after planned start date",
       });
+    if (!command.requiresEmployees && !command.requiresMachines)
+      context.addIssue({
+        code: "custom",
+        path: ["requiresEmployees"],
+        message: "At least one resource requirement must be enabled",
+      });
   });
 
 export const projectWorkFrontParamsSchema = z
   .object({ projectId: uuid, frontId: uuid })
   .strict();
 
-export const projectActivateCommandSchema = z
-  .object({ frontIds: z.array(uuid).min(1).max(100) })
+export const projectWorkFrontMobilizationCommandSchema = z
+  .object({
+    employmentIds: z.array(uuid).max(200),
+    machineIds: z.array(uuid).max(100),
+    reason: optionalNullableText(500),
+  })
   .strict()
   .superRefine((command, context) => {
-    if (new Set(command.frontIds).size !== command.frontIds.length)
-      context.addIssue({
-        code: "custom",
-        path: ["frontIds"],
-        message: "Duplicate front ids",
-      });
+    for (const [path, ids] of [
+      ["employmentIds", command.employmentIds],
+      ["machineIds", command.machineIds],
+    ] as const)
+      if (new Set(ids).size !== ids.length)
+        context.addIssue({
+          code: "custom",
+          path: [path],
+          message: "Duplicate ids",
+        });
   });
+
+export const projectMobilizationHistoryQuerySchema = z
+  .object({
+    limit: z.coerce.number().int().min(1).max(100).default(25),
+    cursor: z
+      .string()
+      .min(1)
+      .max(2048)
+      .regex(/^[A-Za-z0-9_-]+$/u)
+      .optional(),
+    resourceType: z.enum(["employee", "machine"]),
+    frontId: uuid.optional(),
+    sortBy: z.literal("effectiveFrom").default("effectiveFrom"),
+    sortDirection: z.enum(["asc", "desc"]).default("desc"),
+  })
+  .strict();
 export const projectListQuerySchema = z
   .object({
     limit: z.coerce.number().int().min(1).max(100).default(25),
@@ -550,6 +582,20 @@ const projectMachineReadinessSchema = z
     machineId: uuid,
     startMeterReadingId: uuid,
     operatorEmploymentId: uuid,
+  })
+  .strict();
+
+export const projectEmployeeMobilizationCommandSchema = z
+  .object({
+    allocations: z.array(projectEmployeeReadinessSchema).max(200),
+    reason: optionalNullableText(500),
+  })
+  .strict();
+
+export const projectMachineMobilizationCommandSchema = z
+  .object({
+    allocations: z.array(projectMachineReadinessSchema).max(100),
+    reason: optionalNullableText(500),
   })
   .strict();
 
@@ -716,8 +762,17 @@ export type ProjectQuantityBaselineRevisionCommand = z.infer<
 export type ProjectWorkFrontCommand = z.infer<
   typeof projectWorkFrontCommandSchema
 >;
-export type ProjectActivateCommand = z.infer<
-  typeof projectActivateCommandSchema
+export type ProjectWorkFrontMobilizationCommand = z.infer<
+  typeof projectWorkFrontMobilizationCommandSchema
+>;
+export type ProjectEmployeeMobilizationCommand = z.infer<
+  typeof projectEmployeeMobilizationCommandSchema
+>;
+export type ProjectMachineMobilizationCommand = z.infer<
+  typeof projectMachineMobilizationCommandSchema
+>;
+export type ProjectMobilizationHistoryQuery = z.infer<
+  typeof projectMobilizationHistoryQuerySchema
 >;
 
 export const projectFieldDetailSchema = z
@@ -739,6 +794,7 @@ export const projectResourceDetailSchema = z
       "supplierOffer",
       "workspace",
       "jobRole",
+      "workFront",
     ]),
     id: z.string(),
     section: z.enum([
@@ -750,6 +806,7 @@ export const projectResourceDetailSchema = z
       "fuelOffers",
       "materialOffers",
       "supplierOffers",
+      "fronts",
     ]),
     reason: z.enum([
       "unavailable",
@@ -760,6 +817,7 @@ export const projectResourceDetailSchema = z
       "workspace-changed",
       "catalog-inconsistent",
       "job-role-changed",
+      "assigned-to-front",
     ]),
   })
   .strict();
