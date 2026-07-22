@@ -16,6 +16,9 @@ Leia este arquivo antes de alterar o projeto.
 - Em dados tenant-aware, `tenantId` vem do contexto autenticado, nunca do body livre.
 - Todas as listagens potencialmente ilimitadas usam paginacao por cursor conforme `docs/PAGINATION.md`.
 - Nao vaze detalhes internos de erro em respostas HTTP.
+- Erros Fastify de formato com status 4xx permanecem 4xx e usam o envelope canonico; nao os transforme em 500 generico.
+- Mudancas em rotas, status HTTP ou schemas de resposta atualizam `docs/ERRORS.md`, o OpenAPI e os testes no mesmo trabalho.
+- Siga a definicao de pronto documental do `AGENTS.md` da raiz.
 
 ## Antes de criar codigo novo
 
@@ -25,6 +28,7 @@ Leia este arquivo antes de alterar o projeto.
 4. Use `docs/TENANCY.md` se o dado pertencer a um tenant.
 5. Use `docs/PAGINATION.md` para toda listagem paginada.
 6. Use `docs/ERRORS.md` para status HTTP e mensagens.
+7. Consulte `../docs/` quando a mudanca alterar um fluxo funcional compartilhado.
 
 ## Verificacao
 
@@ -34,4 +38,5 @@ Rode antes de finalizar:
 pnpm typecheck
 pnpm lint
 pnpm test
+pnpm check:openapi
 ```

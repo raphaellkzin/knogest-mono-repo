@@ -51,6 +51,9 @@ describe("server API authentication refresh policy", () => {
       client({ method: "POST", url: "/command", authRefreshPolicy: "disabled" }),
     ).rejects.toBeInstanceOf(ApiClientError);
     expect(mocks.refreshSessionSingleFlight).not.toHaveBeenCalled();
+    expect(mocks.request.mock.calls[0]?.[0].headers).toMatchObject({
+      "Content-Type": null,
+    });
   });
 
   it("signals a controlled renewal redirect for Server Component queries", async () => {
@@ -81,9 +84,37 @@ describe("server API authentication refresh policy", () => {
     ).resolves.toMatchObject({ status: 200 });
     expect(mocks.refreshSessionSingleFlight).toHaveBeenCalledOnce();
     expect(mocks.request).toHaveBeenCalledTimes(2);
+    expect(mocks.request.mock.calls[0]?.[0].headers).toMatchObject({
+      "Content-Type": null,
+    });
     expect(mocks.request.mock.calls[1]?.[0].headers).toMatchObject({
       Authorization: "Bearer access-next",
+      "Content-Type": null,
     });
+  });
+
+  it("preserves an explicit JSON content type when a body exists", async () => {
+    mocks.request.mockResolvedValue({
+      data: { success: true },
+      status: 200,
+      statusText: "OK",
+      headers: {},
+    });
+
+    await client({
+      method: "POST",
+      url: "/command",
+      data: { value: "kept" },
+      headers: { "content-type": "application/json" },
+    });
+
+    expect(mocks.request.mock.calls[0]?.[0]).toMatchObject({
+      data: { value: "kept" },
+      headers: { "content-type": "application/json" },
+    });
+    expect(mocks.request.mock.calls[0]?.[0].headers).not.toHaveProperty(
+      "Content-Type",
+    );
   });
 
   it("uses one correlation id and a distinct request id for retry calls", async () => {

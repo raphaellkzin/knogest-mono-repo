@@ -1758,6 +1758,8 @@ export function ProjectDetail({
   const [project, setProject] = React.useState(serverProject);
   const [isPending, startTransition] = React.useTransition();
   const [isActivating, setIsActivating] = React.useState(false);
+  const [isActivationConfirmationOpen, setIsActivationConfirmationOpen] =
+    React.useState(false);
   const activationInFlightRef = React.useRef(false);
   const [plannedStartDate, setPlannedStartDate] = React.useState(
     project.baseline?.plannedStartDate ?? "",
@@ -3178,28 +3180,59 @@ export function ProjectDetail({
           </div>
           {isEditable && (
             <div className="grid gap-2 xl:min-w-56">
-              <Button
-                type="button"
-                className="min-h-11 justify-center"
-                aria-busy={isActivating}
-                disabled={
-                  isPending ||
-                  isActivating ||
-                  hasKnownBlockers ||
-                  hasUnsavedChanges
-                }
-                onClick={activateProject}
+              <AlertDialog
+                open={isActivationConfirmationOpen}
+                onOpenChange={(open) => {
+                  if (!isActivating) setIsActivationConfirmationOpen(open);
+                }}
               >
-                {isActivating ? (
-                  <Loader2
-                    aria-hidden="true"
-                    className="size-4 animate-spin motion-reduce:animate-none"
-                  />
-                ) : (
-                  <Play aria-hidden="true" className="size-4" />
-                )}
-                {isActivating ? "Iniciando obra..." : "Iniciar obra"}
-              </Button>
+                <AlertDialogTrigger
+                  render={
+                    <Button
+                      type="button"
+                      className="min-h-11 justify-center"
+                      aria-busy={isActivating}
+                      disabled={
+                        isPending ||
+                        isActivating ||
+                        hasKnownBlockers ||
+                        hasUnsavedChanges
+                      }
+                    />
+                  }
+                >
+                  {isActivating ? (
+                    <Loader2
+                      aria-hidden="true"
+                      className="size-4 animate-spin motion-reduce:animate-none"
+                    />
+                  ) : (
+                    <Play aria-hidden="true" className="size-4" />
+                  )}
+                  {isActivating ? "Iniciando obra..." : "Iniciar obra"}
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Iniciar esta obra?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Ao confirmar, a obra passará para Em andamento. As frentes
+                      de serviço continuarão planejadas e deverão ser iniciadas
+                      separadamente.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Não, cancelar</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={() => {
+                        setIsActivationConfirmationOpen(false);
+                        activateProject();
+                      }}
+                    >
+                      Sim, iniciar obra
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
               <p className="text-xs font-semibold leading-5 text-muted-foreground">
                 {hasUnsavedChanges
                   ? "Salve as alterações abertas antes de iniciar."

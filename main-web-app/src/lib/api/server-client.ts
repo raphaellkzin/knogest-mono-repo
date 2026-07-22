@@ -114,8 +114,9 @@ async function executeRequest<
     trustedHost = undefined;
     trustedProtocol = undefined;
   }
-  const headers = {
-    ...(requestConfig.headers as Record<string, string> | undefined),
+  const headers: AxiosRequestConfig["headers"] = {
+    ...requestConfig.headers,
+    ...(requestConfig.data === undefined ? { "Content-Type": null } : {}),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...(trustedHost ? { "X-Forwarded-Host": trustedHost } : {}),
     ...(trustedProtocol ? { "X-Forwarded-Proto": trustedProtocol } : {}),

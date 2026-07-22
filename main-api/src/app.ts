@@ -11,6 +11,32 @@ import { jsonResponse } from "./lib/utils/jsonResponse";
 import { isAppError } from "./lib/utils/appError";
 import { getAuthAuditContext } from "./modules/auth/auth-audit-context";
 
+const invalidRequestBodyErrorCodes = new Set([
+  "FST_ERR_CTP_EMPTY_JSON_BODY",
+  "FST_ERR_CTP_INVALID_CONTENT_LENGTH",
+  "FST_ERR_CTP_INVALID_JSON_BODY",
+]);
+
+function safeErrorLogContext(error: unknown) {
+  const record =
+    typeof error === "object" && error !== null
+      ? (error as Record<string, unknown>)
+      : null;
+  const stackFrames =
+    error instanceof Error && error.stack
+      ? error.stack.split("\n").slice(1).join("\n")
+      : undefined;
+
+  return {
+    errorType: error instanceof Error ? error.name : "UnknownError",
+    ...(typeof record?.code === "string" ? { errorCode: record.code } : {}),
+    ...(typeof record?.statusCode === "number"
+      ? { statusCode: record.statusCode }
+      : {}),
+    ...(stackFrames ? { stackFrames } : {}),
+  };
+}
+
 export const buildApp = async (options: FastifyServerOptions = {}) => {
   const { logger: configuredLogger, ...restOptions } = options;
   const app = fastify({
@@ -34,12 +60,47 @@ export const buildApp = async (options: FastifyServerOptions = {}) => {
   });
 
   app.setErrorHandler((error: unknown, request, reply) => {
-    if (
+    const errorCode =
       typeof error === "object" &&
       error !== null &&
       "code" in error &&
-      error.code === "FST_ERR_CTP_BODY_TOO_LARGE"
-    ) {
+      typeof error.code === "string"
+        ? error.code
+        : undefined;
+
+    if (errorCode === "FST_ERR_CTP_INVALID_MEDIA_TYPE") {
+      request.log.warn(
+        {
+          requestId: request.id,
+          ...safeErrorLogContext(error),
+        },
+        "Request format rejected",
+      );
+      return jsonResponse.error({
+        reply,
+        statusCode: 415,
+        code: "BAD_REQUEST",
+        message: "Unsupported media type",
+      });
+    }
+
+    if (errorCode && invalidRequestBodyErrorCodes.has(errorCode)) {
+      request.log.warn(
+        {
+          requestId: request.id,
+          ...safeErrorLogContext(error),
+        },
+        "Request body rejected",
+      );
+      return jsonResponse.error({
+        reply,
+        statusCode: 400,
+        code: "BAD_REQUEST",
+        message: "Invalid request body",
+      });
+    }
+
+    if (errorCode === "FST_ERR_CTP_BODY_TOO_LARGE") {
       return jsonResponse.error({
         reply,
         statusCode: 413,
@@ -87,10 +148,10 @@ export const buildApp = async (options: FastifyServerOptions = {}) => {
       return jsonResponse.fromError({ reply, error });
     }
 
-    app.log.error(
+    request.log.error(
       {
-        requestId: reply.request.id,
-        errorType: error instanceof Error ? error.name : "UnknownError",
+        requestId: request.id,
+        ...safeErrorLogContext(error),
       },
       "Unhandled request error",
     );

@@ -14,7 +14,7 @@
 - A declaração formal deve informar onde está o erro, qual campo foi afetado e a mensagem em português. Exemplo: `Identidade / CEP: Informe um CEP com 8 dígitos.`
 - Mensagens devem ser orientadas à ação do usuário. Use “Informe o logradouro.”, “Selecione o cliente.” ou “Informe um valor válido.”; nunca exponha nomes técnicos (`address.street`) nem textos internos da biblioteca (`Muito pequeno`, `expected string`, `uuid`).
 - Erros de API e Server Actions também usam `FormErrorDeclaration`, com localização `API`, em vez de toast ou parágrafo solto dentro do formulário.
-- Ações operacionais pontuais fora de formulários e modais, como **Iniciar obra**, exibem erros de API e Server Actions em toast. O título identifica a ação que falhou e a descrição usa a mensagem segura ou os bloqueios devolvidos pela API.
+- Ações operacionais pontuais, como **Iniciar obra**, podem exigir confirmação em `AlertDialog` antes de chamar a Server Action. Depois da confirmação, erros de API e Server Actions são exibidos em toast; o título identifica a ação que falhou e a descrição usa a mensagem segura ou os bloqueios devolvidos pela API.
 - Toast fica reservado para feedback transitório que não bloqueia o envio, como falha temporária de consulta ViaCEP que libera preenchimento manual.
 - Ao criar novos campos em wizard, preencha `fieldLabels` no `WizardStep` ou no `BaseFormModal` para evitar nomes técnicos como `managerEmploymentId` na declaração de erro.
 

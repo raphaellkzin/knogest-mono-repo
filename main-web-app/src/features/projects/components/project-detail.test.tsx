@@ -422,6 +422,34 @@ describe("Project activation", () => {
     actualStartedAt: "2026-07-20T22:30:00.000Z",
   };
 
+  const confirmActivation = async (
+    user: ReturnType<typeof userEvent.setup>,
+  ) => {
+    await user.click(screen.getByRole("button", { name: "Iniciar obra" }));
+    await user.click(
+      screen.getByRole("button", { name: "Sim, iniciar obra" }),
+    );
+  };
+
+  it("asks for confirmation and cancels without starting the project", async () => {
+    const activateProject = vi.mocked(activateProjectAction);
+    const user = userEvent.setup();
+
+    renderProjectDetail(activatableProject);
+    await user.click(screen.getByRole("button", { name: "Iniciar obra" }));
+
+    expect(screen.getByRole("alertdialog")).toBeTruthy();
+    expect(screen.getByText("Iniciar esta obra?")).toBeTruthy();
+    expect(activateProject).not.toHaveBeenCalled();
+
+    await user.click(
+      screen.getByRole("button", { name: "Não, cancelar" }),
+    );
+
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(activateProject).not.toHaveBeenCalled();
+  });
+
   it("applies the active snapshot immediately and refreshes for reconciliation", async () => {
     const activateProject = vi.mocked(activateProjectAction);
     activateProject.mockResolvedValue({
@@ -431,7 +459,7 @@ describe("Project activation", () => {
     const user = userEvent.setup();
 
     renderProjectDetail(activatableProject);
-    await user.click(screen.getByRole("button", { name: "Iniciar obra" }));
+    await confirmActivation(user);
 
     await waitFor(() =>
       expect(activateProject).toHaveBeenCalledWith(activatableProject.id),
@@ -453,7 +481,7 @@ describe("Project activation", () => {
     const user = userEvent.setup();
     const { rerender } = renderProjectDetail(activatableProject);
 
-    await user.click(screen.getByRole("button", { name: "Iniciar obra" }));
+    await confirmActivation(user);
     await screen.findByRole("tab", { name: /Visão geral/u });
 
     rerender(
@@ -484,7 +512,7 @@ describe("Project activation", () => {
     const user = userEvent.setup();
 
     renderProjectDetail(activatableProject);
-    await user.click(screen.getByRole("button", { name: "Iniciar obra" }));
+    await confirmActivation(user);
 
     const pendingButton = screen.getByRole("button", {
       name: "Iniciando obra...",
@@ -508,7 +536,7 @@ describe("Project activation", () => {
     const user = userEvent.setup();
 
     renderProjectDetail(activatableProject);
-    await user.click(screen.getByRole("button", { name: "Iniciar obra" }));
+    await confirmActivation(user);
 
     await waitFor(() =>
       expect(toast.error).toHaveBeenCalledWith(
@@ -535,7 +563,7 @@ describe("Project activation", () => {
     const user = userEvent.setup();
 
     renderProjectDetail(activatableProject);
-    await user.click(screen.getByRole("button", { name: "Iniciar obra" }));
+    await confirmActivation(user);
 
     await waitFor(() =>
       expect(toast.error).toHaveBeenCalledWith(
@@ -556,7 +584,7 @@ describe("Project activation", () => {
     const user = userEvent.setup();
 
     renderProjectDetail(activatableProject);
-    await user.click(screen.getByRole("button", { name: "Iniciar obra" }));
+    await confirmActivation(user);
 
     await waitFor(() =>
       expect(toast.error).toHaveBeenCalledWith(
@@ -573,7 +601,7 @@ describe("Project activation", () => {
     const user = userEvent.setup();
 
     renderProjectDetail(activatableProject);
-    await user.click(screen.getByRole("button", { name: "Iniciar obra" }));
+    await confirmActivation(user);
 
     await waitFor(() =>
       expect(toast.error).toHaveBeenCalledWith(

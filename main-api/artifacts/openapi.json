@@ -16657,6 +16657,34 @@
               }
             }
           },
+          "415": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
           "422": {
             "description": "Default Response",
             "content": {
@@ -16895,6 +16923,34 @@
               }
             }
           },
+          "415": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
           "422": {
             "description": "Default Response",
             "content": {
@@ -17100,6 +17156,34 @@
             }
           },
           "409": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "415": {
             "description": "Default Response",
             "content": {
               "application/json": {

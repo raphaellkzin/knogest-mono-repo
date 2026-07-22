@@ -34,7 +34,7 @@ Troca de solo não é um único volume: a remoção do material impróprio e o a
 7. Inicie a frente em uma ação separada, somente quando o projeto estiver ativo e a mobilização mínima da frente estiver atendida.
 8. Produção, abastecimento, RDO, custos reais e medições continuam fora desta etapa; os caminhos de navegação ficam preparados para essas entregas futuras.
 
-Ao acionar **Iniciar obra**, a interface bloqueia novos cliques e informa que a ativação está em andamento. O sucesso aplica imediatamente o snapshot ativo devolvido pela API e libera as tabs operacionais; a atualização da rota apenas reconcilia esse estado. Conflitos de prontidão e falhas de comunicação mantêm o projeto planejado, apresentam um toast acionável e permitem nova tentativa. A API continua sendo a autoridade final da prontidão.
+Ao acionar **Iniciar obra**, a interface abre um alert modal de confirmação e não chama a API até o usuário escolher **Sim, iniciar obra**. Escolher **Não, cancelar** ou fechar o alert encerra o modal e mantém a obra planejada, sem disparar a ativação. Depois da confirmação, a interface bloqueia novos cliques e informa que a ativação está em andamento. O sucesso aplica imediatamente o snapshot ativo devolvido pela API e libera as tabs operacionais; a atualização da rota apenas reconcilia esse estado. Conflitos de prontidão e falhas de comunicação mantêm o projeto planejado, apresentam um toast acionável e permitem nova tentativa. A API continua sendo a autoridade final da prontidão.
 
 ## Mobilização de recursos
 
@@ -69,6 +69,11 @@ Frente: `PLANNED → ACTIVE`; uma frente planejada também pode ser cancelada. C
 - `POST /projects/:projectId/fronts/:frontId/start`
 - `POST /projects/:projectId/fronts/:frontId/cancel`
 - `POST /projects/:projectId/activate` não recebe frentes nem inicia frentes.
+
+Os comandos de ativar obra, iniciar frente e cancelar frente não recebem body.
+Clientes devem omitir `data` e `Content-Type`; não devem enviar `{}` nem
+`application/x-www-form-urlencoded`. A ausência de body faz parte do contrato e
+é preservada pelo cliente HTTP server-only compartilhado.
 
 O detalhe de projeto retorna `quantityBaseline` com total, alocado e saldo por serviço. Cada item de `workFronts` informa requisitos, destinações atuais, validade de planejamento (`planningEligibility`) e aptidão para início (`eligibility`). O histórico é paginado por cursor e pode ser filtrado por classe de recurso e frente.
 
