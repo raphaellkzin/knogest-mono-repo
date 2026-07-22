@@ -10,6 +10,7 @@ import {
   Fuel,
   Gauge,
   HardHat,
+  Loader2,
   PackageCheck,
   Pencil,
   Play,
@@ -197,7 +198,7 @@ const monthlyBusinessDayOptions = Array.from({ length: 22 }, (_, index) => ({
 
 const statusLabels: Record<ProjectDetailSnapshot["status"], string> = {
   planned: "Planejada",
-  active: "Ativa",
+  active: "Em andamento",
   paused: "Pausada",
   completed: "Concluída",
   cancelled: "Cancelada",
@@ -1744,7 +1745,7 @@ export function ProjectDetail({
   lookupSuppliedItemsAction,
   lookupSuppliersAction,
   options,
-  project,
+  project: serverProject,
 }: {
   lookupSuppliedItemOfferSuppliersAction: LookupSuppliedItemOfferSuppliersAction;
   lookupSuppliedItemOffersAction: LookupSuppliedItemOffersAction;
@@ -1754,7 +1755,10 @@ export function ProjectDetail({
   project: ProjectDetailSnapshot;
 }) {
   const router = useRouter();
+  const [project, setProject] = React.useState(serverProject);
   const [isPending, startTransition] = React.useTransition();
+  const [isActivating, setIsActivating] = React.useState(false);
+  const activationInFlightRef = React.useRef(false);
   const [plannedStartDate, setPlannedStartDate] = React.useState(
     project.baseline?.plannedStartDate ?? "",
   );
@@ -1959,7 +1963,11 @@ export function ProjectDetail({
     name: "technicalResponsibilityEmploymentIds",
   });
 
-  /* eslint-disable react-hooks/set-state-in-effect -- ProjectDetail resets its edit buffers when the selected project snapshot changes. */
+  /* eslint-disable react-hooks/set-state-in-effect -- ProjectDetail synchronizes the authoritative server snapshot and resets edit buffers when it changes. */
+  React.useEffect(() => {
+    setProject(serverProject);
+  }, [serverProject]);
+
   React.useEffect(() => {
     const previousIdentity = projectSnapshotIdentityRef.current;
     const projectChanged = previousIdentity.id !== project.id;
@@ -2768,28 +2776,48 @@ export function ProjectDetail({
   };
 
   const activateProject = () => {
+    if (activationInFlightRef.current) return;
     if (hasUnsavedChanges) {
       toast.warning("Salve as alterações abertas antes de iniciar a obra.");
       return;
     }
+    activationInFlightRef.current = true;
+    setIsActivating(true);
     startTransition(async () => {
-      const result = await activateProjectAction(project.id);
-      if (result.kind === "success") {
-        toast.success("Obra iniciada.");
-        router.refresh();
-        return;
+      try {
+        const result = await activateProjectAction(project.id);
+        if (result.kind === "success") {
+          if (result.project.status !== "active") {
+            toast.error("Não foi possível iniciar a obra.", {
+              description:
+                "A API não confirmou a ativação. Atualize a página e tente novamente.",
+            });
+            return;
+          }
+          setProject(result.project);
+          setActiveTab("overview");
+          toast.success("Obra iniciada.");
+          router.refresh();
+          return;
+        }
+        const description =
+          result.kind === "recoverable-conflict" && result.blockers?.length
+            ? result.blockers.map((blocker) => blocker.message).join(" ")
+            : result.message;
+        toast.error(
+          result.kind === "recoverable-conflict"
+            ? "A obra ainda tem pendências de início."
+            : "Não foi possível iniciar a obra.",
+          { description },
+        );
+      } catch {
+        toast.error("Não foi possível iniciar a obra.", {
+          description: "A comunicação com o servidor falhou. Tente novamente.",
+        });
+      } finally {
+        activationInFlightRef.current = false;
+        setIsActivating(false);
       }
-      toast.error(
-        result.kind === "recoverable-conflict"
-          ? "A obra ainda tem pendências de início."
-          : "Não foi possível iniciar a obra.",
-        {
-          description:
-            result.kind === "recoverable-conflict"
-              ? result.blockers?.map((blocker) => blocker.message).join(" ")
-              : undefined,
-        },
-      );
     });
   };
 
@@ -3153,11 +3181,24 @@ export function ProjectDetail({
               <Button
                 type="button"
                 className="min-h-11 justify-center"
-                disabled={isPending || hasKnownBlockers || hasUnsavedChanges}
+                aria-busy={isActivating}
+                disabled={
+                  isPending ||
+                  isActivating ||
+                  hasKnownBlockers ||
+                  hasUnsavedChanges
+                }
                 onClick={activateProject}
               >
-                <Play className="size-4" />
-                Iniciar obra
+                {isActivating ? (
+                  <Loader2
+                    aria-hidden="true"
+                    className="size-4 animate-spin motion-reduce:animate-none"
+                  />
+                ) : (
+                  <Play aria-hidden="true" className="size-4" />
+                )}
+                {isActivating ? "Iniciando obra..." : "Iniciar obra"}
               </Button>
               <p className="text-xs font-semibold leading-5 text-muted-foreground">
                 {hasUnsavedChanges

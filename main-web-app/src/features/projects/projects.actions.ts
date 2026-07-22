@@ -572,7 +572,10 @@ export async function saveProjectReadinessAction(
 export async function activateProjectAction(
   projectId: string,
 ): Promise<ProjectReadinessMutationResult> {
-  const id = z.string().uuid().parse(projectId);
+  const parsedId = z.string().uuid().safeParse(projectId);
+  if (!parsedId.success) return parseProjectError(parsedId.error);
+  const id = parsedId.data;
+  let project: ProjectDetailSnapshot;
   try {
     const response = await client<{
       success: true;
@@ -581,12 +584,17 @@ export async function activateProjectAction(
       url: `/api/v1/projects/${id}/activate`,
       method: "POST",
     });
-    revalidatePath(`/home/obras/${id}`);
-    revalidatePath("/home/obras");
-    return { kind: "success", project: response.data.data };
+    project = response.data.data;
   } catch (error) {
     return parseProjectError(error);
   }
+  try {
+    revalidatePath(`/home/obras/${id}`);
+    revalidatePath("/home/obras");
+  } catch (error) {
+    console.error("Project activation cache revalidation failed", error);
+  }
+  return { kind: "success", project };
 }
 
 export async function saveProjectEmployeeMobilizationAction(

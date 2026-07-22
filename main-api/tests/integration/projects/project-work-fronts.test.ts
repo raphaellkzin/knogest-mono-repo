@@ -494,6 +494,7 @@ describe("project work-front quantities", () => {
     });
     expect(activated.statusCode, activated.body).toBe(200);
     expect(activated.json().data.status).toBe("active");
+    expect(activated.json().data.actualStartedAt).toEqual(expect.any(String));
     expect(
       activated
         .json()
@@ -506,6 +507,16 @@ describe("project work-front quantities", () => {
         machineAssignments: [],
       }),
     );
+    const activationEvent = await app.prisma.projectLifecycleEvent.findFirst({
+      where: {
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        projectId: scope.projectId,
+        fromStatus: "PLANNED",
+        toStatus: "ACTIVE",
+      },
+    });
+    expect(activationEvent).not.toBeNull();
   });
 
   it("prepares, starts and demobilizes a front without changing its active status", async () => {

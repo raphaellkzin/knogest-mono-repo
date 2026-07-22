@@ -34,6 +34,8 @@ Troca de solo não é um único volume: a remoção do material impróprio e o a
 7. Inicie a frente em uma ação separada, somente quando o projeto estiver ativo e a mobilização mínima da frente estiver atendida.
 8. Produção, abastecimento, RDO, custos reais e medições continuam fora desta etapa; os caminhos de navegação ficam preparados para essas entregas futuras.
 
+Ao acionar **Iniciar obra**, a interface bloqueia novos cliques e informa que a ativação está em andamento. O sucesso aplica imediatamente o snapshot ativo devolvido pela API e libera as tabs operacionais; a atualização da rota apenas reconcilia esse estado. Conflitos de prontidão e falhas de comunicação mantêm o projeto planejado, apresentam um toast acionável e permitem nova tentativa. A API continua sendo a autoridade final da prontidão.
+
 ## Mobilização de recursos
 
 A mobilização ocorre em duas camadas:

@@ -12,6 +12,8 @@ import {
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const refreshMock = vi.hoisted(() => vi.fn());
+
 vi.mock("../projects.actions", () => ({
   activateProjectAction: vi.fn(),
   createProjectWorkFrontAction: vi.fn(),
@@ -25,11 +27,16 @@ vi.mock("../projects.actions", () => ({
   updateProjectWorkFrontAction: vi.fn(),
 }));
 
+vi.mock("sonner", () => ({
+  toast: { error: vi.fn(), success: vi.fn(), warning: vi.fn() },
+}));
+
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ refresh: vi.fn() }),
+  useRouter: () => ({ refresh: refreshMock }),
 }));
 
 import {
+  activateProjectAction,
   createProjectWorkFrontAction,
   getProjectMobilizationHistoryAction,
   saveProjectQuantityBaselineAction,
@@ -37,6 +44,7 @@ import {
   saveProjectWorkFrontMobilizationAction,
   updateProjectWorkFrontAction,
 } from "../projects.actions";
+import { toast } from "sonner";
 import type {
   ProjectDetailSnapshot,
   ProjectOfferSnapshot,
@@ -400,6 +408,190 @@ describe("Project detail fuel editors", () => {
     await user.click(screen.getByLabelText("Alterar quantidade nesta obra"));
 
     expect(screen.getByLabelText("Quantidade")).toBeTruthy();
+  });
+});
+
+describe("Project activation", () => {
+  const activatableProject: ProjectDetailSnapshot = {
+    ...projectSnapshot,
+    readiness: { canActivate: true, blockers: [] },
+  };
+  const activatedProject: ProjectDetailSnapshot = {
+    ...activatableProject,
+    status: "active",
+    actualStartedAt: "2026-07-20T22:30:00.000Z",
+  };
+
+  it("applies the active snapshot immediately and refreshes for reconciliation", async () => {
+    const activateProject = vi.mocked(activateProjectAction);
+    activateProject.mockResolvedValue({
+      kind: "success",
+      project: activatedProject,
+    });
+    const user = userEvent.setup();
+
+    renderProjectDetail(activatableProject);
+    await user.click(screen.getByRole("button", { name: "Iniciar obra" }));
+
+    await waitFor(() =>
+      expect(activateProject).toHaveBeenCalledWith(activatableProject.id),
+    );
+    expect(activateProject).toHaveBeenCalledTimes(1);
+    expect(toast.success).toHaveBeenCalledWith("Obra iniciada.");
+    expect(refreshMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("tab", { name: /Visão geral/u })).toBeTruthy();
+    expect(screen.getAllByText("Em andamento").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Pronta para iniciar")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Iniciar obra" })).toBeNull();
+  });
+
+  it("synchronizes a later active snapshot received from the server page", async () => {
+    vi.mocked(activateProjectAction).mockResolvedValue({
+      kind: "success",
+      project: activatedProject,
+    });
+    const user = userEvent.setup();
+    const { rerender } = renderProjectDetail(activatableProject);
+
+    await user.click(screen.getByRole("button", { name: "Iniciar obra" }));
+    await screen.findByRole("tab", { name: /Visão geral/u });
+
+    rerender(
+      projectDetailElement({
+        ...activatedProject,
+        name: "Obra Norte reconciliada",
+      }),
+    );
+
+    expect(
+      await screen.findByRole("heading", {
+        name: "Obra Norte reconciliada",
+      }),
+    ).toBeTruthy();
+  });
+
+  it("blocks repeated clicks and shows progress while activation is pending", async () => {
+    const activateProject = vi.mocked(activateProjectAction);
+    let resolveActivation!: (
+      result: Awaited<ReturnType<typeof activateProjectAction>>,
+    ) => void;
+    activateProject.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveActivation = resolve;
+        }),
+    );
+    const user = userEvent.setup();
+
+    renderProjectDetail(activatableProject);
+    await user.click(screen.getByRole("button", { name: "Iniciar obra" }));
+
+    const pendingButton = screen.getByRole("button", {
+      name: "Iniciando obra...",
+    }) as HTMLButtonElement;
+    expect(pendingButton.disabled).toBe(true);
+    expect(pendingButton.getAttribute("aria-busy")).toBe("true");
+    await user.click(pendingButton);
+    expect(activateProject).toHaveBeenCalledTimes(1);
+
+    resolveActivation({ kind: "success", project: activatedProject });
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: /Visão geral/u })).toBeTruthy(),
+    );
+  });
+
+  it("keeps the project planned when success does not confirm an active snapshot", async () => {
+    vi.mocked(activateProjectAction).mockResolvedValue({
+      kind: "success",
+      project: activatableProject,
+    });
+    const user = userEvent.setup();
+
+    renderProjectDetail(activatableProject);
+    await user.click(screen.getByRole("button", { name: "Iniciar obra" }));
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        "Não foi possível iniciar a obra.",
+        {
+          description:
+            "A API não confirmou a ativação. Atualize a página e tente novamente.",
+        },
+      ),
+    );
+    expect(screen.getByText("Pronta para iniciar")).toBeTruthy();
+  });
+
+  it("shows all readiness blockers returned by the backend", async () => {
+    vi.mocked(activateProjectAction).mockResolvedValue({
+      kind: "recoverable-conflict",
+      code: "PROJECT_RESOURCE_CONFLICT",
+      message: "Project readiness is incomplete",
+      blockers: [
+        { section: "fronts", message: "Cadastre uma frente válida." },
+        { section: "fuelOffers", message: "Informe o combustível." },
+      ],
+    });
+    const user = userEvent.setup();
+
+    renderProjectDetail(activatableProject);
+    await user.click(screen.getByRole("button", { name: "Iniciar obra" }));
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        "A obra ainda tem pendências de início.",
+        {
+          description: "Cadastre uma frente válida. Informe o combustível.",
+        },
+      ),
+    );
+  });
+
+  it("shows the safe backend message for a terminal failure", async () => {
+    vi.mocked(activateProjectAction).mockResolvedValue({
+      kind: "terminal-failure",
+      code: "PROJECT_ACTION_FAILED",
+      message: "Serviço temporariamente indisponível.",
+    });
+    const user = userEvent.setup();
+
+    renderProjectDetail(activatableProject);
+    await user.click(screen.getByRole("button", { name: "Iniciar obra" }));
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        "Não foi possível iniciar a obra.",
+        { description: "Serviço temporariamente indisponível." },
+      ),
+    );
+  });
+
+  it("recovers from a rejected Server Action and allows another attempt", async () => {
+    vi.mocked(activateProjectAction).mockRejectedValue(
+      new Error("Server Action transport failed"),
+    );
+    const user = userEvent.setup();
+
+    renderProjectDetail(activatableProject);
+    await user.click(screen.getByRole("button", { name: "Iniciar obra" }));
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        "Não foi possível iniciar a obra.",
+        {
+          description: "A comunicação com o servidor falhou. Tente novamente.",
+        },
+      ),
+    );
+    await waitFor(() =>
+      expect(
+        (
+          screen.getByRole("button", {
+            name: "Iniciar obra",
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(false),
+    );
   });
 });
 
