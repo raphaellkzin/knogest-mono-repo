@@ -12,6 +12,7 @@ import {
   getProjectDetail,
   getProjectReadinessOptions,
 } from "@/features/projects/projects.server";
+import { getProjectDailyReports } from "@/features/projects/daily-reports.server";
 
 export default async function Page({
   params,
@@ -23,10 +24,12 @@ export default async function Page({
   const { projectId } = await params;
   let project;
   let options;
+  let dailyReports;
   try {
-    [project, options] = await Promise.all([
+    [project, options, dailyReports] = await Promise.all([
       getProjectDetail(projectId),
       getProjectReadinessOptions(projectId),
+      getProjectDailyReports(projectId),
     ]);
   } catch {
     notFound();
@@ -39,6 +42,7 @@ export default async function Page({
       currentArea="works"
     >
       <ProjectDetail
+        initialDailyReports={dailyReports}
         lookupSuppliedItemOfferSuppliersAction={
           lookupProjectSuppliedItemOfferSuppliersAction
         }

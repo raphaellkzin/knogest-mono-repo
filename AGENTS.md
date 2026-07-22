@@ -20,6 +20,7 @@ regras com o `AGENTS.md` mais próximo do arquivo em edição.
 - Transporte server-only e Server Actions: `main-web-app/docs/API_CLIENTS.md`.
 - Erros HTTP e observabilidade: `main-api/docs/ERRORS.md`.
 - Regras funcionais compartilhadas: documentos de domínio em `docs/`.
+- RDO manual, jornadas e medidores: `docs/project-daily-reports.md`.
 - Contratos públicos: schemas das rotas Fastify e
   `main-api/artifacts/openapi.json`.
 - Regras específicas de cada aplicação: `main-api/AGENTS.md` e

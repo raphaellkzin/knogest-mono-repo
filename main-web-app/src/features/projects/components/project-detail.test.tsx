@@ -27,8 +27,21 @@ vi.mock("../projects.actions", () => ({
   updateProjectWorkFrontAction: vi.fn(),
 }));
 
+vi.mock("../daily-reports.actions", () => ({
+  finalizeProjectDailyReportAction: vi.fn(),
+  getMoreProjectDailyReportsAction: vi.fn(),
+  getProjectDailyReportAction: vi.fn(),
+  getProjectDailyReportOptionsAction: vi.fn(),
+  saveProjectDailyReportAction: vi.fn(),
+}));
+
 vi.mock("sonner", () => ({
-  toast: { error: vi.fn(), success: vi.fn(), warning: vi.fn() },
+  toast: {
+    error: vi.fn(),
+    info: vi.fn(),
+    success: vi.fn(),
+    warning: vi.fn(),
+  },
 }));
 
 vi.mock("next/navigation", () => ({
@@ -426,9 +439,7 @@ describe("Project activation", () => {
     user: ReturnType<typeof userEvent.setup>,
   ) => {
     await user.click(screen.getByRole("button", { name: "Iniciar obra" }));
-    await user.click(
-      screen.getByRole("button", { name: "Sim, iniciar obra" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Sim, iniciar obra" }));
   };
 
   it("asks for confirmation and cancels without starting the project", async () => {
@@ -442,9 +453,7 @@ describe("Project activation", () => {
     expect(screen.getByText("Iniciar esta obra?")).toBeTruthy();
     expect(activateProject).not.toHaveBeenCalled();
 
-    await user.click(
-      screen.getByRole("button", { name: "Não, cancelar" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Não, cancelar" }));
 
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     expect(activateProject).not.toHaveBeenCalled();

@@ -1,0 +1,565 @@
+import type { Prisma } from "../../../db/generated/prisma/client";
+import type { HandlerContext } from "../../../lib/utils/handler.dto";
+import type {
+  CursorBoundary,
+  SortDirection,
+} from "../../../lib/utils/cursor-pagination";
+import { invalidCursorError } from "../../../lib/utils/cursor-pagination";
+
+export type DailyReportScope = {
+  corporationId: string;
+  companyId: string;
+  actorUserId: string;
+};
+
+export type DailyReportWriteData = {
+  reportDate: Date;
+  shift: "DAY" | "NIGHT";
+  shiftOrder: number;
+  projectNameSnapshot: string;
+  municipalitySnapshot: string | null;
+  stateSnapshot: string | null;
+  contractSnapshot: string | null;
+  scheduleScaleSnapshot: string;
+  supervisorEmploymentId: string;
+  supervisorNameSnapshot: string;
+  activityStartTime: string;
+  activityEndTime: string;
+  activityEndDayOffset: number;
+  activityTypes: Array<"EARTHWORKS" | "DRAINAGE" | "PAVING">;
+  climateConditions: Array<"RAIN" | "DRY" | "WATERLOGGED_SOIL">;
+  dailyRainfallMm: string;
+  monthlyRainfallMm: string;
+  executedActivities: string;
+  interferences: string | null;
+  schedulePeriods: Array<{
+    startTime: string;
+    endTime: string;
+    startDayOffset: number;
+    endDayOffset: number;
+  }>;
+  technicalResponsibilities: Array<{
+    employmentId: string;
+    nameSnapshot: string;
+  }>;
+  employees: Array<{
+    employmentId: string;
+    employeeNameSnapshot: string;
+    jobRoleSnapshot: string;
+    expectedDailyWorkloadMinutes: number;
+    completedFullShift: boolean;
+    regularWorkedMinutes: number;
+    overtimeMinutes: number;
+  }>;
+  machines: Array<{
+    machineId: string;
+    machineNameSnapshot: string;
+    manufacturerSnapshot: string;
+    modelSnapshot: string;
+    meterTypeSnapshot: "HOUR_METER" | "ODOMETER";
+    identifierKindSnapshot: "PLATE" | "COMPANY_TAG" | null;
+    identifierValueSnapshot: string | null;
+    startMeterReadingId: string;
+    startMeterReadingValue: string;
+    endMeterReadingValue: string;
+  }>;
+};
+
+export const dailyReportDetailInclude = {
+  schedulePeriods: { orderBy: { position: "asc" as const } },
+  technicalResponsibilities: { orderBy: { position: "asc" as const } },
+  employeeEntries: {
+    orderBy: [
+      { jobRoleSnapshot: "asc" as const },
+      { employeeNameSnapshot: "asc" as const },
+    ],
+  },
+  machineEntries: { orderBy: { machineNameSnapshot: "asc" as const } },
+  createdBy: { select: { id: true, email: true } },
+  finalizedBy: { select: { id: true, email: true } },
+} satisfies Prisma.ProjectDailyReportInclude;
+
+function scopeWhere(scope: DailyReportScope, projectId: string) {
+  return {
+    corporationId: scope.corporationId,
+    companyId: scope.companyId,
+    projectId,
+  };
+}
+
+export async function findProjectDailyReportContextHandler(
+  context: HandlerContext,
+  scope: DailyReportScope,
+  projectId: string,
+  interval: { startAt: Date; endAt: Date },
+) {
+  const where = scopeWhere(scope, projectId);
+  const project = await context.prisma.project.findFirst({
+    where: {
+      corporationId: scope.corporationId,
+      companyId: scope.companyId,
+      id: projectId,
+    },
+    select: {
+      id: true,
+      name: true,
+      addressCity: true,
+      addressState: true,
+      contractNumber: true,
+      status: true,
+      actualStartedAt: true,
+    },
+  });
+  if (!project) return null;
+
+  const overlap = {
+    effectiveFrom: { lte: interval.endAt },
+    OR: [{ effectiveTo: null }, { effectiveTo: { gt: interval.startAt } }],
+  };
+  const [
+    manager,
+    technicalResponsibilities,
+    scheduleRevision,
+    employees,
+    machines,
+  ] = await Promise.all([
+    context.prisma.projectManagerTenure.findFirst({
+      where: { ...where, ...overlap },
+      orderBy: { effectiveFrom: "desc" },
+      select: { employmentId: true },
+    }),
+    context.prisma.projectTechnicalResponsibility.findMany({
+      where: { ...where, ...overlap },
+      orderBy: { effectiveFrom: "asc" },
+      select: { employmentId: true },
+    }),
+    context.prisma.projectScheduleRevision.findFirst({
+      where: { ...where, ...overlap },
+      orderBy: { effectiveFrom: "desc" },
+      select: { id: true },
+    }),
+    context.prisma.projectEmployeeAllocation.findMany({
+      where: { ...where, ...overlap },
+      orderBy: { effectiveFrom: "asc" },
+      select: {
+        employmentId: true,
+        jobRole: true,
+        expectedDailyWorkloadMinutes: true,
+      },
+    }),
+    context.prisma.projectMachineAllocation.findMany({
+      where: { ...where, ...overlap },
+      orderBy: { effectiveFrom: "asc" },
+      select: { machineId: true },
+    }),
+  ]);
+
+  const employmentIds = [
+    manager?.employmentId,
+    ...technicalResponsibilities.map((item) => item.employmentId),
+    ...employees.map((item) => item.employmentId),
+  ].filter((id): id is string => Boolean(id));
+  const machineIds = machines.map((item) => item.machineId);
+  const [employmentRecords, machineRecords, scheduleDays] = await Promise.all([
+    employmentIds.length
+      ? context.prisma.employment.findMany({
+          where: {
+            corporationId: scope.corporationId,
+            companyId: scope.companyId,
+            id: { in: employmentIds },
+          },
+          select: {
+            id: true,
+            state: true,
+            isActive: true,
+            person: { select: { displayName: true } },
+          },
+        })
+      : [],
+    machineIds.length
+      ? context.prisma.machine.findMany({
+          where: {
+            corporationId: scope.corporationId,
+            id: { in: machineIds },
+          },
+          select: {
+            id: true,
+            name: true,
+            manufacturer: true,
+            model: true,
+            meterType: true,
+            isActive: true,
+            identifiers: {
+              where: {
+                companyId: scope.companyId,
+                createdAt: { lte: interval.endAt },
+                OR: [
+                  { releasedAt: null },
+                  { releasedAt: { gt: interval.startAt } },
+                ],
+              },
+              orderBy: { kind: "asc" },
+              take: 1,
+              select: { kind: true, value: true },
+            },
+            meterReadings: {
+              where: {
+                companyId: scope.companyId,
+                status: "CONFIRMED",
+                recordedAt: { lte: interval.startAt },
+              },
+              orderBy: { readingSequence: "desc" },
+              take: 1,
+              select: {
+                id: true,
+                value: true,
+                readingSequence: true,
+                recordedAt: true,
+              },
+            },
+          },
+        })
+      : [],
+    scheduleRevision
+      ? context.prisma.projectScheduleDay.findMany({
+          where: {
+            corporationId: scope.corporationId,
+            companyId: scope.companyId,
+            scheduleRevisionId: scheduleRevision.id,
+          },
+          orderBy: { dayOfWeek: "asc" },
+          select: {
+            dayOfWeek: true,
+            isWorking: true,
+            startTime: true,
+            endTime: true,
+          },
+        })
+      : [],
+  ]);
+
+  return {
+    project,
+    manager,
+    technicalResponsibilities,
+    scheduleDays,
+    employees,
+    machines,
+    employmentRecords,
+    machineRecords,
+  };
+}
+
+export async function createProjectDailyReportHandler(
+  context: HandlerContext,
+  scope: DailyReportScope,
+  projectId: string,
+  data: DailyReportWriteData,
+) {
+  return context.prisma.projectDailyReport.create({
+    data: {
+      ...scopeWhere(scope, projectId),
+      reportDate: data.reportDate,
+      shift: data.shift,
+      shiftOrder: data.shiftOrder,
+      status: "DRAFT",
+      projectNameSnapshot: data.projectNameSnapshot,
+      municipalitySnapshot: data.municipalitySnapshot,
+      stateSnapshot: data.stateSnapshot,
+      contractSnapshot: data.contractSnapshot,
+      scheduleScaleSnapshot: data.scheduleScaleSnapshot,
+      supervisorEmploymentId: data.supervisorEmploymentId,
+      supervisorNameSnapshot: data.supervisorNameSnapshot,
+      activityStartTime: data.activityStartTime,
+      activityEndTime: data.activityEndTime,
+      activityEndDayOffset: data.activityEndDayOffset,
+      activityTypes: data.activityTypes,
+      climateConditions: data.climateConditions,
+      dailyRainfallMm: data.dailyRainfallMm,
+      monthlyRainfallMm: data.monthlyRainfallMm,
+      executedActivities: data.executedActivities,
+      interferences: data.interferences,
+      createdByUserId: scope.actorUserId,
+      schedulePeriods: {
+        create: data.schedulePeriods.map((period, position) => ({
+          position,
+          ...period,
+        })),
+      },
+      technicalResponsibilities: {
+        create: data.technicalResponsibilities.map((item, position) => ({
+          position,
+          ...item,
+        })),
+      },
+      employeeEntries: {
+        create: data.employees,
+      },
+      machineEntries: {
+        create: data.machines,
+      },
+    },
+    include: dailyReportDetailInclude,
+  });
+}
+
+export async function updateProjectDailyReportHandler(
+  context: HandlerContext,
+  scope: DailyReportScope,
+  projectId: string,
+  reportId: string,
+  data: DailyReportWriteData,
+) {
+  const where = { ...scopeWhere(scope, projectId), dailyReportId: reportId };
+  await context.prisma.projectDailyReportMachine.deleteMany({ where });
+  await context.prisma.projectDailyReportEmployee.deleteMany({ where });
+  await context.prisma.projectDailyReportTechnicalResponsibility.deleteMany({
+    where,
+  });
+  await context.prisma.projectDailyReportSchedulePeriod.deleteMany({ where });
+  return context.prisma.projectDailyReport.update({
+    where: { id: reportId },
+    data: {
+      reportDate: data.reportDate,
+      shift: data.shift,
+      shiftOrder: data.shiftOrder,
+      projectNameSnapshot: data.projectNameSnapshot,
+      municipalitySnapshot: data.municipalitySnapshot,
+      stateSnapshot: data.stateSnapshot,
+      contractSnapshot: data.contractSnapshot,
+      scheduleScaleSnapshot: data.scheduleScaleSnapshot,
+      supervisorEmploymentId: data.supervisorEmploymentId,
+      supervisorNameSnapshot: data.supervisorNameSnapshot,
+      activityStartTime: data.activityStartTime,
+      activityEndTime: data.activityEndTime,
+      activityEndDayOffset: data.activityEndDayOffset,
+      activityTypes: data.activityTypes,
+      climateConditions: data.climateConditions,
+      dailyRainfallMm: data.dailyRainfallMm,
+      monthlyRainfallMm: data.monthlyRainfallMm,
+      executedActivities: data.executedActivities,
+      interferences: data.interferences,
+      schedulePeriods: {
+        create: data.schedulePeriods.map((period, position) => ({
+          position,
+          ...period,
+        })),
+      },
+      technicalResponsibilities: {
+        create: data.technicalResponsibilities.map((item, position) => ({
+          position,
+          ...item,
+        })),
+      },
+      employeeEntries: {
+        create: data.employees,
+      },
+      machineEntries: {
+        create: data.machines,
+      },
+    },
+    include: dailyReportDetailInclude,
+  });
+}
+
+export async function findProjectDailyReportHandler(
+  context: HandlerContext,
+  scope: DailyReportScope,
+  projectId: string,
+  reportId: string,
+) {
+  return context.prisma.projectDailyReport.findFirst({
+    where: { id: reportId, ...scopeWhere(scope, projectId) },
+    include: dailyReportDetailInclude,
+  });
+}
+
+export async function findProjectDailyReportStateHandler(
+  context: HandlerContext,
+  scope: DailyReportScope,
+  projectId: string,
+  reportId: string,
+) {
+  return context.prisma.projectDailyReport.findFirst({
+    where: { id: reportId, ...scopeWhere(scope, projectId) },
+    select: { id: true, status: true },
+  });
+}
+
+export async function listProjectDailyReportsHandler(
+  context: HandlerContext,
+  scope: DailyReportScope,
+  projectId: string,
+  input: {
+    boundary: CursorBoundary | null;
+    limit: number;
+    shift?: "DAY" | "NIGHT";
+    status?: "DRAFT" | "FINALIZED";
+    sortDirection: SortDirection;
+  },
+) {
+  const boundary = dailyReportBoundary(input.boundary, input.sortDirection);
+  return context.prisma.projectDailyReport.findMany({
+    where: {
+      ...scopeWhere(scope, projectId),
+      ...(input.shift ? { shift: input.shift } : {}),
+      ...(input.status ? { status: input.status } : {}),
+      ...(boundary ? { OR: boundary } : {}),
+    },
+    orderBy: [
+      { reportDate: input.sortDirection },
+      { shiftOrder: input.sortDirection },
+      { id: input.sortDirection },
+    ],
+    take: input.limit + 1,
+    select: {
+      id: true,
+      reportDate: true,
+      shift: true,
+      shiftOrder: true,
+      status: true,
+      activityStartTime: true,
+      activityEndTime: true,
+      activityEndDayOffset: true,
+      createdAt: true,
+      updatedAt: true,
+      finalizedAt: true,
+    },
+  });
+}
+
+function dailyReportBoundary(
+  boundary: CursorBoundary | null,
+  direction: SortDirection,
+): Prisma.ProjectDailyReportWhereInput[] | null {
+  if (!boundary) return null;
+  if (typeof boundary.value !== "string") throw invalidCursorError();
+  const match = /^(\d{4}-\d{2}-\d{2})\|([01])$/u.exec(boundary.value);
+  if (!match || !/^[0-9a-f-]{36}$/iu.test(boundary.id))
+    throw invalidCursorError();
+  const reportDate = new Date(`${match[1]}T00:00:00.000Z`);
+  if (Number.isNaN(reportDate.getTime())) throw invalidCursorError();
+  const shiftOrder = Number(match[2]);
+  const operator = direction === "asc" ? "gt" : "lt";
+  return [
+    { reportDate: { [operator]: reportDate } },
+    { reportDate, shiftOrder: { [operator]: shiftOrder } },
+    { reportDate, shiftOrder, id: { [operator]: boundary.id } },
+  ];
+}
+
+export async function lockProjectDailyReportHandler(
+  context: HandlerContext,
+  scope: DailyReportScope,
+  projectId: string,
+  reportId: string,
+) {
+  await context.prisma.$queryRawUnsafe(
+    `SELECT id FROM "project_daily_reports" WHERE "corporation_id" = $1 AND "company_id" = $2 AND "project_id" = $3 AND "id" = $4 FOR UPDATE`,
+    scope.corporationId,
+    scope.companyId,
+    projectId,
+    reportId,
+  );
+}
+
+export async function lockDailyReportMachineHandler(
+  context: HandlerContext,
+  scope: DailyReportScope,
+  machineId: string,
+) {
+  await context.prisma.$queryRawUnsafe(
+    `SELECT id FROM "machines" WHERE "corporation_id" = $1 AND "id" = $2 FOR UPDATE`,
+    scope.corporationId,
+    machineId,
+  );
+}
+
+export async function latestMachineReadingHandler(
+  context: HandlerContext,
+  scope: DailyReportScope,
+  machineId: string,
+) {
+  return context.prisma.machineMeterReading.findFirst({
+    where: {
+      corporationId: scope.corporationId,
+      companyId: scope.companyId,
+      machineId,
+      status: "CONFIRMED",
+    },
+    orderBy: { readingSequence: "desc" },
+    select: {
+      id: true,
+      readingSequence: true,
+      value: true,
+      recordedAt: true,
+    },
+  });
+}
+
+export async function finalizeDailyReportMachineHandler(
+  context: HandlerContext,
+  scope: DailyReportScope,
+  input: {
+    entryId: string;
+    machineId: string;
+    startMeterReadingId: string;
+    endMeterReadingValue: string;
+    nextReadingSequence: number;
+    recordedAt: Date;
+  },
+) {
+  const reading = await context.prisma.machineMeterReading.create({
+    data: {
+      corporationId: scope.corporationId,
+      companyId: scope.companyId,
+      machineId: input.machineId,
+      readingSequence: input.nextReadingSequence,
+      value: input.endMeterReadingValue,
+      purpose: "ORDINARY",
+      actorUserId: scope.actorUserId,
+      recordedAt: input.recordedAt,
+    },
+    select: { id: true },
+  });
+  await context.prisma.machineMeterReadingReference.createMany({
+    data: [
+      {
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        machineId: input.machineId,
+        readingId: input.startMeterReadingId,
+        sourceType: "PROJECT_DAILY_REPORT_START",
+        sourceId: input.entryId,
+      },
+      {
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        machineId: input.machineId,
+        readingId: reading.id,
+        sourceType: "PROJECT_DAILY_REPORT_END",
+        sourceId: input.entryId,
+      },
+    ],
+  });
+  await context.prisma.projectDailyReportMachine.update({
+    where: { id: input.entryId },
+    data: { endMeterReadingId: reading.id },
+  });
+}
+
+export async function finalizeProjectDailyReportHandler(
+  context: HandlerContext,
+  scope: DailyReportScope,
+  reportId: string,
+  finalizedAt: Date,
+) {
+  await context.prisma.projectDailyReport.update({
+    where: { id: reportId },
+    data: {
+      status: "FINALIZED",
+      finalizedAt,
+      finalizedByUserId: scope.actorUserId,
+    },
+  });
+}

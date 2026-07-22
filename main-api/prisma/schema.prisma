@@ -97,6 +97,36 @@ enum ProjectWorkFrontEmployeeAssignmentSource {
   @@map("project_work_front_employee_assignment_source")
 }
 
+enum ProjectDailyReportShift {
+  DAY
+  NIGHT
+
+  @@map("project_daily_report_shift")
+}
+
+enum ProjectDailyReportStatus {
+  DRAFT
+  FINALIZED
+
+  @@map("project_daily_report_status")
+}
+
+enum ProjectDailyReportActivityType {
+  EARTHWORKS
+  DRAINAGE
+  PAVING
+
+  @@map("project_daily_report_activity_type")
+}
+
+enum ProjectDailyReportClimateCondition {
+  RAIN
+  DRY
+  WATERLOGGED_SOIL
+
+  @@map("project_daily_report_climate_condition")
+}
+
 model Corporation {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name      String   @db.VarChar(160)
@@ -177,6 +207,8 @@ model User {
   removedFuelSuppliers                  FuelSupplier[]                       @relation("FuelSupplierRemovedBy")
   machineMeterReadings                  MachineMeterReading[]                @relation("MachineMeterReadingActor")
   machineMeterReadingCorrections        MachineMeterReadingCorrection[]      @relation("MachineMeterReadingCorrectionActor")
+  createdProjectDailyReports            ProjectDailyReport[]                 @relation("ProjectDailyReportCreatedBy")
+  finalizedProjectDailyReports          ProjectDailyReport[]                 @relation("ProjectDailyReportFinalizedBy")
   createdProjectEmployeeAllocations     ProjectEmployeeAllocation[]          @relation("ProjectEmployeeAllocationCreatedBy")
   endedProjectEmployeeAllocations       ProjectEmployeeAllocation[]          @relation("ProjectEmployeeAllocationEndedBy")
   createdProjectMachineAllocations      ProjectMachineAllocation[]           @relation("ProjectMachineAllocationCreatedBy")
@@ -454,23 +486,26 @@ model Person {
 }
 
 model Employment {
-  id                           String                               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  corporationId                String                               @map("corporation_id") @db.Uuid
-  companyId                    String                               @map("company_id") @db.Uuid
-  personId                     String                               @map("person_id") @db.Uuid
-  companyRegistrationNumber    String                               @map("company_registration_number") @db.VarChar(80)
-  state                        EmploymentState                      @default(ACTIVE)
-  isActive                     Boolean                              @default(true) @map("is_active")
-  terminatedAt                 DateTime?                            @map("terminated_at") @db.Timestamptz(3)
-  createdAt                    DateTime                             @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt                    DateTime                             @updatedAt @map("updated_at") @db.Timestamptz(3)
-  corporation                  Corporation                          @relation(fields: [corporationId], references: [id], onDelete: Restrict)
-  company                      Company                              @relation(fields: [corporationId, companyId], references: [corporationId, id], onDelete: Restrict)
-  person                       Person                               @relation(fields: [corporationId, personId], references: [corporationId, id], onDelete: Restrict)
+  id                           String                                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId                String                                      @map("corporation_id") @db.Uuid
+  companyId                    String                                      @map("company_id") @db.Uuid
+  personId                     String                                      @map("person_id") @db.Uuid
+  companyRegistrationNumber    String                                      @map("company_registration_number") @db.VarChar(80)
+  state                        EmploymentState                             @default(ACTIVE)
+  isActive                     Boolean                                     @default(true) @map("is_active")
+  terminatedAt                 DateTime?                                   @map("terminated_at") @db.Timestamptz(3)
+  createdAt                    DateTime                                    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                    DateTime                                    @updatedAt @map("updated_at") @db.Timestamptz(3)
+  corporation                  Corporation                                 @relation(fields: [corporationId], references: [id], onDelete: Restrict)
+  company                      Company                                     @relation(fields: [corporationId, companyId], references: [corporationId, id], onDelete: Restrict)
+  person                       Person                                      @relation(fields: [corporationId, personId], references: [corporationId, id], onDelete: Restrict)
   periods                      EmploymentPeriod[]
   jobRolePeriods               EmploymentJobRolePeriod[]
-  directWorkFrontAssignments   ProjectWorkFrontEmployeeAssignment[] @relation("WorkFrontEmployeeAssignmentEmployment")
-  operatedWorkFrontAssignments ProjectWorkFrontMachineAssignment[]  @relation("WorkFrontMachineAssignmentOperator")
+  directWorkFrontAssignments   ProjectWorkFrontEmployeeAssignment[]        @relation("WorkFrontEmployeeAssignmentEmployment")
+  operatedWorkFrontAssignments ProjectWorkFrontMachineAssignment[]         @relation("WorkFrontMachineAssignmentOperator")
+  supervisedDailyReports       ProjectDailyReport[]                        @relation("ProjectDailyReportSupervisor")
+  dailyReportResponsibilities  ProjectDailyReportTechnicalResponsibility[] @relation("ProjectDailyReportTechnicalResponsibilityEmployment")
+  dailyReportEntries           ProjectDailyReportEmployee[]                @relation("ProjectDailyReportEmployeeEmployment")
 
   @@unique([corporationId, companyId, id])
   @@index([corporationId, companyId, isActive])
@@ -557,6 +592,7 @@ model Machine {
   identifiers          MachineIdentifier[]
   meterReadings        MachineMeterReading[]
   workFrontAssignments ProjectWorkFrontMachineAssignment[]
+  dailyReportEntries   ProjectDailyReportMachine[]
 
   @@unique([corporationId, id])
   @@index([corporationId, createdAt, id])
@@ -603,24 +639,26 @@ model MachineIdentifier {
 }
 
 model MachineMeterReading {
-  id              String                          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  corporationId   String                          @map("corporation_id") @db.Uuid
-  companyId       String                          @map("company_id") @db.Uuid
-  machineId       String                          @map("machine_id") @db.Uuid
-  readingSequence Int                             @map("reading_sequence")
-  value           Decimal                         @db.Decimal(14, 2)
-  status          MachineMeterReadingStatus       @default(CONFIRMED)
-  purpose         MachineMeterReadingPurpose
-  actorUserId     String                          @map("actor_user_id") @db.Uuid
-  recordedAt      DateTime                        @default(now()) @map("recorded_at") @db.Timestamptz(3)
-  createdAt       DateTime                        @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt       DateTime                        @updatedAt @map("updated_at") @db.Timestamptz(3)
-  corporation     Corporation                     @relation(fields: [corporationId], references: [id], onDelete: Restrict)
-  company         Company                         @relation(fields: [corporationId, companyId], references: [corporationId, id], onDelete: Restrict)
-  machine         Machine                         @relation(fields: [corporationId, machineId], references: [corporationId, id], onDelete: Restrict)
-  actor           User                            @relation("MachineMeterReadingActor", fields: [corporationId, actorUserId], references: [corporationId, id], onDelete: Restrict)
-  corrections     MachineMeterReadingCorrection[]
-  references      MachineMeterReadingReference[]
+  id                String                          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId     String                          @map("corporation_id") @db.Uuid
+  companyId         String                          @map("company_id") @db.Uuid
+  machineId         String                          @map("machine_id") @db.Uuid
+  readingSequence   Int                             @map("reading_sequence")
+  value             Decimal                         @db.Decimal(14, 2)
+  status            MachineMeterReadingStatus       @default(CONFIRMED)
+  purpose           MachineMeterReadingPurpose
+  actorUserId       String                          @map("actor_user_id") @db.Uuid
+  recordedAt        DateTime                        @default(now()) @map("recorded_at") @db.Timestamptz(3)
+  createdAt         DateTime                        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime                        @updatedAt @map("updated_at") @db.Timestamptz(3)
+  corporation       Corporation                     @relation(fields: [corporationId], references: [id], onDelete: Restrict)
+  company           Company                         @relation(fields: [corporationId, companyId], references: [corporationId, id], onDelete: Restrict)
+  machine           Machine                         @relation(fields: [corporationId, machineId], references: [corporationId, id], onDelete: Restrict)
+  actor             User                            @relation("MachineMeterReadingActor", fields: [corporationId, actorUserId], references: [corporationId, id], onDelete: Restrict)
+  corrections       MachineMeterReadingCorrection[]
+  references        MachineMeterReadingReference[]
+  dailyReportStarts ProjectDailyReportMachine[]     @relation("ProjectDailyReportMachineStartReading")
+  dailyReportEnds   ProjectDailyReportMachine[]     @relation("ProjectDailyReportMachineEndReading")
 
   @@unique([corporationId, companyId, machineId, id])
   @@unique([corporationId, machineId, readingSequence], map: "machine_meter_readings_corporation_id_machine_id_sequence_key")
@@ -691,6 +729,7 @@ model Project {
   workFronts                   ProjectWorkFront[]
   workFrontEmployeeAssignments ProjectWorkFrontEmployeeAssignment[]
   workFrontMachineAssignments  ProjectWorkFrontMachineAssignment[]
+  dailyReports                 ProjectDailyReport[]
 
   @@unique([corporationId, companyId, id])
   @@index([corporationId, companyId, createdAt, id])
@@ -1082,6 +1121,135 @@ model ProjectLifecycleEvent {
 
   @@index([corporationId, companyId, projectId, occurredAt, id])
   @@map("project_lifecycle_events")
+}
+
+model ProjectDailyReport {
+  id                        String                                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId             String                                      @map("corporation_id") @db.Uuid
+  companyId                 String                                      @map("company_id") @db.Uuid
+  projectId                 String                                      @map("project_id") @db.Uuid
+  reportDate                DateTime                                    @map("report_date") @db.Date
+  shift                     ProjectDailyReportShift
+  shiftOrder                Int                                         @map("shift_order")
+  status                    ProjectDailyReportStatus                    @default(DRAFT)
+  projectNameSnapshot       String                                      @map("project_name_snapshot") @db.VarChar(160)
+  municipalitySnapshot      String?                                     @map("municipality_snapshot") @db.VarChar(100)
+  stateSnapshot             String?                                     @map("state_snapshot") @db.Char(2)
+  contractSnapshot          String?                                     @map("contract_snapshot") @db.VarChar(120)
+  scheduleScaleSnapshot     String                                      @map("schedule_scale_snapshot") @db.VarChar(120)
+  supervisorEmploymentId    String                                      @map("supervisor_employment_id") @db.Uuid
+  supervisorNameSnapshot    String                                      @map("supervisor_name_snapshot") @db.VarChar(180)
+  activityStartTime         String                                      @map("activity_start_time") @db.VarChar(5)
+  activityEndTime           String                                      @map("activity_end_time") @db.VarChar(5)
+  activityEndDayOffset      Int                                         @default(0) @map("activity_end_day_offset")
+  activityTypes             ProjectDailyReportActivityType[]            @map("activity_types")
+  climateConditions         ProjectDailyReportClimateCondition[]        @map("climate_conditions")
+  dailyRainfallMm           Decimal                                     @default(0) @map("daily_rainfall_mm") @db.Decimal(10, 2)
+  monthlyRainfallMm         Decimal                                     @default(0) @map("monthly_rainfall_mm") @db.Decimal(10, 2)
+  executedActivities        String                                      @map("executed_activities") @db.Text
+  interferences             String?                                     @db.Text
+  createdByUserId           String                                      @map("created_by_user_id") @db.Uuid
+  finalizedByUserId         String?                                     @map("finalized_by_user_id") @db.Uuid
+  finalizedAt               DateTime?                                   @map("finalized_at") @db.Timestamptz(3)
+  createdAt                 DateTime                                    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                 DateTime                                    @updatedAt @map("updated_at") @db.Timestamptz(3)
+  project                   Project                                     @relation(fields: [corporationId, companyId, projectId], references: [corporationId, companyId, id], onDelete: Restrict, map: "pdr_project_fkey")
+  supervisor                Employment                                  @relation("ProjectDailyReportSupervisor", fields: [corporationId, companyId, supervisorEmploymentId], references: [corporationId, companyId, id], onDelete: Restrict, map: "pdr_supervisor_fkey")
+  createdBy                 User                                        @relation("ProjectDailyReportCreatedBy", fields: [corporationId, createdByUserId], references: [corporationId, id], onDelete: Restrict, map: "pdr_created_by_fkey")
+  finalizedBy               User?                                       @relation("ProjectDailyReportFinalizedBy", fields: [corporationId, finalizedByUserId], references: [corporationId, id], onDelete: Restrict, map: "pdr_finalized_by_fkey")
+  schedulePeriods           ProjectDailyReportSchedulePeriod[]
+  technicalResponsibilities ProjectDailyReportTechnicalResponsibility[]
+  employeeEntries           ProjectDailyReportEmployee[]
+  machineEntries            ProjectDailyReportMachine[]
+
+  @@unique([corporationId, companyId, projectId, id], map: "pdr_scope_id_uq")
+  @@unique([corporationId, companyId, projectId, reportDate, shift], map: "pdr_project_date_shift_uq")
+  @@index([corporationId, companyId, projectId, reportDate, id], map: "pdr_project_date_idx")
+  @@map("project_daily_reports")
+}
+
+model ProjectDailyReportSchedulePeriod {
+  id             String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId  String             @map("corporation_id") @db.Uuid
+  companyId      String             @map("company_id") @db.Uuid
+  projectId      String             @map("project_id") @db.Uuid
+  dailyReportId  String             @map("daily_report_id") @db.Uuid
+  position       Int
+  startTime      String             @map("start_time") @db.VarChar(5)
+  endTime        String             @map("end_time") @db.VarChar(5)
+  startDayOffset Int                @default(0) @map("start_day_offset")
+  endDayOffset   Int                @default(0) @map("end_day_offset")
+  dailyReport    ProjectDailyReport @relation(fields: [corporationId, companyId, projectId, dailyReportId], references: [corporationId, companyId, projectId, id], onDelete: Cascade, map: "pdrsp_report_fkey")
+
+  @@unique([dailyReportId, position], map: "pdrsp_report_position_uq")
+  @@index([corporationId, companyId, projectId, dailyReportId], map: "project_daily_report_schedule_periods_scope_idx")
+  @@map("project_daily_report_schedule_periods")
+}
+
+model ProjectDailyReportTechnicalResponsibility {
+  id            String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId String             @map("corporation_id") @db.Uuid
+  companyId     String             @map("company_id") @db.Uuid
+  projectId     String             @map("project_id") @db.Uuid
+  dailyReportId String             @map("daily_report_id") @db.Uuid
+  employmentId  String             @map("employment_id") @db.Uuid
+  nameSnapshot  String             @map("name_snapshot") @db.VarChar(180)
+  position      Int
+  dailyReport   ProjectDailyReport @relation(fields: [corporationId, companyId, projectId, dailyReportId], references: [corporationId, companyId, projectId, id], onDelete: Cascade, map: "pdrtr_report_fkey")
+  employment    Employment         @relation("ProjectDailyReportTechnicalResponsibilityEmployment", fields: [corporationId, companyId, employmentId], references: [corporationId, companyId, id], onDelete: Restrict, map: "pdrtr_employment_fkey")
+
+  @@unique([dailyReportId, employmentId], map: "pdrtr_report_employment_uq")
+  @@unique([dailyReportId, position], map: "pdrtr_report_position_uq")
+  @@index([corporationId, companyId, projectId, dailyReportId], map: "project_daily_report_technical_responsibilities_scope_idx")
+  @@map("project_daily_report_technical_responsibilities")
+}
+
+model ProjectDailyReportEmployee {
+  id                           String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId                String             @map("corporation_id") @db.Uuid
+  companyId                    String             @map("company_id") @db.Uuid
+  projectId                    String             @map("project_id") @db.Uuid
+  dailyReportId                String             @map("daily_report_id") @db.Uuid
+  employmentId                 String             @map("employment_id") @db.Uuid
+  employeeNameSnapshot         String             @map("employee_name_snapshot") @db.VarChar(180)
+  jobRoleSnapshot              String             @map("job_role_snapshot") @db.VarChar(120)
+  expectedDailyWorkloadMinutes Int                @map("expected_daily_workload_minutes")
+  completedFullShift           Boolean            @map("completed_full_shift")
+  regularWorkedMinutes         Int                @map("regular_worked_minutes")
+  overtimeMinutes              Int                @default(0) @map("overtime_minutes")
+  dailyReport                  ProjectDailyReport @relation(fields: [corporationId, companyId, projectId, dailyReportId], references: [corporationId, companyId, projectId, id], onDelete: Cascade, map: "pdre_report_fkey")
+  employment                   Employment         @relation("ProjectDailyReportEmployeeEmployment", fields: [corporationId, companyId, employmentId], references: [corporationId, companyId, id], onDelete: Restrict, map: "pdre_employment_fkey")
+
+  @@unique([dailyReportId, employmentId], map: "project_daily_report_employees_report_employment_key")
+  @@index([corporationId, companyId, projectId, employmentId, dailyReportId], map: "project_daily_report_employees_scope_idx")
+  @@map("project_daily_report_employees")
+}
+
+model ProjectDailyReportMachine {
+  id                      String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId           String                 @map("corporation_id") @db.Uuid
+  companyId               String                 @map("company_id") @db.Uuid
+  projectId               String                 @map("project_id") @db.Uuid
+  dailyReportId           String                 @map("daily_report_id") @db.Uuid
+  machineId               String                 @map("machine_id") @db.Uuid
+  machineNameSnapshot     String                 @map("machine_name_snapshot") @db.VarChar(160)
+  manufacturerSnapshot    String                 @map("manufacturer_snapshot") @db.VarChar(120)
+  modelSnapshot           String                 @map("model_snapshot") @db.VarChar(120)
+  meterTypeSnapshot       MachineMeterType       @map("meter_type_snapshot")
+  identifierKindSnapshot  MachineIdentifierKind? @map("identifier_kind_snapshot")
+  identifierValueSnapshot String?                @map("identifier_value_snapshot") @db.VarChar(80)
+  startMeterReadingId     String                 @map("start_meter_reading_id") @db.Uuid
+  startMeterReadingValue  Decimal                @map("start_meter_reading_value") @db.Decimal(14, 2)
+  endMeterReadingId       String?                @map("end_meter_reading_id") @db.Uuid
+  endMeterReadingValue    Decimal                @map("end_meter_reading_value") @db.Decimal(14, 2)
+  dailyReport             ProjectDailyReport     @relation(fields: [corporationId, companyId, projectId, dailyReportId], references: [corporationId, companyId, projectId, id], onDelete: Cascade, map: "pdrm_report_fkey")
+  machine                 Machine                @relation(fields: [corporationId, machineId], references: [corporationId, id], onDelete: Restrict, map: "pdrm_machine_fkey")
+  startMeterReading       MachineMeterReading    @relation("ProjectDailyReportMachineStartReading", fields: [corporationId, companyId, machineId, startMeterReadingId], references: [corporationId, companyId, machineId, id], onDelete: Restrict, map: "pdrm_start_reading_fkey")
+  endMeterReading         MachineMeterReading?   @relation("ProjectDailyReportMachineEndReading", fields: [corporationId, companyId, machineId, endMeterReadingId], references: [corporationId, companyId, machineId, id], onDelete: Restrict, map: "pdrm_end_reading_fkey")
+
+  @@unique([dailyReportId, machineId], map: "project_daily_report_machines_report_machine_key")
+  @@index([corporationId, companyId, projectId, machineId, dailyReportId], map: "project_daily_report_machines_scope_idx")
+  @@map("project_daily_report_machines")
 }
 
 model IdempotencyRecord {

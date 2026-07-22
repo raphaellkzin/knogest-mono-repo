@@ -13,6 +13,8 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - Requisicoes sem body nao enviam `Content-Type`. Nao use um objeto vazio como body para contornar comportamento do cliente HTTP.
 - Mudancas em transporte, Server Actions ou contratos de API devem atualizar `docs/API_CLIENTS.md`, os testes de transporte e, quando aplicavel, o OpenAPI no mesmo trabalho.
 - Siga a definicao de pronto documental do `AGENTS.md` da raiz.
+- Para a aba Relatorios, formulario, mensagem e clipboard do RDO, leia
+  `../docs/project-daily-reports.md` antes de alterar o fluxo.
 
 ## Verificacao
 

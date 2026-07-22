@@ -31,3 +31,19 @@
 - A consulta ViaCEP acontece por Server Action e apenas controla o bloqueio dos campos que ela pode preencher: logradouro, número, complemento, bairro, cidade e UF. Falhas devem manter os dados atuais, liberar edição manual e exibir toast em português.
 - A prévia do Google Maps usa latitude e longitude informadas pelo usuário. Coordenadas são opcionais, não devem ser bloqueadas pelo fluxo de CEP, e o botão só fica disponível quando as duas coordenadas existem.
 - `contractNumber` e `plannedEndDate` são opcionais; campos vazios devem chegar ao contrato como `null`.
+
+## Relatório Diário de Obra
+
+- O RDO usa `OperationsModal` tamanho `xl`, React Hook Form, `zodResolver` e
+  `FormErrorDeclaration`.
+- Data e turno recarregam o contexto temporal; trocar esses valores limpa o
+  rascunho local ainda não salvo para não combinar recursos de períodos
+  diferentes.
+- Durações de jornada usam `HH:MM`; o atalho **Todos completaram o turno**
+  preenche a carga esperada, mantendo horas extras editáveis por pessoa.
+- A leitura inicial da máquina é somente leitura. A validação local bloqueia
+  final menor que inicial, mas a API revalida toda a cadeia na finalização.
+- Salvar cria ou substitui apenas o rascunho. **Finalizar RDO** exige
+  `AlertDialog` e deve explicar imutabilidade, jornadas e medidores.
+- Conflitos retornados pela action aparecem em `FormErrorDeclaration`; toast é
+  usado para sucesso, consultas temporais e resultado do clipboard.

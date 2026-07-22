@@ -52,6 +52,8 @@ import {
   integerInputToCanonicalDecimal,
 } from "@/lib/brazilian-input-mask";
 import { cn } from "@/lib/utils";
+import type { ProjectDailyReportsPage } from "../daily-reports.types";
+import { ProjectDailyReports } from "./project-daily-reports";
 import {
   activateProjectAction,
   createProjectWorkFrontAction,
@@ -1740,6 +1742,7 @@ export function FuelEditEditor({
 }
 
 export function ProjectDetail({
+  initialDailyReports,
   lookupSuppliedItemOfferSuppliersAction,
   lookupSuppliedItemOffersAction,
   lookupSuppliedItemsAction,
@@ -1747,6 +1750,7 @@ export function ProjectDetail({
   options,
   project: serverProject,
 }: {
+  initialDailyReports?: ProjectDailyReportsPage;
   lookupSuppliedItemOfferSuppliersAction: LookupSuppliedItemOfferSuppliersAction;
   lookupSuppliedItemOffersAction: LookupSuppliedItemOffersAction;
   lookupSuppliedItemsAction: LookupSuppliedItemsAction;
@@ -2283,7 +2287,14 @@ export function ProjectDetail({
       label: (
         <TabLabel
           label="Relatórios"
-          status={{ label: "Em breve", tone: "neutral" }}
+          status={
+            initialDailyReports?.data.length
+              ? {
+                  label: String(initialDailyReports.data.length),
+                  tone: "ready",
+                }
+              : { label: "Novo", tone: "neutral" }
+          }
         />
       ),
     },
@@ -3359,12 +3370,23 @@ export function ProjectDetail({
             <Section
               icon={PackageCheck}
               title="Relatórios"
-              description="Os relatórios de produção, diário de obra e medições serão disponibilizados a partir dos apontamentos."
-              status={{ label: "Em breve", tone: "neutral" }}
+              description="Cadastre, finalize e compartilhe os Relatórios Diários de Obra desta obra."
+              status={{
+                label: initialDailyReports?.data.length
+                  ? `${initialDailyReports.data.length} RDO(s)`
+                  : "Sem RDO",
+                tone: initialDailyReports?.data.length ? "ready" : "neutral",
+              }}
             >
-              <p className="text-sm text-muted-foreground">
-                Ainda não há dados executados para consolidar.
-              </p>
+              <ProjectDailyReports
+                projectId={project.id}
+                initialPage={
+                  initialDailyReports ?? {
+                    data: [],
+                    pageInfo: { hasNextPage: false, nextCursor: null },
+                  }
+                }
+              />
             </Section>
           )}
           {activeTab === "suppliers" && (

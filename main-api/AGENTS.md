@@ -29,6 +29,8 @@ Leia este arquivo antes de alterar o projeto.
 5. Use `docs/PAGINATION.md` para toda listagem paginada.
 6. Use `docs/ERRORS.md` para status HTTP e mensagens.
 7. Consulte `../docs/` quando a mudanca alterar um fluxo funcional compartilhado.
+8. Para RDO, jornadas e leituras geradas por finalizacao, leia
+   `../docs/project-daily-reports.md` antes de alterar o modulo `daily-reports`.
 
 ## Verificacao
 

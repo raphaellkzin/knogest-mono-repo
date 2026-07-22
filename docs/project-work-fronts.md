@@ -32,7 +32,7 @@ Troca de solo não é um único volume: a remoção do material impróprio e o a
 5. Iniciar a obra altera somente o projeto para `ACTIVE`. Nenhuma frente começa automaticamente.
 6. Depois da mobilização geral da obra, prepare cada frente destinando recursos do pool do projeto conforme as classes exigidas pela frente.
 7. Inicie a frente em uma ação separada, somente quando o projeto estiver ativo e a mobilização mínima da frente estiver atendida.
-8. Produção, abastecimento, RDO, custos reais e medições continuam fora desta etapa; os caminhos de navegação ficam preparados para essas entregas futuras.
+8. O RDO manual é consolidado por obra e turno, conforme `project-daily-reports.md`; nesta versão ele não é vinculado a uma frente. Produção, abastecimento, custos reais e medições continuam fora do fluxo de frentes.
 
 Ao acionar **Iniciar obra**, a interface abre um alert modal de confirmação e não chama a API até o usuário escolher **Sim, iniciar obra**. Escolher **Não, cancelar** ou fechar o alert encerra o modal e mantém a obra planejada, sem disparar a ativação. Depois da confirmação, a interface bloqueia novos cliques e informa que a ativação está em andamento. O sucesso aplica imediatamente o snapshot ativo devolvido pela API e libera as tabs operacionais; a atualização da rota apenas reconcilia esse estado. Conflitos de prontidão e falhas de comunicação mantêm o projeto planejado, apresentam um toast acionável e permitem nova tentativa. A API continua sendo a autoridade final da prontidão.
 
@@ -83,3 +83,5 @@ O detalhe de projeto retorna `quantityBaseline` com total, alocado e saldo por s
 - Transferências futuras devem encerrar a destinação atual e abrir outra em uma única transação auditável.
 - Produção ou abastecimento não devem alterar implicitamente o pool da obra nem a mobilização da frente.
 - O backend continua sendo a autoridade para escopo, exclusividade e elegibilidade; bloqueios visuais são antecipações de UX, não substitutos da regra transacional.
+- O RDO atual pertence à obra. Uma evolução que o vincule a uma frente deve ser
+  explícita e não pode inferir a frente apenas pela máquina ou pelo colaborador.

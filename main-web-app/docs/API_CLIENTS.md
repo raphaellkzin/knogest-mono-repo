@@ -41,6 +41,13 @@ protocolo da Server Action respondeu. A chamada Fastify interna pode ter
 retornado erro e sido convertida em um resultado serializavel pela action.
 Componentes devem avaliar o resultado de dominio antes de atualizar a interface.
 
+O fluxo de RDO usa queries server-only para a pagina inicial e Server Actions
+para opções temporais, detalhe, paginação, criação, edição e finalização. A
+action de finalização chama
+`POST /projects/:projectId/daily-reports/:reportId/finalize` sem `data` e sem
+`Content-Type`. O componente só aplica o snapshot `finalized` quando o resultado
+de domínio é `success`; um `200` do protocolo da Server Action não basta.
+
 ## Testes e manutencao
 
 - Testes que mockam uma Server Action cobrem o componente, mas nao validam o
