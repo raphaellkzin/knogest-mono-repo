@@ -36,14 +36,23 @@
 
 - O RDO usa `OperationsModal` tamanho `xl`, React Hook Form, `zodResolver` e
   `FormErrorDeclaration`.
+- O formulário segue o assistente padrão em seis etapas: dados do dia,
+  horários, serviço, equipe, máquinas e revisão. **Avançar** valida apenas os
+  campos da etapa atual; a submissão na revisão revalida o formulário inteiro.
+- O resumo de erros recebe foco quando uma etapa falha e usa os nomes em
+  português exibidos na interface. A revisão oferece ações **Editar** para
+  retornar diretamente ao grupo correspondente.
 - Data e turno recarregam o contexto temporal; trocar esses valores limpa o
   rascunho local ainda não salvo para não combinar recursos de períodos
-  diferentes.
+  diferentes. A interface confirma o descarte antes de recarregar e restaura
+  os valores anteriores quando o usuário cancela.
 - Durações de jornada usam `HH:MM`; o atalho **Todos completaram o turno**
   preenche a carga esperada, mantendo horas extras editáveis por pessoa.
 - A leitura inicial da máquina é somente leitura. A validação local bloqueia
   final menor que inicial, mas a API revalida toda a cadeia na finalização.
-- Salvar cria ou substitui apenas o rascunho. **Finalizar RDO** exige
-  `AlertDialog` e deve explicar imutabilidade, jornadas e medidores.
+- **Salvar e sair** cria ou substitui apenas o rascunho e fecha o modal.
+  **Finalizar RDO** exige `AlertDialog` e deve explicar imutabilidade, jornadas
+  e medidores. Em um RDO novo, a finalização salva o rascunho primeiro e só
+  chama o comando de finalizar quando esse salvamento for bem-sucedido.
 - Conflitos retornados pela action aparecem em `FormErrorDeclaration`; toast é
   usado para sucesso, consultas temporais e resultado do clipboard.

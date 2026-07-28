@@ -5,6 +5,10 @@ import { protectSensitiveDocument } from "../../src/lib/security/sensitive-docum
 
 const PILOT_CORPORATION_ID = "00000000-0000-4000-8000-000000000001";
 const PILOT_ADMIN_ID = "00000000-0000-4000-8000-000000000011";
+const EMPTY_COMPANY = {
+  id: "00000000-0000-4000-8000-000000000103",
+  name: "Empresa Vazia",
+} as const;
 
 const fixtureId = (value: number) =>
   `00000000-0000-4000-8000-${String(value).padStart(12, "0")}`;
@@ -721,6 +725,24 @@ async function seedCompany(prisma: PrismaClient, fixture: CompanyFixture) {
   }
 }
 
+async function seedEmptyCompany(prisma: PrismaClient) {
+  await prisma.company.upsert({
+    where: {
+      corporationId_name: {
+        corporationId: PILOT_CORPORATION_ID,
+        name: EMPTY_COMPANY.name,
+      },
+    },
+    update: { isActive: true },
+    create: {
+      id: EMPTY_COMPANY.id,
+      corporationId: PILOT_CORPORATION_ID,
+      name: EMPTY_COMPANY.name,
+      isActive: true,
+    },
+  });
+}
+
 export async function seedEpicOneDevelopmentData(prisma: PrismaClient) {
   const passwordHash = await hashPassword("1234");
 
@@ -761,13 +783,17 @@ export async function seedEpicOneDevelopmentData(prisma: PrismaClient) {
   });
 
   for (const fixture of companies) await seedCompany(prisma, fixture);
+  await seedEmptyCompany(prisma);
 
   return {
     pilot: {
       corporationId: PILOT_CORPORATION_ID,
       domain: "piloto.localhost",
       adminEmail: "master@piloto.localhost",
-      companies: companies.map(({ id, name }) => ({ id, name })),
+      companies: [
+        ...companies.map(({ id, name }) => ({ id, name })),
+        EMPTY_COMPANY,
+      ],
     },
   };
 }

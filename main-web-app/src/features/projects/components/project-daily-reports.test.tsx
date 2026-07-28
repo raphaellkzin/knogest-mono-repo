@@ -19,6 +19,7 @@ vi.mock("sonner", () => ({
 
 import {
   finalizeProjectDailyReportAction,
+  getProjectDailyReportAction,
   getProjectDailyReportOptionsAction,
   saveProjectDailyReportAction,
 } from "../daily-reports.actions";
@@ -38,7 +39,7 @@ afterEach(() => {
 });
 
 describe("ProjectDailyReports", () => {
-  it("prefills context, records a full shift and asks before finalizing", async () => {
+  it("guides a new RDO through the steps and finalizes it directly", async () => {
     const user = userEvent.setup();
     vi.mocked(getProjectDailyReportOptionsAction).mockResolvedValue(options);
     vi.mocked(saveProjectDailyReportAction).mockResolvedValue({
@@ -60,16 +61,71 @@ describe("ProjectDailyReports", () => {
     expect(
       (screen.getByLabelText("Supervisor") as HTMLSelectElement).value,
     ).toBe(employmentId);
-    expect(screen.getByText("Escala vigente: Seg. a Sáb.")).toBeTruthy();
+    expect(screen.getByText("Etapa 1 de 6")).toBeTruthy();
 
-    await user.click(
-      screen.getByRole("button", { name: "Todos completaram o turno" }),
+    await reachReview(user);
+    expect(
+      screen.getByText(
+        "Confira as informações antes de salvar para continuar depois ou finalizar o RDO.",
+      ),
+    ).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Finalizar RDO" }));
+    expect(
+      screen.getByRole("heading", { name: "Finalizar este RDO?" }),
+    ).toBeTruthy();
+    expect(finalizeProjectDailyReportAction).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Sim, finalizar" }));
+
+    await waitFor(() =>
+      expect(saveProjectDailyReportAction).toHaveBeenCalledWith(
+        expect.objectContaining({ projectId, reportId: undefined }),
+      ),
     );
+    await waitFor(() =>
+      expect(finalizeProjectDailyReportAction).toHaveBeenCalledWith(
+        projectId,
+        draft.id,
+      ),
+    );
+    expect(
+      vi.mocked(saveProjectDailyReportAction).mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      vi.mocked(finalizeProjectDailyReportAction).mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it("validates each step and saves a draft before leaving", async () => {
+    const user = userEvent.setup();
+    vi.mocked(getProjectDailyReportOptionsAction).mockResolvedValue(options);
+    vi.mocked(saveProjectDailyReportAction).mockResolvedValue({
+      kind: "success",
+      report: draft,
+    });
+    render(
+      <ProjectDailyReports projectId={projectId} initialPage={emptyPage} />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Novo RDO" }));
+    await screen.findByRole("heading", { name: "Novo RDO" });
+    await user.click(screen.getByRole("button", { name: "Avançar" }));
+    await user.click(screen.getByRole("button", { name: "Avançar" }));
+    await user.click(screen.getByRole("button", { name: "Avançar" }));
+
+    expect(screen.getByText("Revise os dados desta etapa.")).toBeTruthy();
+    expect(screen.getByText("Descreva os serviços executados.")).toBeTruthy();
+
     await user.type(
-      screen.getByLabelText("Atividades executadas"),
+      screen.getByLabelText("Resumo dos serviços executados"),
       "Transporte e compactação de material.",
     );
-    await user.click(screen.getByRole("button", { name: "Salvar rascunho" }));
+    await user.click(screen.getByRole("button", { name: "Avançar" }));
+    await user.click(
+      screen.getByRole("button", { name: "Marcar todos com turno completo" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Avançar" }));
+    await user.click(screen.getByRole("button", { name: "Avançar" }));
+    await user.click(screen.getByRole("button", { name: "Salvar e sair" }));
 
     await waitFor(() =>
       expect(saveProjectDailyReportAction).toHaveBeenCalled(),
@@ -89,27 +145,128 @@ describe("ProjectDailyReports", () => {
         ],
       },
     });
-
-    await user.click(screen.getByRole("button", { name: "Finalizar RDO" }));
-    expect(
-      screen.getByRole("heading", { name: "Finalizar este RDO?" }),
-    ).toBeTruthy();
-    expect(finalizeProjectDailyReportAction).not.toHaveBeenCalled();
-    await user.click(
-      screen.getByRole("button", { name: "Não, continuar editando" }),
+    await waitFor(() =>
+      expect(screen.queryByRole("heading", { name: "Novo RDO" })).toBeNull(),
     );
-    expect(finalizeProjectDailyReportAction).not.toHaveBeenCalled();
+    expect(screen.getByText("Rascunho")).toBeTruthy();
+  });
+
+  it("protects unsaved data when changing the temporal context or closing", async () => {
+    const user = userEvent.setup();
+    vi.mocked(getProjectDailyReportOptionsAction)
+      .mockResolvedValueOnce(options)
+      .mockResolvedValueOnce({
+        ...options,
+        defaults: { ...options.defaults, shift: "night" },
+      });
+    render(
+      <ProjectDailyReports projectId={projectId} initialPage={emptyPage} />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Novo RDO" }));
+    await screen.findByRole("heading", { name: "Novo RDO" });
+    const shift = screen.getByLabelText("Turno") as HTMLSelectElement;
+    await user.selectOptions(shift, "night");
+    expect(
+      screen.getByRole("heading", { name: "Atualizar data e turno?" }),
+    ).toBeTruthy();
+    await user.click(
+      screen.getByRole("button", { name: "Continuar preenchendo" }),
+    );
+    expect(shift.value).toBe("day");
+
+    await user.selectOptions(shift, "night");
+    await user.click(screen.getByRole("button", { name: "Atualizar período" }));
+    await waitFor(() =>
+      expect(getProjectDailyReportOptionsAction).toHaveBeenLastCalledWith({
+        projectId,
+        reportDate: options.defaults.reportDate,
+        shift: "night",
+      }),
+    );
+    await waitFor(() => expect(shift.value).toBe("night"));
+
+    const technician = screen.getByRole("checkbox", { name: "Rafael Brito" });
+    await user.click(technician);
+    await waitFor(() =>
+      expect((technician as HTMLInputElement).checked).toBe(false),
+    );
+    await user.click(screen.getByRole("button", { name: "Cancelar" }));
+    expect(
+      screen.getByRole("heading", { name: "Descartar alterações?" }),
+    ).toBeTruthy();
+    await user.click(
+      screen.getByRole("button", { name: "Continuar preenchendo" }),
+    );
+    expect(screen.getByRole("heading", { name: "Novo RDO" })).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Cancelar" }));
+    await user.click(
+      screen.getByRole("button", { name: "Descartar alterações" }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("heading", { name: "Novo RDO" })).toBeNull(),
+    );
+  });
+
+  it("updates an existing draft and does not finalize when saving fails", async () => {
+    const user = userEvent.setup();
+    vi.mocked(getProjectDailyReportAction).mockResolvedValue(draft);
+    vi.mocked(getProjectDailyReportOptionsAction).mockResolvedValue(options);
+    vi.mocked(saveProjectDailyReportAction).mockResolvedValue({
+      kind: "failure",
+      code: "DAILY_REPORT_RESOURCE_UNAVAILABLE",
+      message: "Resource unavailable",
+    });
+    render(
+      <ProjectDailyReports
+        projectId={projectId}
+        initialPage={{
+          data: [summaryFromDraft],
+          pageInfo: { hasNextPage: false, nextCursor: null },
+        }}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: /20\/07\/2026 · Diurno/u }),
+    );
+    await screen.findByRole("heading", { name: "Continuar RDO" });
+    await reachReview(user, { fillService: false, selectTeam: false });
 
     await user.click(screen.getByRole("button", { name: "Finalizar RDO" }));
     await user.click(screen.getByRole("button", { name: "Sim, finalizar" }));
     await waitFor(() =>
-      expect(finalizeProjectDailyReportAction).toHaveBeenCalledWith(
-        projectId,
-        draft.id,
-      ),
+      expect(screen.getByText(/deixou de estar disponível/u)).toBeTruthy(),
     );
+    expect(saveProjectDailyReportAction).toHaveBeenCalledWith(
+      expect.objectContaining({ reportId: draft.id }),
+    );
+    expect(finalizeProjectDailyReportAction).not.toHaveBeenCalled();
   });
 });
+
+async function reachReview(
+  user: ReturnType<typeof userEvent.setup>,
+  options: { fillService?: boolean; selectTeam?: boolean } = {},
+) {
+  const { fillService = true, selectTeam = true } = options;
+  await user.click(screen.getByRole("button", { name: "Avançar" }));
+  await user.click(screen.getByRole("button", { name: "Avançar" }));
+  if (fillService)
+    await user.type(
+      screen.getByLabelText("Resumo dos serviços executados"),
+      "Transporte e compactação de material.",
+    );
+  await user.click(screen.getByRole("button", { name: "Avançar" }));
+  if (selectTeam)
+    await user.click(
+      screen.getByRole("button", { name: "Marcar todos com turno completo" }),
+    );
+  await user.click(screen.getByRole("button", { name: "Avançar" }));
+  await user.click(screen.getByRole("button", { name: "Avançar" }));
+  expect(screen.getByText("Etapa 6 de 6")).toBeTruthy();
+}
 
 const emptyPage: ProjectDailyReportsPage = {
   data: [],
@@ -195,4 +352,17 @@ const draft: ProjectDailyReportDetail = {
   finalizedAt: null,
   createdAt: "2026-07-20T18:00:00.000Z",
   updatedAt: "2026-07-20T18:00:00.000Z",
+};
+
+const summaryFromDraft: ProjectDailyReportsPage["data"][number] = {
+  id: draft.id,
+  reportDate: draft.reportDate,
+  shift: draft.shift,
+  status: draft.status,
+  activityStartTime: draft.activityWindow.startTime,
+  activityEndTime: draft.activityWindow.endTime,
+  activityEndDayOffset: draft.activityWindow.endDayOffset,
+  createdAt: draft.createdAt,
+  updatedAt: draft.updatedAt,
+  finalizedAt: draft.finalizedAt,
 };

@@ -107,7 +107,9 @@ environment for the browser-authentication epic when `NODE_ENV` is not
 - active Corporation domain: `piloto.localhost`
 - Master Administrator email: `master@piloto.localhost`
 - local password: `1234`
-- three active Companies for selection
+- three active Companies for selection: two with operational fixtures and
+  **Empresa Vazia** without employees, clients, suppliers, machines, projects
+  or catalog bootstrap data
 - one inactive Company for rejection checks
 - sibling Corporation with the same email for scoped reset/isolation checks
 

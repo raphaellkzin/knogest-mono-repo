@@ -104,8 +104,23 @@ seguras dos recursos afetados.
 
 A aba **Relatórios** oferece criação, continuação de rascunho, paginação e
 visualização de finalizados. O formulário usa modal operacional `xl`, React
-Hook Form, Zod e `FormErrorDeclaration` e é dividido em identificação,
-horário/clima, equipe, máquinas e ocorrências.
+Hook Form, Zod e `FormErrorDeclaration`. O preenchimento é um assistente de
+seis etapas: **Dados do dia**, **Horários**, **Serviço**, **Equipe**,
+**Máquinas** e **Revisão**. Cada avanço valida somente a etapa visível e a
+revisão permite voltar diretamente ao grupo que precisa de ajuste.
+
+Os horários previstos vêm preenchidos com a escala vigente e ficam recolhidos
+até que o usuário escolha ajustá-los. Trocar data ou turno recarrega
+responsáveis, equipe, máquinas e leituras do período; antes disso, a interface
+pede confirmação porque qualquer alteração local ainda não salva será
+descartada. Fechar um formulário alterado também exige confirmação.
+
+Na revisão, **Salvar e sair** cria ou substitui o rascunho, fecha o modal e
+mantém o RDO disponível para continuação. **Finalizar RDO** também está
+disponível em um relatório novo: a interface cria o rascunho necessário e, em
+seguida, executa a finalização sem expor essa etapa técnica. Falha ao salvar
+interrompe a sequência; falha ao finalizar mantém o rascunho e apresenta o
+erro no formulário.
 
 Antes da finalização, um `AlertDialog` informa que jornadas e medidores serão
 gravados e o RDO ficará imutável. O detalhe finalizado é somente leitura e

@@ -26,14 +26,50 @@ describe("development fixtures", () => {
     await closePool();
   });
 
-  it("creates exactly two fully scoped companies with operational fixtures", async () => {
+  it("creates two operational companies and one completely empty company", async () => {
     const seeded = await seedEpicOneDevelopmentData(prisma);
 
     expect(await prisma.corporation.count()).toBe(1);
-    expect(await prisma.company.count()).toBe(2);
-    expect(seeded.pilot.companies).toHaveLength(2);
+    expect(await prisma.company.count()).toBe(3);
+    expect(seeded.pilot.companies).toHaveLength(3);
 
-    for (const company of seeded.pilot.companies) {
+    const emptyCompany = seeded.pilot.companies.find(
+      (company) => company.name === "Empresa Vazia",
+    );
+    expect(emptyCompany).toBeDefined();
+
+    const emptyCompanyId = emptyCompany!.id;
+    const emptyCounts = await Promise.all([
+      prisma.employment.count({ where: { companyId: emptyCompanyId } }),
+      prisma.jobRole.count({ where: { companyId: emptyCompanyId } }),
+      prisma.client.count({ where: { companyId: emptyCompanyId } }),
+      prisma.fuelSupplier.count({ where: { companyId: emptyCompanyId } }),
+      prisma.machineOwnershipPeriod.count({
+        where: { companyId: emptyCompanyId },
+      }),
+      prisma.machineIdentifier.count({ where: { companyId: emptyCompanyId } }),
+      prisma.machineMeterReading.count({
+        where: { companyId: emptyCompanyId },
+      }),
+      prisma.project.count({ where: { companyId: emptyCompanyId } }),
+      prisma.measurementUnit.count({ where: { companyId: emptyCompanyId } }),
+      prisma.suppliedItemCategory.count({
+        where: { companyId: emptyCompanyId },
+      }),
+      prisma.suppliedItem.count({ where: { companyId: emptyCompanyId } }),
+      prisma.supplierOffer.count({ where: { companyId: emptyCompanyId } }),
+      prisma.supplierOfferPrice.count({
+        where: { companyId: emptyCompanyId },
+      }),
+      prisma.sensitiveDocumentProtectionHarness.count({
+        where: { companyId: emptyCompanyId },
+      }),
+    ]);
+    expect(emptyCounts).toEqual(Array(emptyCounts.length).fill(0));
+
+    for (const company of seeded.pilot.companies.filter(
+      (company) => company.id !== emptyCompanyId,
+    )) {
       const projects = await prisma.project.findMany({
         where: { companyId: company.id },
         select: { id: true },
@@ -115,7 +151,7 @@ describe("development fixtures", () => {
     await seedEpicOneDevelopmentData(prisma);
     await seedEpicOneDevelopmentData(prisma);
 
-    expect(await prisma.company.count()).toBe(2);
+    expect(await prisma.company.count()).toBe(3);
     expect(await prisma.employment.count()).toBe(6);
     expect(await prisma.machine.count()).toBe(4);
     expect(await prisma.client.count()).toBe(4);
