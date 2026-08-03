@@ -26,10 +26,12 @@ describe("canonicalProjectCommand", () => {
         "00000000-0000-4000-8000-000000000002",
       ],
       weeklySchedule: Array.from({ length: 7 }, (_, index) => ({
+        shift: "day",
         dayOfWeek: index + 1,
         isWorking: index === 0,
         startTime: index === 0 ? "08:00" : null,
         endTime: index === 0 ? "17:00" : null,
+        endDayOffset: 0,
       })),
       breakTemplates: [],
       initialEmployeeAllocations: [],

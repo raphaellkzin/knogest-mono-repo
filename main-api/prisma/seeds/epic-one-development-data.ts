@@ -684,8 +684,9 @@ async function seedCompany(prisma: PrismaClient, fixture: CompanyFixture) {
       for (const day of daySchedule) {
         await tx.projectScheduleDay.upsert({
           where: {
-            scheduleRevisionId_dayOfWeek: {
+            scheduleRevisionId_shift_dayOfWeek: {
               scheduleRevisionId: scheduleId,
+              shift: "DAY",
               dayOfWeek: day.dayOfWeek,
             },
           },
@@ -705,8 +706,9 @@ async function seedCompany(prisma: PrismaClient, fixture: CompanyFixture) {
       }
       await tx.projectBreakTemplate.upsert({
         where: {
-          scheduleRevisionId_position: {
+          scheduleRevisionId_shift_position: {
             scheduleRevisionId: scheduleId,
+            shift: "DAY",
             position: 0,
           },
         },

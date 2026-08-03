@@ -73,8 +73,10 @@ export class ProductionsService {
       scope,
       projectId,
       interval,
+      shiftToDb(query.shift),
     );
     if (!context) throw projectUnavailable();
+    if (!context.shiftEnabled) throw shiftNotEnabled();
     const assignmentByFront = new Map<string, typeof context.assignments>();
     for (const assignment of context.assignments) {
       const current = assignmentByFront.get(assignment.workFrontId) ?? [];
@@ -586,8 +588,10 @@ export class ProductionsService {
       scope,
       projectId,
       shiftInterval(command.productionDate, command.shift),
+      shiftToDb(command.shift),
     );
     if (!options) throw projectUnavailable();
+    if (!options.shiftEnabled) throw shiftNotEnabled();
     const front = options.fronts.find(
       (item) => item.id === command.workFrontId,
     );
@@ -1461,6 +1465,14 @@ function projectUnavailable() {
   return new AppError({
     code: "PRODUCTION_PROJECT_UNAVAILABLE",
     message: "Project is unavailable for production",
+    statusCode: 409,
+  });
+}
+
+function shiftNotEnabled() {
+  return new AppError({
+    code: "PROJECT_SHIFT_NOT_ENABLED",
+    message: "O turno selecionado não está habilitado para esta obra",
     statusCode: 409,
   });
 }

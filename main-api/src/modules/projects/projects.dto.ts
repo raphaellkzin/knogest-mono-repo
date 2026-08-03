@@ -157,8 +157,11 @@ export function formatProjectAddress(address: ProjectAddress) {
     .join(" - ");
 }
 
+const projectShiftSchema = z.enum(["day", "night"]);
+
 export const projectScheduleDaySchema = z
   .object({
+    shift: projectShiftSchema.default("day"),
     dayOfWeek: z.number().int().min(1).max(7),
     isWorking: z.boolean(),
     startTime: z
@@ -169,24 +172,129 @@ export const projectScheduleDaySchema = z
       .string()
       .regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/u)
       .nullable(),
+    endDayOffset: z.number().int().min(0).max(1).default(0),
   })
   .strict()
   .superRefine((day, context) => {
     if (
       day.isWorking &&
-      (!day.startTime || !day.endTime || day.startTime >= day.endTime)
+      (!day.startTime ||
+        !day.endTime ||
+        (day.endDayOffset === 0 && day.startTime >= day.endTime) ||
+        (day.shift === "day" && day.endDayOffset !== 0))
     )
       context.addIssue({
         code: "custom",
         path: ["endTime"],
         message: "Invalid same-day window",
       });
-    if (!day.isWorking && (day.startTime !== null || day.endTime !== null))
+    if (
+      !day.isWorking &&
+      (day.startTime !== null || day.endTime !== null || day.endDayOffset !== 0)
+    )
       context.addIssue({
         code: "custom",
         message: "Non-working days cannot contain times",
       });
   });
+
+const projectBreakTemplateSchema = z
+  .object({
+    shift: projectShiftSchema.default("day"),
+    name: text(120),
+    durationMinutes: z.number().int().min(1).max(1440),
+  })
+  .strict();
+
+const projectEmployeeAllocationSchema = z
+  .object({
+    employmentId: uuid,
+    shift: projectShiftSchema.default("day"),
+    confirmedJobRoleId: uuid.optional(),
+    confirmedJobRolePeriodId: uuid.nullable().optional(),
+    confirmedJobRoleName: optionalNullableText(120).optional(),
+    expectedDailyWorkloadMinutes: z.number().int().min(1).max(1440),
+    compensationMode: z.enum([
+      "daily",
+      "hourly",
+      "weekly",
+      "fortnightly",
+      "monthly",
+    ]),
+    compensationValue: decimal(2, 16),
+    overtimeRate: decimal(2, 16),
+  })
+  .strict()
+  .superRefine((allocation, context) => {
+    const hasExistingRole = Boolean(
+      allocation.confirmedJobRoleId || allocation.confirmedJobRolePeriodId,
+    );
+    const hasTemporaryRole = Boolean(allocation.confirmedJobRoleName);
+    if (!hasExistingRole && !hasTemporaryRole)
+      context.addIssue({
+        code: "custom",
+        path: ["confirmedJobRoleId"],
+        message: "A job role must be confirmed",
+      });
+    if (hasExistingRole && hasTemporaryRole)
+      context.addIssue({
+        code: "custom",
+        path: ["confirmedJobRoleName"],
+        message: "A temporary job role cannot be mixed with an id",
+      });
+  });
+
+const machineOperatorAssignmentSchema = z
+  .object({
+    shift: projectShiftSchema,
+    operatorEmploymentId: uuid,
+  })
+  .strict();
+
+const projectMachineAllocationSchema = z
+  .object({
+    machineId: uuid,
+    startMeterReadingId: uuid,
+    operatorEmploymentId: uuid.optional(),
+    operatorAssignments: z
+      .array(machineOperatorAssignmentSchema)
+      .min(1)
+      .max(2)
+      .optional(),
+  })
+  .strict()
+  .superRefine((allocation, context) => {
+    if (
+      Boolean(allocation.operatorEmploymentId) ===
+      Boolean(allocation.operatorAssignments)
+    )
+      context.addIssue({
+        code: "custom",
+        path: ["operatorAssignments"],
+        message: "Use a legacy day operator or shift operator assignments",
+      });
+    const shifts =
+      allocation.operatorAssignments?.map((item) => item.shift) ?? [];
+    if (new Set(shifts).size !== shifts.length)
+      context.addIssue({
+        code: "custom",
+        path: ["operatorAssignments"],
+        message: "Machine cannot repeat a shift",
+      });
+  })
+  .transform((allocation) => ({
+    machineId: allocation.machineId,
+    startMeterReadingId: allocation.startMeterReadingId,
+    operatorEmploymentId:
+      allocation.operatorEmploymentId ??
+      allocation.operatorAssignments![0].operatorEmploymentId,
+    operatorAssignments: allocation.operatorAssignments ?? [
+      {
+        shift: "day" as const,
+        operatorEmploymentId: allocation.operatorEmploymentId!,
+      },
+    ],
+  }));
 
 export const projectCommandSchema = z
   .object({
@@ -203,69 +311,12 @@ export const projectCommandSchema = z
     clientId: uuid,
     managerEmploymentId: uuid,
     technicalResponsibilityEmploymentIds: z.array(uuid).min(1).max(20),
-    weeklySchedule: z.array(projectScheduleDaySchema).length(7),
-    breakTemplates: z
-      .array(
-        z
-          .object({
-            name: text(120),
-            durationMinutes: z.number().int().min(1).max(1440),
-          })
-          .strict(),
-      )
-      .max(10),
+    weeklySchedule: z.array(projectScheduleDaySchema).min(7).max(14),
+    breakTemplates: z.array(projectBreakTemplateSchema).max(20),
     initialEmployeeAllocations: z
-      .array(
-        z
-          .object({
-            employmentId: uuid,
-            confirmedJobRoleId: uuid.optional(),
-            confirmedJobRolePeriodId: uuid.nullable().optional(),
-            confirmedJobRoleName: optionalNullableText(120).optional(),
-            expectedDailyWorkloadMinutes: z.number().int().min(1).max(1440),
-            compensationMode: z.enum([
-              "daily",
-              "hourly",
-              "weekly",
-              "fortnightly",
-              "monthly",
-            ]),
-            compensationValue: decimal(2, 16),
-            overtimeRate: decimal(2, 16),
-          })
-          .strict()
-          .superRefine((allocation, context) => {
-            const hasExistingRole = Boolean(
-              allocation.confirmedJobRoleId ||
-              allocation.confirmedJobRolePeriodId,
-            );
-            const hasTemporaryRole = Boolean(allocation.confirmedJobRoleName);
-            if (!hasExistingRole && !hasTemporaryRole)
-              context.addIssue({
-                code: "custom",
-                path: ["confirmedJobRoleId"],
-                message: "A job role must be confirmed",
-              });
-            if (hasExistingRole && hasTemporaryRole)
-              context.addIssue({
-                code: "custom",
-                path: ["confirmedJobRoleName"],
-                message: "A temporary job role cannot be mixed with an id",
-              });
-          }),
-      )
+      .array(projectEmployeeAllocationSchema)
       .max(200),
-    initialMachineAllocations: z
-      .array(
-        z
-          .object({
-            machineId: uuid,
-            startMeterReadingId: uuid,
-            operatorEmploymentId: uuid,
-          })
-          .strict(),
-      )
-      .max(100),
+    initialMachineAllocations: z.array(projectMachineAllocationSchema).max(100),
     projectSupplierOffers: z
       .array(
         z
@@ -326,11 +377,24 @@ export const projectCommandSchema = z
         path: ["plannedEndDate"],
         message: "End date precedes start date",
       });
-    if (
-      command.weeklySchedule.map((day) => day.dayOfWeek).join(",") !==
-        "1,2,3,4,5,6,7" ||
-      !command.weeklySchedule.some((day) => day.isWorking)
-    )
+    const scheduleShifts = [
+      ...new Set(command.weeklySchedule.map((day) => day.shift)),
+    ];
+    const validSchedule =
+      scheduleShifts.includes("day") &&
+      scheduleShifts.every((shift) => {
+        const days = command.weeklySchedule
+          .filter((day) => day.shift === shift)
+          .map((day) => day.dayOfWeek)
+          .sort((left, right) => left - right);
+        return (
+          days.join(",") === "1,2,3,4,5,6,7" &&
+          command.weeklySchedule.some(
+            (day) => day.shift === shift && day.isWorking,
+          )
+        );
+      });
+    if (!validSchedule)
       context.addIssue({
         code: "custom",
         path: ["weeklySchedule"],
@@ -367,11 +431,17 @@ export const projectCommandSchema = z
           path: [path],
           message: "Duplicate ids",
         });
-    const teamEmploymentIds = new Set(
-      command.initialEmployeeAllocations.map((item) => item.employmentId),
+    const teamByEmployment = new Map(
+      command.initialEmployeeAllocations.map((item) => [
+        item.employmentId,
+        item.shift,
+      ]),
     );
-    const machineOperatorIds = command.initialMachineAllocations.map(
-      (item) => item.operatorEmploymentId,
+    const machineOperatorIds = command.initialMachineAllocations.flatMap(
+      (item) =>
+        item.operatorAssignments.map(
+          (assignment) => assignment.operatorEmploymentId,
+        ),
     );
     if (new Set(machineOperatorIds).size !== machineOperatorIds.length)
       context.addIssue({
@@ -379,14 +449,24 @@ export const projectCommandSchema = z
         path: ["initialMachineAllocations"],
         message: "Machine operator cannot be assigned to multiple machines",
       });
-    command.initialMachineAllocations.forEach((allocation, index) => {
-      if (!teamEmploymentIds.has(allocation.operatorEmploymentId))
-        context.addIssue({
-          code: "custom",
-          path: ["initialMachineAllocations", index, "operatorEmploymentId"],
-          message: "Machine operator must be part of the initial team",
-        });
-    });
+    command.initialMachineAllocations.forEach((allocation, index) =>
+      allocation.operatorAssignments.forEach((assignment, assignmentIndex) => {
+        if (
+          teamByEmployment.get(assignment.operatorEmploymentId) !==
+          assignment.shift
+        )
+          context.addIssue({
+            code: "custom",
+            path: [
+              "initialMachineAllocations",
+              index,
+              "operatorAssignments",
+              assignmentIndex,
+            ],
+            message: "Machine operator must belong to the same Project shift",
+          });
+      }),
+    );
   });
 
 export const projectIdempotencyKeySchema = z
@@ -479,14 +559,30 @@ export const projectWorkFrontParamsSchema = z
 export const projectWorkFrontMobilizationCommandSchema = z
   .object({
     employmentIds: z.array(uuid).max(200),
-    machineIds: z.array(uuid).max(100),
+    machineIds: z.array(uuid).max(100).optional(),
+    machineAssignments: z
+      .array(z.object({ machineId: uuid, shift: projectShiftSchema }).strict())
+      .max(200)
+      .optional(),
     reason: optionalNullableText(500),
   })
   .strict()
   .superRefine((command, context) => {
+    if (Boolean(command.machineIds) === Boolean(command.machineAssignments))
+      context.addIssue({
+        code: "custom",
+        path: ["machineAssignments"],
+        message: "Use legacy day machines or shift machine assignments",
+      });
     for (const [path, ids] of [
       ["employmentIds", command.employmentIds],
-      ["machineIds", command.machineIds],
+      ["machineIds", command.machineIds ?? []],
+      [
+        "machineAssignments",
+        (command.machineAssignments ?? []).map(
+          (item) => `${item.machineId}:${item.shift}`,
+        ),
+      ],
     ] as const)
       if (new Set(ids).size !== ids.length)
         context.addIssue({
@@ -494,7 +590,19 @@ export const projectWorkFrontMobilizationCommandSchema = z
           path: [path],
           message: "Duplicate ids",
         });
-  });
+  })
+  .transform((command) => ({
+    ...command,
+    machineIds: command.machineIds ?? [
+      ...new Set(command.machineAssignments!.map((item) => item.machineId)),
+    ],
+    machineAssignments:
+      command.machineAssignments ??
+      command.machineIds!.map((machineId) => ({
+        machineId,
+        shift: "day" as const,
+      })),
+  }));
 
 export const projectMobilizationHistoryQuerySchema = z
   .object({
@@ -546,51 +654,29 @@ const projectReadinessOfferSchema = z.union([
   projectReadinessNewOfferSchema,
 ]);
 
-const projectEmployeeReadinessSchema = z
-  .object({
-    employmentId: uuid,
-    confirmedJobRoleId: uuid.optional(),
-    confirmedJobRolePeriodId: uuid.nullable().optional(),
-    confirmedJobRoleName: optionalNullableText(120).optional(),
-    expectedDailyWorkloadMinutes: z.number().int().min(1).max(1440),
-    compensationMode: compensationModeSchema,
-    compensationValue: decimal(2, 16),
-    overtimeRate: decimal(2, 16),
-  })
-  .strict()
-  .superRefine((allocation, context) => {
-    const hasExistingRole = Boolean(
-      allocation.confirmedJobRoleId || allocation.confirmedJobRolePeriodId,
-    );
-    const hasTemporaryRole = Boolean(allocation.confirmedJobRoleName);
-    if (!hasExistingRole && !hasTemporaryRole)
-      context.addIssue({
-        code: "custom",
-        path: ["confirmedJobRoleId"],
-        message: "A job role must be confirmed",
-      });
-    if (hasExistingRole && hasTemporaryRole)
-      context.addIssue({
-        code: "custom",
-        path: ["confirmedJobRoleName"],
-        message: "A temporary job role cannot be mixed with an id",
-      });
-  });
+const projectEmployeeReadinessSchema = projectEmployeeAllocationSchema;
 
-const projectMachineReadinessSchema = z
-  .object({
-    machineId: uuid,
-    startMeterReadingId: uuid,
-    operatorEmploymentId: uuid,
-  })
-  .strict();
+const projectMachineReadinessSchema = projectMachineAllocationSchema;
 
 export const projectEmployeeMobilizationCommandSchema = z
   .object({
     allocations: z.array(projectEmployeeReadinessSchema).max(200),
+    weeklySchedule: z.array(projectScheduleDaySchema).min(7).max(14).optional(),
+    breakTemplates: z.array(projectBreakTemplateSchema).max(20).optional(),
     reason: optionalNullableText(500),
   })
-  .strict();
+  .strict()
+  .superRefine((command, context) => {
+    if (
+      (command.weeklySchedule === undefined) !==
+      (command.breakTemplates === undefined)
+    )
+      context.addIssue({
+        code: "custom",
+        path: ["weeklySchedule"],
+        message: "Schedule days and breaks must be reconciled together",
+      });
+  });
 
 export const projectMachineMobilizationCommandSchema = z
   .object({
@@ -718,10 +804,16 @@ export const projectReadinessCommandSchema = z
           message: "Duplicate ids",
         });
     }
-    const teamEmploymentIds = new Set(
-      (command.employeeAllocations ?? []).map((item) => item.employmentId),
+    const teamByEmployment = new Map(
+      (command.employeeAllocations ?? []).map((item) => [
+        item.employmentId,
+        item.shift,
+      ]),
     );
-    const machineOperatorIds = (command.machineAllocations ?? []).map(
+    const machineOperatorAssignments = (
+      command.machineAllocations ?? []
+    ).flatMap((item) => item.operatorAssignments);
+    const machineOperatorIds = machineOperatorAssignments.map(
       (item) => item.operatorEmploymentId,
     );
     if (new Set(machineOperatorIds).size !== machineOperatorIds.length)
@@ -731,13 +823,25 @@ export const projectReadinessCommandSchema = z
         message: "Machine operator cannot be assigned to multiple machines",
       });
     if (command.employeeAllocations && command.machineAllocations)
-      command.machineAllocations.forEach((allocation, index) => {
-        if (!teamEmploymentIds.has(allocation.operatorEmploymentId))
-          context.addIssue({
-            code: "custom",
-            path: ["machineAllocations", index, "operatorEmploymentId"],
-            message: "Machine operator must be part of the Project team",
-          });
+      command.machineAllocations.forEach((allocation, machineIndex) => {
+        allocation.operatorAssignments.forEach((assignment, shiftIndex) => {
+          if (
+            teamByEmployment.get(assignment.operatorEmploymentId) !==
+            assignment.shift
+          )
+            context.addIssue({
+              code: "custom",
+              path: [
+                "machineAllocations",
+                machineIndex,
+                "operatorAssignments",
+                shiftIndex,
+                "operatorEmploymentId",
+              ],
+              message:
+                "Machine operator must be part of the same Project shift",
+            });
+        });
       });
     const paymentModes = (command.compensationPaymentTerms ?? []).map(
       (item) => item.compensationMode,

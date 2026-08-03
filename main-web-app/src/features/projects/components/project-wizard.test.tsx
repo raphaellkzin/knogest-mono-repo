@@ -160,6 +160,7 @@ function MachineHarness({
         ? [
             {
               employmentId: "employee-1",
+              shift: "day",
               confirmedJobRoleId: "job-role-1",
               confirmedJobRolePeriodId: "role-period-1",
               expectedDailyWorkloadMinutes: 480,
@@ -169,6 +170,7 @@ function MachineHarness({
             },
             {
               employmentId: "employee-2",
+              shift: "day",
               confirmedJobRoleId: "job-role-1",
               confirmedJobRolePeriodId: "role-period-2",
               expectedDailyWorkloadMinutes: 480,
@@ -183,12 +185,16 @@ function MachineHarness({
             {
               machineId: "machine-1",
               startMeterReadingId: "reading-1",
-              operatorEmploymentId: "employee-1",
+              operatorAssignments: [
+                { shift: "day", operatorEmploymentId: "employee-1" },
+              ],
             },
             {
               machineId: "machine-2",
               startMeterReadingId: "reading-2",
-              operatorEmploymentId: "employee-1",
+              operatorAssignments: [
+                { shift: "day", operatorEmploymentId: "employee-1" },
+              ],
             },
           ]
         : [],
@@ -432,7 +438,7 @@ describe("Project wizard polish", () => {
 
     await waitFor(() =>
       expect(screen.getByRole("status").textContent).toContain(
-        '"operatorEmploymentId":""',
+        '"operatorAssignments":[]',
       ),
     );
   });

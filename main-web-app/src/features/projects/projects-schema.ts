@@ -170,15 +170,21 @@ export const weekDays = [1, 2, 3, 4, 5, 6, 7] as const;
 
 const scheduleDaySchema = z
   .object({
+    shift: z.enum(["day", "night"]),
     dayOfWeek: z.number().int().min(1).max(7),
     isWorking: z.boolean(),
     startTime: z.string().nullable(),
     endTime: z.string().nullable(),
+    endDayOffset: z.number().int().min(0).max(1),
   })
   .strict()
   .superRefine((day, context) => {
     if (!day.isWorking) {
-      if (day.startTime !== null || day.endTime !== null)
+      if (
+        day.startTime !== null ||
+        day.endTime !== null ||
+        day.endDayOffset !== 0
+      )
         context.addIssue({
           code: "custom",
           message: "Remova os horários de dias sem trabalho.",
@@ -197,7 +203,12 @@ const scheduleDaySchema = z
         path: ["endTime"],
         message: "Informe um horário final válido.",
       });
-    if (day.startTime && day.endTime && day.startTime >= day.endTime)
+    if (
+      day.startTime &&
+      day.endTime &&
+      day.endDayOffset === 0 &&
+      day.startTime >= day.endTime
+    )
       context.addIssue({
         code: "custom",
         path: ["endTime"],
@@ -206,6 +217,7 @@ const scheduleDaySchema = z
   });
 
 const breakTemplateSchema = z.object({
+  shift: z.enum(["day", "night"]),
   name: text(120),
   durationMinutes: z.coerce.number().int().min(1).max(1440),
 });
@@ -213,6 +225,7 @@ const breakTemplateSchema = z.object({
 const employeeAllocationSchema = z
   .object({
     employmentId: z.string().uuid(),
+    shift: z.enum(["day", "night"]),
     confirmedJobRoleId: z.string().uuid().optional(),
     confirmedJobRolePeriodId: z.string().uuid().nullable().optional(),
     confirmedJobRoleName: optionalText(120).optional(),
@@ -249,7 +262,15 @@ const employeeAllocationSchema = z
 const machineAllocationSchema = z.object({
   machineId: z.string().uuid(),
   startMeterReadingId: z.string().uuid(),
-  operatorEmploymentId: z.string().uuid(),
+  operatorAssignments: z
+    .array(
+      z.object({
+        shift: z.enum(["day", "night"]),
+        operatorEmploymentId: z.string().uuid(),
+      }),
+    )
+    .min(1)
+    .max(2),
 });
 
 const supplierInlineSchema = z
@@ -344,8 +365,8 @@ export const projectCommandSchema = z
       .array(z.string().uuid())
       .min(1, "Selecione pelo menos um responsável técnico.")
       .max(20, "Selecione no máximo 20 responsáveis técnicos."),
-    weeklySchedule: z.array(scheduleDaySchema).length(7),
-    breakTemplates: z.array(breakTemplateSchema).max(10),
+    weeklySchedule: z.array(scheduleDaySchema).min(7).max(14),
+    breakTemplates: z.array(breakTemplateSchema).max(20),
     initialEmployeeAllocations: z.array(employeeAllocationSchema).max(200),
     initialMachineAllocations: z.array(machineAllocationSchema).max(100),
     projectSupplierOffers: z
@@ -369,21 +390,33 @@ export const projectCommandSchema = z
         path: ["plannedEndDate"],
         message: "A data final deve ser posterior à inicial",
       });
-    if (
-      command.weeklySchedule.map((day) => day.dayOfWeek).join(",") !==
-      "1,2,3,4,5,6,7"
-    )
+    const shifts = [...new Set(command.weeklySchedule.map((day) => day.shift))];
+    if (!shifts.includes("day"))
       context.addIssue({
         code: "custom",
         path: ["weeklySchedule"],
-        message: "A semana deve conter segunda a domingo",
+        message: "O turno diurno é obrigatório.",
       });
-    if (!command.weeklySchedule.some((day) => day.isWorking))
-      context.addIssue({
-        code: "custom",
-        path: ["weeklySchedule"],
-        message: "Informe ao menos um dia de trabalho",
-      });
+    for (const shift of shifts) {
+      const days = command.weeklySchedule.filter((day) => day.shift === shift);
+      if (
+        days
+          .map((day) => day.dayOfWeek)
+          .sort()
+          .join(",") !== "1,2,3,4,5,6,7"
+      )
+        context.addIssue({
+          code: "custom",
+          path: ["weeklySchedule"],
+          message: "Cada turno deve conter segunda a domingo.",
+        });
+      if (!days.some((day) => day.isWorking))
+        context.addIssue({
+          code: "custom",
+          path: ["weeklySchedule"],
+          message: "Informe ao menos um dia de trabalho em cada turno.",
+        });
+    }
     for (const [path, values] of [
       [
         "technicalResponsibilityEmploymentIds",
@@ -415,10 +448,17 @@ export const projectCommandSchema = z
           message: "Itens duplicados",
         });
     }
-    const teamEmploymentIds = new Set(
-      command.initialEmployeeAllocations.map((item) => item.employmentId),
+    const teamByEmployment = new Map(
+      command.initialEmployeeAllocations.map((item) => [
+        item.employmentId,
+        item.shift,
+      ]),
     );
-    const machineOperatorIds = command.initialMachineAllocations.map(
+    const machineOperatorAssignments =
+      command.initialMachineAllocations.flatMap(
+        (item) => item.operatorAssignments,
+      );
+    const machineOperatorIds = machineOperatorAssignments.map(
       (item) => item.operatorEmploymentId,
     );
     if (new Set(machineOperatorIds).size !== machineOperatorIds.length)
@@ -428,12 +468,23 @@ export const projectCommandSchema = z
         message: "Um operador não pode operar duas máquinas ao mesmo tempo.",
       });
     command.initialMachineAllocations.forEach((allocation, index) => {
-      if (!teamEmploymentIds.has(allocation.operatorEmploymentId))
-        context.addIssue({
-          code: "custom",
-          path: ["initialMachineAllocations", index, "operatorEmploymentId"],
-          message: "Selecione um operador da equipe inicial",
-        });
+      allocation.operatorAssignments.forEach((assignment, shiftIndex) => {
+        if (
+          teamByEmployment.get(assignment.operatorEmploymentId) !==
+          assignment.shift
+        )
+          context.addIssue({
+            code: "custom",
+            path: [
+              "initialMachineAllocations",
+              index,
+              "operatorAssignments",
+              shiftIndex,
+              "operatorEmploymentId",
+            ],
+            message: "Selecione um operador da equipe do mesmo turno.",
+          });
+      });
     });
   });
 
@@ -460,10 +511,12 @@ export const emptyProjectCommand: ProjectCommand = {
   managerEmploymentId: "",
   technicalResponsibilityEmploymentIds: [],
   weeklySchedule: weekDays.map((dayOfWeek) => ({
+    shift: "day",
     dayOfWeek,
     isWorking: dayOfWeek <= 5,
     startTime: dayOfWeek <= 5 ? "08:00" : null,
     endTime: dayOfWeek <= 5 ? "17:00" : null,
+    endDayOffset: 0,
   })),
   breakTemplates: [],
   initialEmployeeAllocations: [],

@@ -195,7 +195,7 @@ const projectSnapshot: ProjectDetailSnapshot = {
   client: null,
   manager: null,
   technicalResponsibilities: [],
-  schedule: { days: [], breakTemplates: [] },
+  schedule: { shifts: ["day"], days: [], breakTemplates: [] },
   employeeAllocations: [],
   machineAllocations: [],
   fuelOffers: [],
@@ -1085,6 +1085,7 @@ describe("Project active work-front mobilization", () => {
       {
         id: "00000000-0000-4000-8000-000000000924",
         employment: employee,
+        shift: "day",
         jobRole: "Operador",
         expectedDailyWorkloadMinutes: 480,
         compensationMode: "monthly",
@@ -1098,6 +1099,14 @@ describe("Project active work-front mobilization", () => {
         id: "00000000-0000-4000-8000-000000000925",
         machine,
         operator: employee,
+        operatorAssignments: [
+          {
+            id: "00000000-0000-4000-8000-000000000927",
+            shift: "day",
+            operator: employee,
+            effectiveFrom: "2026-07-20T12:00:00.000Z",
+          },
+        ],
         startMeterReading: {
           id: "00000000-0000-4000-8000-000000000926",
           value: "10.00",
@@ -1170,7 +1179,7 @@ describe("Project active work-front mobilization", () => {
     await waitFor(() =>
       expect(saveMobilization).toHaveBeenCalledWith(activeProject.id, frontId, {
         employmentIds: [],
-        machineIds: [machine.id],
+        machineAssignments: [{ machineId: machine.id, shift: "day" }],
       }),
     );
   });
@@ -1296,6 +1305,7 @@ describe("Project detail readiness tabs", () => {
             isActive: true,
           },
           jobRole: "Operador",
+          shift: "day",
           expectedDailyWorkloadMinutes: 480,
           compensationMode: "daily",
           compensationValue: "200.00",
@@ -1311,6 +1321,7 @@ describe("Project detail readiness tabs", () => {
             isActive: true,
           },
           jobRole: "Operador",
+          shift: "day",
           expectedDailyWorkloadMinutes: 480,
           compensationMode: "weekly",
           compensationValue: "1000.00",
@@ -1326,6 +1337,7 @@ describe("Project detail readiness tabs", () => {
             isActive: true,
           },
           jobRole: "Operador",
+          shift: "day",
           expectedDailyWorkloadMinutes: 480,
           compensationMode: "fortnightly",
           compensationValue: "2000.00",
@@ -1341,6 +1353,7 @@ describe("Project detail readiness tabs", () => {
             isActive: true,
           },
           jobRole: "Operador",
+          shift: "day",
           expectedDailyWorkloadMinutes: 480,
           compensationMode: "monthly",
           compensationValue: "4000.00",

@@ -118,6 +118,7 @@ export async function findProductionOptionsContextHandler(
   scope: ProductionScope,
   projectId: string,
   interval: { startAt: Date; endAt: Date },
+  shift: "DAY" | "NIGHT",
 ) {
   const project = await context.prisma.project.findFirst({
     where: {
@@ -140,6 +141,25 @@ export async function findProductionOptionsContextHandler(
     effectiveFrom: { lte: interval.endAt },
     OR: [{ effectiveTo: null }, { effectiveTo: { gt: interval.startAt } }],
   };
+  const scheduleRevision =
+    await context.prisma.projectScheduleRevision.findFirst({
+      where: { ...scopeWhere(scope, projectId), ...overlap },
+      orderBy: { effectiveFrom: "desc" },
+      select: { id: true },
+    });
+  const shiftEnabled = scheduleRevision
+    ? Boolean(
+        await context.prisma.projectScheduleDay.findFirst({
+          where: {
+            corporationId: scope.corporationId,
+            companyId: scope.companyId,
+            scheduleRevisionId: scheduleRevision.id,
+            shift,
+          },
+          select: { id: true },
+        }),
+      )
+    : false;
   const [services, assignments, employeeAllocations] = await Promise.all([
     frontIds.length
       ? context.prisma.projectWorkFrontService.findMany({
@@ -156,6 +176,7 @@ export async function findProductionOptionsContextHandler(
             ...scopeWhere(scope, projectId),
             workFrontId: { in: frontIds },
             ...overlap,
+            shift,
           },
           orderBy: { effectiveFrom: "desc" },
           include: {
@@ -179,7 +200,7 @@ export async function findProductionOptionsContextHandler(
         })
       : [],
     context.prisma.projectEmployeeAllocation.findMany({
-      where: { ...scopeWhere(scope, projectId), ...overlap },
+      where: { ...scopeWhere(scope, projectId), ...overlap, shift },
       orderBy: { effectiveFrom: "asc" },
     }),
   ]);
@@ -197,6 +218,7 @@ export async function findProductionOptionsContextHandler(
   const employmentMap = new Map(employments.map((item) => [item.id, item]));
   return {
     project,
+    shiftEnabled,
     fronts,
     services,
     assignments,

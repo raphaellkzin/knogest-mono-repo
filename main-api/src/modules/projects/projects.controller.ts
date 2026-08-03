@@ -113,27 +113,37 @@ const projectCommandOpenApiSchema = {
     weeklySchedule: {
       type: "array",
       minItems: 7,
-      maxItems: 7,
+      maxItems: 14,
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["dayOfWeek", "isWorking", "startTime", "endTime"],
+        required: [
+          "shift",
+          "dayOfWeek",
+          "isWorking",
+          "startTime",
+          "endTime",
+          "endDayOffset",
+        ],
         properties: {
+          shift: { enum: ["day", "night"] },
           dayOfWeek: { type: "integer", minimum: 1, maximum: 7 },
           isWorking: { type: "boolean" },
           startTime: { type: "string", nullable: true },
           endTime: { type: "string", nullable: true },
+          endDayOffset: { type: "integer", minimum: 0, maximum: 1 },
         },
       },
     },
     breakTemplates: {
       type: "array",
-      maxItems: 10,
+      maxItems: 20,
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["name", "durationMinutes"],
+        required: ["shift", "name", "durationMinutes"],
         properties: {
+          shift: { enum: ["day", "night"] },
           name: { type: "string", maxLength: 120 },
           durationMinutes: { type: "integer", minimum: 1, maximum: 1440 },
         },
@@ -154,6 +164,7 @@ const projectCommandOpenApiSchema = {
         ],
         properties: {
           employmentId: uuid,
+          shift: { enum: ["day", "night"] },
           confirmedJobRoleId: uuid,
           confirmedJobRolePeriodId: { ...uuid, nullable: true },
           confirmedJobRoleName: {
@@ -181,11 +192,29 @@ const projectCommandOpenApiSchema = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["machineId", "startMeterReadingId", "operatorEmploymentId"],
+        required: ["machineId", "startMeterReadingId"],
+        anyOf: [
+          { required: ["operatorEmploymentId"] },
+          { required: ["operatorAssignments"] },
+        ],
         properties: {
           machineId: uuid,
           startMeterReadingId: uuid,
           operatorEmploymentId: uuid,
+          operatorAssignments: {
+            type: "array",
+            minItems: 1,
+            maxItems: 2,
+            items: {
+              type: "object",
+              additionalProperties: false,
+              required: ["shift", "operatorEmploymentId"],
+              properties: {
+                shift: { enum: ["day", "night"] },
+                operatorEmploymentId: uuid,
+              },
+            },
+          },
         },
       },
     },
@@ -446,7 +475,8 @@ const projectWorkFrontCommandOpenApiSchema = {
 const projectWorkFrontMobilizationOpenApiSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["employmentIds", "machineIds"],
+  required: ["employmentIds"],
+  anyOf: [{ required: ["machineIds"] }, { required: ["machineAssignments"] }],
   properties: {
     employmentIds: {
       type: "array",
@@ -460,6 +490,19 @@ const projectWorkFrontMobilizationOpenApiSchema = {
       uniqueItems: true,
       items: uuid,
     },
+    machineAssignments: {
+      type: "array",
+      maxItems: 200,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["machineId", "shift"],
+        properties: {
+          machineId: uuid,
+          shift: { enum: ["day", "night"] },
+        },
+      },
+    },
     reason: { type: "string", nullable: true, maxLength: 500 },
   },
 } as const;
@@ -471,6 +514,8 @@ const projectEmployeeMobilizationOpenApiSchema = {
   properties: {
     allocations:
       projectReadinessCommandOpenApiSchema.properties.employeeAllocations,
+    weeklySchedule: projectCommandOpenApiSchema.properties.weeklySchedule,
+    breakTemplates: projectCommandOpenApiSchema.properties.breakTemplates,
     reason: { type: "string", nullable: true, maxLength: 500 },
   },
 } as const;

@@ -92,6 +92,7 @@ export async function findProjectDailyReportContextHandler(
   scope: DailyReportScope,
   projectId: string,
   interval: { startAt: Date; endAt: Date },
+  shift: "DAY" | "NIGHT",
 ) {
   const where = scopeWhere(scope, projectId);
   const project = await context.prisma.project.findFirst({
@@ -139,7 +140,7 @@ export async function findProjectDailyReportContextHandler(
       select: { id: true },
     }),
     context.prisma.projectEmployeeAllocation.findMany({
-      where: { ...where, ...overlap },
+      where: { ...where, ...overlap, shift },
       orderBy: { effectiveFrom: "asc" },
       select: {
         employmentId: true,
@@ -148,7 +149,11 @@ export async function findProjectDailyReportContextHandler(
       },
     }),
     context.prisma.projectMachineAllocation.findMany({
-      where: { ...where, ...overlap },
+      where: {
+        ...where,
+        ...overlap,
+        shiftAssignments: { some: { ...overlap, shift } },
+      },
       orderBy: { effectiveFrom: "asc" },
       select: { machineId: true },
     }),
@@ -226,6 +231,7 @@ export async function findProjectDailyReportContextHandler(
             corporationId: scope.corporationId,
             companyId: scope.companyId,
             scheduleRevisionId: scheduleRevision.id,
+            shift,
           },
           orderBy: { dayOfWeek: "asc" },
           select: {
@@ -233,6 +239,7 @@ export async function findProjectDailyReportContextHandler(
             isWorking: true,
             startTime: true,
             endTime: true,
+            endDayOffset: true,
           },
         })
       : [],

@@ -7,8 +7,9 @@ um registro consolidado da obra, não de uma frente específica.
 
 - A chave funcional é `obra + data + turno`; nem dois rascunhos podem ocupar a
   mesma chave.
-- Os turnos disponíveis são `DIURNO` e `NOTURNO`. A data do turno noturno é a
-  data em que ele começa.
+- O turno `DIURNO` está sempre disponível; `NOTURNO` só pode ser usado quando
+  habilitado na equipe da obra. A data do turno noturno é a data em que ele
+  começa.
 - O ciclo é `RASCUNHO → FINALIZADO`. Rascunhos podem ser substituídos;
   finalizados são imutáveis quanto ao conteúdo principal, jornadas e
   medidores. O vínculo versionado de produções pode ser reconfirmado.
@@ -25,13 +26,15 @@ máquinas. Mudanças posteriores nos cadastros não reescrevem o RDO.
 
 Ao iniciar um RDO, a API resolve o contexto vigente na data e turno:
 
-- dados da obra, gestor, responsáveis técnicos e escala;
-- funcionários e máquinas mobilizados no período;
+- dados da obra e escala específica do turno;
+- funcionários e máquinas mobilizados naquele turno e período;
 - carga diária esperada das alocações;
 - última leitura oficial da máquina anterior ao início do turno.
 
-Supervisor e técnicos vêm pré-selecionados e podem ser trocados por pessoas
-ativas e elegíveis da obra. Recursos externos à mobilização não são aceitos.
+Supervisor e técnicos vêm pré-selecionados somente quando também pertencem à
+equipe do turno e podem ser trocados por pessoas ativas dessa equipe. Recursos
+externos à mobilização ou de outro turno não são aceitos. Turno desabilitado
+retorna `409 PROJECT_SHIFT_NOT_ENABLED`.
 
 O horário padrão possui de uma a seis faixas ordenadas, positivas e sem
 sobreposição. A janela efetiva de início e encerramento é obrigatória e não
@@ -104,6 +107,7 @@ Conflitos funcionais retornam `409` com códigos públicos:
 - `DAILY_REPORT_PROJECT_UNAVAILABLE`;
 - `DAILY_REPORT_RESOURCE_UNAVAILABLE`;
 - `DAILY_REPORT_METER_READING_CONFLICT`.
+- `PROJECT_SHIFT_NOT_ENABLED`.
 
 Detalhes de conflito contêm somente identificadores, nomes ou categorias
 seguras dos recursos afetados.

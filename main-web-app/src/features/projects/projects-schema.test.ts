@@ -47,7 +47,28 @@ describe("projectCommandSchema", () => {
     expect(parsed.longitude).toBeNull();
     expect(parsed.plannedEndDate).toBeNull();
     expect(parsed.weeklySchedule).toHaveLength(7);
+    expect(parsed.weeklySchedule.every((day) => day.shift === "day")).toBe(
+      true,
+    );
     expect(parsed.projectSupplierOffers).toEqual([]);
+  });
+
+  it("accepts a separately configured overnight shift", () => {
+    const command = valid();
+    command.weeklySchedule.push(
+      ...command.weeklySchedule.map((day) => ({
+        ...day,
+        shift: "night" as const,
+        startTime: day.isWorking ? "18:00" : null,
+        endTime: day.isWorking ? "06:00" : null,
+        endDayOffset: day.isWorking ? 1 : 0,
+      })),
+    );
+    const parsed = projectCommandSchema.parse(command);
+    expect(parsed.weeklySchedule).toHaveLength(14);
+    expect(
+      parsed.weeklySchedule.filter((day) => day.shift === "night"),
+    ).toHaveLength(7);
   });
 
   it("only accepts supplier offers after project creation", () => {
@@ -109,12 +130,14 @@ describe("projectCommandSchema", () => {
 
   it("accepts inclusive optional collection limits", () => {
     const command = valid();
-    command.breakTemplates = Array.from({ length: 10 }, (_, index) => ({
+    command.breakTemplates = Array.from({ length: 20 }, (_, index) => ({
+      shift: "day",
       name: `Pausa ${index}`,
       durationMinutes: 1,
     }));
     expect(projectCommandSchema.safeParse(command).success).toBe(true);
     command.breakTemplates.push({
+      shift: "day",
       name: "Pausa excedente",
       durationMinutes: 1,
     });
@@ -127,6 +150,7 @@ describe("projectCommandSchema", () => {
     command.initialEmployeeAllocations = [
       {
         employmentId: operator,
+        shift: "day",
         confirmedJobRoleId: "00000000-0000-4000-8000-000000000401",
         confirmedJobRolePeriodId: "00000000-0000-4000-8000-000000000402",
         expectedDailyWorkloadMinutes: 480,
@@ -139,7 +163,7 @@ describe("projectCommandSchema", () => {
       {
         machineId: "00000000-0000-4000-8000-000000000501",
         startMeterReadingId: "00000000-0000-4000-8000-000000000601",
-        operatorEmploymentId: operator,
+        operatorAssignments: [{ shift: "day", operatorEmploymentId: operator }],
       },
     ];
     expect(projectCommandSchema.safeParse(command).success).toBe(true);
@@ -147,12 +171,12 @@ describe("projectCommandSchema", () => {
     command.initialMachineAllocations.push({
       machineId: "00000000-0000-4000-8000-000000000502",
       startMeterReadingId: "00000000-0000-4000-8000-000000000602",
-      operatorEmploymentId: operator,
+      operatorAssignments: [{ shift: "day", operatorEmploymentId: operator }],
     });
     expect(projectCommandSchema.safeParse(command).success).toBe(false);
 
     command.initialMachineAllocations.pop();
-    command.initialMachineAllocations[0].operatorEmploymentId =
+    command.initialMachineAllocations[0].operatorAssignments[0].operatorEmploymentId =
       "00000000-0000-4000-8000-000000000303";
     expect(projectCommandSchema.safeParse(command).success).toBe(false);
   });
@@ -162,6 +186,7 @@ describe("projectCommandSchema", () => {
     command.initialEmployeeAllocations = [
       {
         employmentId: "00000000-0000-4000-8000-000000000302",
+        shift: "day",
         confirmedJobRoleName: "Apontador de obra",
         confirmedJobRolePeriodId: null,
         expectedDailyWorkloadMinutes: 480,

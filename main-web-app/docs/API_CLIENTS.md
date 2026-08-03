@@ -53,6 +53,12 @@ detalhe, rascunho, aprovação, reabertura e viagens rápidas. O componente nunc
 incrementa viagens apenas em estado local: cada toque envia UUID de
 idempotência e substitui o detalhe pela revisão retornada pela API.
 
+O cadastro de equipe envia `shift` em cada alocação e pode reconciliar
+`weeklySchedule` e `breakTemplates` na mesma chamada de mobilização. Máquinas
+usam `operatorAssignments` por turno; frentes usam `machineAssignments` com o
+par `machineId + shift`. Ao trocar data ou turno na produção, a interface
+reconsulta as opções antes de substituir responsáveis, frente e máquinas.
+
 Antes de finalizar o RDO, a interface:
 
 1. salva o rascunho do relatório;

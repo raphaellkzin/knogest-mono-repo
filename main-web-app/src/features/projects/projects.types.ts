@@ -85,14 +85,18 @@ export type ProjectDetailSnapshot = {
   manager: ProjectEmployeeSummary | null;
   technicalResponsibilities: ProjectEmployeeSummary[];
   schedule: {
+    shifts: ("day" | "night")[];
     days: {
+      shift: "day" | "night";
       dayOfWeek: number;
       isWorking: boolean;
       startTime: string | null;
       endTime: string | null;
+      endDayOffset: number;
     }[];
     breakTemplates: {
       id: string;
+      shift: "day" | "night";
       name: string;
       durationMinutes: number;
     }[];
@@ -100,6 +104,7 @@ export type ProjectDetailSnapshot = {
   employeeAllocations: {
     id: string;
     employment: ProjectEmployeeSummary | null;
+    shift: "day" | "night";
     jobRole: string;
     expectedDailyWorkloadMinutes: number;
     compensationMode: CompensationMode;
@@ -117,6 +122,12 @@ export type ProjectDetailSnapshot = {
       isActive: boolean;
     } | null;
     operator: ProjectEmployeeSummary | null;
+    operatorAssignments: {
+      id: string;
+      shift: "day" | "night";
+      operator: ProjectEmployeeSummary | null;
+      effectiveFrom: string;
+    }[];
     startMeterReading: { id: string; value: string } | null;
     effectiveFrom: string;
   }[];
@@ -156,12 +167,14 @@ export type ProjectDetailSnapshot = {
     }[];
     employeeAssignments: {
       id: string;
+      shift: "day" | "night";
       source: "direct" | "machine_operator" | "both";
       employment: ProjectEmployeeSummary | null;
       effectiveFrom: string;
     }[];
     machineAssignments: {
       id: string;
+      shift: "day" | "night";
       machine: {
         id: string;
         name: string;

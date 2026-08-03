@@ -58,19 +58,23 @@ export class DailyReportsService {
       scope,
       projectId,
       broadInterval,
+      shiftToDb(query.shift),
     );
     assertProjectAvailable(broadContext?.project, query.reportDate);
+    if (!broadContext!.scheduleDays.length)
+      throw new AppError({
+        code: "PROJECT_SHIFT_NOT_ENABLED",
+        statusCode: 409,
+        message: "O turno selecionado não está habilitado para esta obra",
+      });
     const day = broadContext!.scheduleDays.find(
       (item) => item.dayOfWeek === mondayBasedDay(query.reportDate),
     );
-    const defaultWindow =
-      query.shift === "day"
-        ? {
-            startTime: day?.startTime ?? "07:00",
-            endTime: day?.endTime ?? "18:00",
-            endDayOffset: 0,
-          }
-        : { startTime: "18:00", endTime: "06:00", endDayOffset: 1 };
+    const defaultWindow = {
+      startTime: day?.startTime ?? (query.shift === "day" ? "07:00" : "18:00"),
+      endTime: day?.endTime ?? (query.shift === "day" ? "18:00" : "06:00"),
+      endDayOffset: day?.endDayOffset ?? (query.shift === "day" ? 0 : 1),
+    };
     const exactContext = await findProjectDailyReportContextHandler(
       this.context,
       scope,
@@ -81,17 +85,14 @@ export class DailyReportsService {
         defaultWindow.endTime,
         defaultWindow.endDayOffset,
       ),
+      shiftToDb(query.shift),
     );
     assertProjectAvailable(exactContext?.project, query.reportDate);
     const context = exactContext!;
     const employmentMap = new Map(
       context.employmentRecords.map((item) => [item.id, item]),
     );
-    const responsibleIds = [
-      context.manager?.employmentId,
-      ...context.technicalResponsibilities.map((item) => item.employmentId),
-      ...context.employees.map((item) => item.employmentId),
-    ].filter((id): id is string => Boolean(id));
+    const responsibleIds = context.employees.map((item) => item.employmentId);
     const responsibleOptions = [...new Set(responsibleIds)].flatMap((id) => {
       const employment = employmentMap.get(id);
       return employment?.isActive && employment.state === "ACTIVE"
@@ -359,6 +360,7 @@ export class DailyReportsService {
             scope,
             projectId,
             interval,
+            record.shift,
           );
           assertProjectAvailable(
             context?.project,
@@ -466,17 +468,16 @@ export class DailyReportsService {
       scope,
       projectId,
       interval,
+      shiftToDb(command.shift),
     );
     assertProjectAvailable(reportContext?.project, command.reportDate);
     const resolved = reportContext!;
     const employmentMap = new Map(
       resolved.employmentRecords.map((item) => [item.id, item]),
     );
-    const eligibleResponsibleIds = new Set([
-      resolved.manager?.employmentId,
-      ...resolved.technicalResponsibilities.map((item) => item.employmentId),
-      ...resolved.employees.map((item) => item.employmentId),
-    ]);
+    const eligibleResponsibleIds = new Set(
+      resolved.employees.map((item) => item.employmentId),
+    );
     if (
       !eligibleResponsibleIds.has(command.supervisorEmploymentId) ||
       command.technicalResponsibilityEmploymentIds.some(

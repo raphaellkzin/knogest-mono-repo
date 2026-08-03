@@ -147,7 +147,14 @@ const workFrontActionSchema = z
 
 const workFrontMobilizationActionSchema = z.object({
   employmentIds: z.array(z.string().uuid()).max(200),
-  machineIds: z.array(z.string().uuid()).max(100),
+  machineAssignments: z
+    .array(
+      z.object({
+        machineId: z.string().uuid(),
+        shift: z.enum(["day", "night"]),
+      }),
+    )
+    .max(200),
   reason: z.string().trim().max(500).nullable().optional(),
 });
 
@@ -240,6 +247,7 @@ const projectReadinessActionSchema = z
       .array(
         z.object({
           employmentId: z.string().uuid(),
+          shift: z.enum(["day", "night"]),
           confirmedJobRoleId: z.string().uuid().optional(),
           confirmedJobRolePeriodId: z.string().uuid().nullable().optional(),
           confirmedJobRoleName: z
@@ -267,7 +275,15 @@ const projectReadinessActionSchema = z
         z.object({
           machineId: z.string().uuid(),
           startMeterReadingId: z.string().uuid(),
-          operatorEmploymentId: z.string().uuid(),
+          operatorAssignments: z
+            .array(
+              z.object({
+                shift: z.enum(["day", "night"]),
+                operatorEmploymentId: z.string().uuid(),
+              }),
+            )
+            .min(1)
+            .max(2),
         }),
       )
       .max(100)
@@ -600,6 +616,7 @@ export async function activateProjectAction(
 export async function saveProjectEmployeeMobilizationAction(
   projectId: string,
   allocations: NonNullable<ProjectReadinessActionInput["employeeAllocations"]>,
+  schedule?: Pick<ProjectCommand, "weeklySchedule" | "breakTemplates">,
 ): Promise<ProjectReadinessMutationResult> {
   const id = z.string().uuid().parse(projectId);
   const parsed = projectReadinessActionSchema.parse({
@@ -612,7 +629,15 @@ export async function saveProjectEmployeeMobilizationAction(
     }>({
       url: `/api/v1/projects/${id}/mobilization/employees`,
       method: "PUT",
-      data: { allocations: parsed },
+      data: {
+        allocations: parsed,
+        ...(schedule
+          ? {
+              weeklySchedule: schedule.weeklySchedule,
+              breakTemplates: schedule.breakTemplates,
+            }
+          : {}),
+      },
       headers: { "content-type": "application/json" },
     });
     revalidatePath(`/home/obras/${id}`);

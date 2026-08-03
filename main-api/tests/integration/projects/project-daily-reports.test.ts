@@ -10,6 +10,7 @@ import type { FastifyInstance } from "fastify";
 
 describe("project daily reports", () => {
   const syntheticEmployeeCpfFixture = "111.444.777-35";
+  const syntheticNightEmployeeCpfFixture = "529.982.247-25";
   const syntheticClientCnpjFixture = "12.345.678/0001-95";
   let app: FastifyInstance;
   let organization: OrganizationService;
@@ -91,6 +92,22 @@ describe("project daily reports", () => {
     });
     expect(employeeResponse.statusCode, employeeResponse.body).toBe(201);
     const employmentId = employeeResponse.json().data.id as string;
+    const nightEmployeeResponse = await app.inject({
+      method: "POST",
+      url: "/api/v1/employees",
+      headers: { authorization },
+      payload: {
+        document: syntheticNightEmployeeCpfFixture,
+        fullName: "Marina Noturna",
+        companyRegistrationNumber: "SUP-002",
+        admissionDate: "2026-01-01",
+        jobRoleId: role.id,
+      },
+    });
+    expect(nightEmployeeResponse.statusCode, nightEmployeeResponse.body).toBe(
+      201,
+    );
+    const nightEmploymentId = nightEmployeeResponse.json().data.id as string;
     const clientResponse = await app.inject({
       method: "POST",
       url: "/api/v1/clients",
@@ -122,13 +139,25 @@ describe("project daily reports", () => {
       plannedEndDate: null,
       clientId: clientResponse.json().data.id as string,
       managerEmploymentId: employmentId,
-      technicalResponsibilityEmploymentIds: [employmentId],
-      weeklySchedule: [1, 2, 3, 4, 5, 6, 7].map((dayOfWeek) => ({
-        dayOfWeek,
-        isWorking: dayOfWeek <= 6,
-        startTime: dayOfWeek <= 6 ? "07:00" : null,
-        endTime: dayOfWeek <= 6 ? "18:00" : null,
-      })),
+      technicalResponsibilityEmploymentIds: [employmentId, nightEmploymentId],
+      weeklySchedule: [
+        ...[1, 2, 3, 4, 5, 6, 7].map((dayOfWeek) => ({
+          shift: "day" as const,
+          dayOfWeek,
+          isWorking: dayOfWeek <= 6,
+          startTime: dayOfWeek <= 6 ? "07:00" : null,
+          endTime: dayOfWeek <= 6 ? "18:00" : null,
+          endDayOffset: 0,
+        })),
+        ...[1, 2, 3, 4, 5, 6, 7].map((dayOfWeek) => ({
+          shift: "night" as const,
+          dayOfWeek,
+          isWorking: dayOfWeek <= 6,
+          startTime: dayOfWeek <= 6 ? "18:00" : null,
+          endTime: dayOfWeek <= 6 ? "06:00" : null,
+          endDayOffset: dayOfWeek <= 6 ? 1 : 0,
+        })),
+      ],
       breakTemplates: [],
       initialEmployeeAllocations: [],
       initialMachineAllocations: [],
@@ -186,6 +215,16 @@ describe("project daily reports", () => {
         allocations: [
           {
             employmentId,
+            shift: "day",
+            confirmedJobRoleId: role.id,
+            expectedDailyWorkloadMinutes: 600,
+            compensationMode: "monthly",
+            compensationValue: "5000.00",
+            overtimeRate: "30.00",
+          },
+          {
+            employmentId: nightEmploymentId,
+            shift: "night",
             confirmedJobRoleId: role.id,
             expectedDailyWorkloadMinutes: 600,
             compensationMode: "monthly",
@@ -205,7 +244,13 @@ describe("project daily reports", () => {
           {
             machineId: machine.id,
             startMeterReadingId: initialReading.id,
-            operatorEmploymentId: employmentId,
+            operatorAssignments: [
+              { shift: "day", operatorEmploymentId: employmentId },
+              {
+                shift: "night",
+                operatorEmploymentId: nightEmploymentId,
+              },
+            ],
           },
         ],
       },
@@ -233,6 +278,10 @@ describe("project daily reports", () => {
         where: { projectId: project.projectId },
         data: { effectiveFrom: temporalStart },
       }),
+      app.prisma.projectMachineShiftAssignment.updateMany({
+        where: { projectId: project.projectId },
+        data: { effectiveFrom: temporalStart },
+      }),
       app.prisma.project.update({
         where: { id: project.projectId },
         data: { status: "ACTIVE", actualStartedAt: temporalStart },
@@ -243,6 +292,7 @@ describe("project daily reports", () => {
       otherAuthorization,
       projectId: project.projectId,
       employmentId,
+      nightEmploymentId,
       machineId: machine.id,
       initialReadingId: initialReading.id,
       reportDate,
@@ -260,6 +310,9 @@ describe("project daily reports", () => {
 
   function command(scope: Awaited<ReturnType<typeof setup>>, shift = "day") {
     const night = shift === "night";
+    const operationalEmploymentId = night
+      ? scope.nightEmploymentId
+      : scope.employmentId;
     return {
       reportDate: scope.reportDate,
       shift,
@@ -288,11 +341,11 @@ describe("project daily reports", () => {
       climateConditions: ["dry"],
       dailyRainfallMm: "0",
       monthlyRainfallMm: "0",
-      supervisorEmploymentId: scope.employmentId,
-      technicalResponsibilityEmploymentIds: [scope.employmentId],
+      supervisorEmploymentId: operationalEmploymentId,
+      technicalResponsibilityEmploymentIds: [operationalEmploymentId],
       employees: [
         {
-          employmentId: scope.employmentId,
+          employmentId: operationalEmploymentId,
           completedFullShift: true,
           regularWorkedMinutes: 1,
           overtimeMinutes: 60,

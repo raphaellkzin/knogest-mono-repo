@@ -112,10 +112,12 @@ describe("project material offers readiness", () => {
       managerEmploymentId: employmentId,
       technicalResponsibilityEmploymentIds: [employmentId],
       weeklySchedule: [1, 2, 3, 4, 5, 6, 7].map((dayOfWeek) => ({
+        shift: "day",
         dayOfWeek,
         isWorking: dayOfWeek < 6,
         startTime: dayOfWeek < 6 ? "08:00" : null,
         endTime: dayOfWeek < 6 ? "17:00" : null,
+        endDayOffset: 0,
       })),
       breakTemplates: [],
       initialEmployeeAllocations: [],

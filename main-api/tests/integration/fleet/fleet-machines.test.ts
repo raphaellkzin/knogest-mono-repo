@@ -285,7 +285,9 @@ describe("fleet Machine registry and meter readings", () => {
           id: employmentId,
         },
       },
-      select: { jobRolePeriods: { where: { effectiveTo: null }, select: { id: true } } },
+      select: {
+        jobRolePeriods: { where: { effectiveTo: null }, select: { id: true } },
+      },
     });
     const client = await app.prisma.client.create({
       data: {
@@ -339,15 +341,18 @@ describe("fleet Machine registry and meter readings", () => {
         managerEmploymentId: employmentId,
         technicalResponsibilityEmploymentIds: [employmentId],
         weeklySchedule: [1, 2, 3, 4, 5, 6, 7].map((dayOfWeek) => ({
+          shift: "day",
           dayOfWeek,
           isWorking: dayOfWeek < 6,
           startTime: dayOfWeek < 6 ? "08:00" : null,
           endTime: dayOfWeek < 6 ? "17:00" : null,
+          endDayOffset: 0,
         })),
         breakTemplates: [],
         initialEmployeeAllocations: [
           {
             employmentId,
+            shift: "day",
             confirmedJobRolePeriodId: employment.jobRolePeriods[0].id,
             expectedDailyWorkloadMinutes: 480,
             compensationMode: "monthly",
@@ -360,6 +365,9 @@ describe("fleet Machine registry and meter readings", () => {
             machineId: initialMachine.id,
             startMeterReadingId: initialMachine.latestMeterReading.id,
             operatorEmploymentId: employmentId,
+            operatorAssignments: [
+              { shift: "day", operatorEmploymentId: employmentId },
+            ],
           },
         ],
         projectSupplierOffers: [
@@ -413,7 +421,10 @@ describe("fleet Machine registry and meter readings", () => {
       method: "POST",
       url: `/api/v1/machines/${machine.id}/allocations`,
       headers: { authorization },
-      payload: { projectId: project.projectId, operatorEmploymentId: employmentId },
+      payload: {
+        projectId: project.projectId,
+        operatorEmploymentId: employmentId,
+      },
     });
     expect(allocated.statusCode).toBe(200);
     expect(allocated.json().data).toMatchObject({

@@ -41,10 +41,12 @@ const command: ProjectCommand = {
     "00000000-0000-4000-8000-000000000301",
   ],
   weeklySchedule: Array.from({ length: 7 }, (_, index) => ({
+    shift: "day",
     dayOfWeek: index + 1,
     isWorking: index === 0,
     startTime: index === 0 ? "08:00" : null,
     endTime: index === 0 ? "17:00" : null,
+    endDayOffset: 0,
   })),
   breakTemplates: [],
   initialEmployeeAllocations: [],
@@ -55,6 +57,71 @@ const command: ProjectCommand = {
 describe("Projects DTO", () => {
   it("accepts the minimal aggregate", () =>
     expect(projectCommandSchema.safeParse(command).success).toBe(true));
+
+  it("accepts independent overnight schedules and same-shift machine operators", () => {
+    const nightOperator = "00000000-0000-4000-8000-000000000302";
+    const nightSchedule = command.weeklySchedule.map((day) => ({
+      ...day,
+      shift: "night" as const,
+      startTime: day.isWorking ? "18:00" : null,
+      endTime: day.isWorking ? "06:00" : null,
+      endDayOffset: day.isWorking ? 1 : 0,
+    }));
+    const result = projectCommandSchema.safeParse({
+      ...command,
+      weeklySchedule: [...command.weeklySchedule, ...nightSchedule],
+      initialEmployeeAllocations: [
+        {
+          employmentId: nightOperator,
+          shift: "night",
+          confirmedJobRolePeriodId: "00000000-0000-4000-8000-000000000402",
+          expectedDailyWorkloadMinutes: 480,
+          compensationMode: "monthly",
+          compensationValue: "0.00",
+          overtimeRate: "0.00",
+        },
+      ],
+      initialMachineAllocations: [
+        {
+          machineId: "00000000-0000-4000-8000-000000000501",
+          startMeterReadingId: "00000000-0000-4000-8000-000000000601",
+          operatorAssignments: [
+            { shift: "night", operatorEmploymentId: nightOperator },
+          ],
+        },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects a machine operator assigned outside the worker shift", () => {
+    const operator = "00000000-0000-4000-8000-000000000302";
+    expect(
+      projectCommandSchema.safeParse({
+        ...command,
+        initialEmployeeAllocations: [
+          {
+            employmentId: operator,
+            shift: "day",
+            confirmedJobRolePeriodId: "00000000-0000-4000-8000-000000000402",
+            expectedDailyWorkloadMinutes: 480,
+            compensationMode: "monthly",
+            compensationValue: "0.00",
+            overtimeRate: "0.00",
+          },
+        ],
+        initialMachineAllocations: [
+          {
+            machineId: "00000000-0000-4000-8000-000000000501",
+            startMeterReadingId: "00000000-0000-4000-8000-000000000601",
+            operatorAssignments: [
+              { shift: "night", operatorEmploymentId: operator },
+            ],
+          },
+        ],
+      }).success,
+    ).toBe(false);
+  });
 
   it("only accepts supplier offers after project creation", () => {
     expect(
@@ -181,7 +248,8 @@ describe("Projects DTO", () => {
     expect(
       projectCommandSchema.safeParse({
         ...command,
-        breakTemplates: Array.from({ length: 11 }, (_, index) => ({
+        breakTemplates: Array.from({ length: 21 }, (_, index) => ({
+          shift: "day",
           name: `B${index}`,
           durationMinutes: 1,
         })),

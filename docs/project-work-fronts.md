@@ -45,7 +45,11 @@ A mobilização ocorre em duas camadas:
 
 Pessoas e máquinas só podem estar em uma frente por vez dentro da obra. Um recurso ocupado aparece indisponível e deve ser liberado da frente atual antes de outra destinação; não existe transferência automática.
 
-Toda máquina da obra possui um operador. Ao selecionar a máquina para uma frente, o operador é incluído automaticamente e conta como equipe. Se a pessoa também tiver sido selecionada diretamente, o histórico registra as duas origens sem duplicar a pessoa na frente.
+Toda máquina mobilizada possui um operador por turno. Ao selecionar o par
+`máquina + turno` para uma frente, o operador daquele turno é incluído
+automaticamente e conta como equipe. A mesma máquina pode estar em frentes
+diferentes em turnos diferentes. Se a pessoa também tiver sido selecionada
+diretamente, o histórico registra as duas origens sem duplicá-la na frente.
 
 Os requisitos de equipe e máquinas bloqueiam apenas o **início** da frente. Depois de ativa, a frente pode ter sua mobilização alterada ou ficar temporariamente sem recursos sem ser encerrada automaticamente.
 

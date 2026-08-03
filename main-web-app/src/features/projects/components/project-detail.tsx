@@ -87,6 +87,7 @@ import type {
 import {
   EmployeeMobilization,
   MachineMobilization,
+  Schedule,
   type ProjectWizardOptions,
 } from "./project-wizard";
 import {
@@ -390,10 +391,11 @@ function projectToCommand(project: ProjectDetailSnapshot): ProjectCommand {
       (person) => person.id,
     ),
     weeklySchedule:
-      project.schedule.days.length === 7
+      project.schedule.days.length === 7 || project.schedule.days.length === 14
         ? project.schedule.days
         : emptyProjectCommand.weeklySchedule,
     breakTemplates: project.schedule.breakTemplates.map((item) => ({
+      shift: item.shift,
       name: item.name,
       durationMinutes: item.durationMinutes,
     })),
@@ -401,6 +403,7 @@ function projectToCommand(project: ProjectDetailSnapshot): ProjectCommand {
       .filter((allocation) => allocation.employment)
       .map((allocation) => ({
         employmentId: allocation.employment!.id,
+        shift: allocation.shift,
         confirmedJobRoleName: allocation.jobRole,
         confirmedJobRolePeriodId: null,
         expectedDailyWorkloadMinutes: allocation.expectedDailyWorkloadMinutes,
@@ -412,13 +415,23 @@ function projectToCommand(project: ProjectDetailSnapshot): ProjectCommand {
       .filter(
         (allocation) =>
           allocation.machine &&
-          allocation.operator &&
+          allocation.operatorAssignments.length > 0 &&
           allocation.startMeterReading,
       )
       .map((allocation) => ({
         machineId: allocation.machine!.id,
         startMeterReadingId: allocation.startMeterReading!.id,
-        operatorEmploymentId: allocation.operator!.id,
+        operatorAssignments: allocation.operatorAssignments.flatMap(
+          (assignment) =>
+            assignment.operator
+              ? [
+                  {
+                    shift: assignment.shift,
+                    operatorEmploymentId: assignment.operator.id,
+                  },
+                ]
+              : [],
+        ),
       })),
     projectSupplierOffers: [],
   };
@@ -2085,20 +2098,24 @@ export function ProjectDetail({
   const machineOccupation = new Map(
     project.workFronts.flatMap((front) =>
       front.machineAssignments.flatMap((assignment) =>
-        assignment.machine ? [[assignment.machine.id, front] as const] : [],
+        assignment.machine
+          ? [[`${assignment.machine.id}:${assignment.shift}`, front] as const]
+          : [],
       ),
     ),
   );
   const selectedMachineOperatorIds = new Set(
-    project.machineAllocations
-      .filter((allocation) =>
-        allocation.machine
-          ? frontMachineIds.includes(allocation.machine.id)
-          : false,
-      )
-      .flatMap((allocation) =>
-        allocation.operator ? [allocation.operator.id] : [],
-      ),
+    project.machineAllocations.flatMap((allocation) =>
+      allocation.machine
+        ? allocation.operatorAssignments.flatMap((assignment) =>
+            frontMachineIds.includes(
+              `${allocation.machine!.id}:${assignment.shift}`,
+            ) && assignment.operator
+              ? [assignment.operator.id]
+              : [],
+          )
+        : [],
+    ),
   );
   const canManageFronts =
     project.status === "planned" || project.status === "active";
@@ -2724,38 +2741,26 @@ export function ProjectDetail({
 
   const saveTeam = () => {
     const values = readinessForm.getValues();
-    if (project.status === "active") {
-      startTransition(async () => {
-        const result = await saveProjectEmployeeMobilizationAction(
-          project.id,
-          values.initialEmployeeAllocations,
-        );
-        if (result.kind === "success") {
-          toast.success("Equipe mobilizada atualizada.");
-          readinessForm.reset(values);
-          setOpenModal(null);
-          router.refresh();
-          return;
-        }
-        toast.error("Não foi possível atualizar a equipe mobilizada.", {
-          description: result.message,
-        });
-      });
-      return;
-    }
-    savePatch(
-      {
-        employeeAllocations: values.initialEmployeeAllocations,
-      },
-      "Equipe operacional salva.",
-      () => {
+    startTransition(async () => {
+      const result = await saveProjectEmployeeMobilizationAction(
+        project.id,
+        values.initialEmployeeAllocations,
+        {
+          weeklySchedule: values.weeklySchedule,
+          breakTemplates: values.breakTemplates,
+        },
+      );
+      if (result.kind === "success") {
+        toast.success("Equipe e turnos atualizados.");
         readinessForm.reset(values);
-        setPaymentTermRows([]);
-        setPaymentTerms({});
-        setPaymentDirty(true);
         setOpenModal(null);
-      },
-    );
+        router.refresh();
+        return;
+      }
+      toast.error("Não foi possível atualizar a equipe e os turnos.", {
+        description: result.message,
+      });
+    });
   };
 
   const saveMachines = () => {
@@ -2997,7 +3002,9 @@ export function ProjectDetail({
     );
     setFrontMachineIds(
       front.machineAssignments.flatMap((assignment) =>
-        assignment.machine ? [assignment.machine.id] : [],
+        assignment.machine
+          ? [`${assignment.machine.id}:${assignment.shift}`]
+          : [],
       ),
     );
     setFrontMobilizationIssues([]);
@@ -3022,7 +3029,13 @@ export function ProjectDetail({
         mobilizingFrontId,
         {
           employmentIds: frontEmploymentIds,
-          machineIds: frontMachineIds,
+          machineAssignments: frontMachineIds.map((key) => {
+            const [machineId, shift] = key.split(":");
+            return {
+              machineId,
+              shift: shift as "day" | "night",
+            };
+          }),
         },
       );
       if (result.kind === "success") {
@@ -3972,7 +3985,8 @@ export function ProjectDetail({
                       </p>
                       <p className="text-muted-foreground">
                         {allocation.jobRole} ·{" "}
-                        {compensationLabels[allocation.compensationMode]}
+                        {compensationLabels[allocation.compensationMode]} ·{" "}
+                        {allocation.shift === "night" ? "Noturno" : "Diurno"}
                       </p>
                     </div>
                   ))}
@@ -4029,7 +4043,14 @@ export function ProjectDetail({
                         {allocation.machine?.name ?? "Máquina"}
                       </p>
                       <p className="text-muted-foreground">
-                        Operador: {allocation.operator?.name ?? "Não informado"}
+                        {allocation.operatorAssignments.length
+                          ? allocation.operatorAssignments
+                              .map(
+                                (assignment) =>
+                                  `${assignment.shift === "night" ? "Noturno" : "Diurno"}: ${assignment.operator?.name ?? "Não informado"}`,
+                              )
+                              .join(" · ")
+                          : "Nenhum operador por turno informado"}
                       </p>
                     </div>
                   ))
@@ -4486,43 +4507,49 @@ export function ProjectDetail({
             description="A máquina leva consigo o operador definido na mobilização geral da obra."
           >
             <div className="grid gap-2">
-              {project.machineAllocations.map((allocation) => {
+              {project.machineAllocations.flatMap((allocation) => {
                 const machine = allocation.machine;
-                if (!machine) return null;
-                const occupied = machineOccupation.get(machine.id);
-                const occupiedElsewhere =
-                  occupied && occupied.id !== mobilizingFrontId;
-                return (
-                  <label
-                    key={allocation.id}
-                    className={cn(
-                      "flex min-h-11 items-start gap-3 rounded-md border border-border px-3 py-2 text-sm",
-                      occupiedElsewhere && "opacity-60",
-                    )}
-                  >
-                    <input
-                      type="checkbox"
-                      className="mt-0.5 size-4 accent-primary"
-                      checked={frontMachineIds.includes(machine.id)}
-                      disabled={isPending || Boolean(occupiedElsewhere)}
-                      onChange={(event) =>
-                        setFrontMachineIds((current) =>
-                          event.target.checked
-                            ? [...current, machine.id]
-                            : current.filter((id) => id !== machine.id),
-                        )
-                      }
-                    />
-                    <span>
-                      <strong className="block">{machine.name}</strong>
-                      <span className="text-muted-foreground">
-                        {occupiedElsewhere
-                          ? `Ocupada em ${occupied.name}`
-                          : `Operador: ${allocation.operator?.name ?? "não informado"}`}
+                if (!machine) return [];
+                return allocation.operatorAssignments.map((assignment) => {
+                  const assignmentKey = `${machine.id}:${assignment.shift}` as
+                    | `${string}:day`
+                    | `${string}:night`;
+                  const occupied = machineOccupation.get(assignmentKey);
+                  const occupiedElsewhere =
+                    occupied && occupied.id !== mobilizingFrontId;
+                  return (
+                    <label
+                      key={`${allocation.id}:${assignment.shift}`}
+                      className={cn(
+                        "flex min-h-11 items-start gap-3 rounded-md border border-border px-3 py-2 text-sm",
+                        occupiedElsewhere && "opacity-60",
+                      )}
+                    >
+                      <input
+                        type="checkbox"
+                        className="mt-0.5 size-4 accent-primary"
+                        checked={frontMachineIds.includes(assignmentKey)}
+                        disabled={isPending || Boolean(occupiedElsewhere)}
+                        onChange={(event) =>
+                          setFrontMachineIds((current) =>
+                            event.target.checked
+                              ? [...current, assignmentKey]
+                              : current.filter((id) => id !== assignmentKey),
+                          )
+                        }
+                      />
+                      <span>
+                        <strong className="block">{machine.name}</strong>
+                        <span className="text-muted-foreground">
+                          {assignment.shift === "day" ? "Diurno" : "Noturno"} ·{" "}
+                          {occupiedElsewhere
+                            ? `Ocupada em ${occupied.name}`
+                            : `Operador: ${assignment.operator?.name ?? "não informado"}`}
+                        </span>
                       </span>
-                    </span>
-                  </label>
-                );
+                    </label>
+                  );
+                });
               })}
             </div>
           </FormSection>
@@ -5251,6 +5278,7 @@ export function ProjectDetail({
               modal de responsáveis da obra.
             </p>
           </div>
+          <Schedule form={readinessForm} />
           <EmployeeMobilization
             form={readinessForm}
             options={modalOptions}

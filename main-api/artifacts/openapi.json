@@ -13276,17 +13276,20 @@
                   "weeklySchedule": {
                     "type": "array",
                     "minItems": 7,
-                    "maxItems": 7,
+                    "maxItems": 14,
                     "items": {
                       "type": "object",
                       "additionalProperties": false,
                       "required": [
+                        "shift",
                         "dayOfWeek",
                         "isWorking",
                         "startTime",
-                        "endTime"
+                        "endTime",
+                        "endDayOffset"
                       ],
                       "properties": {
+                        "shift": { "enum": ["day", "night"] },
                         "dayOfWeek": {
                           "type": "integer",
                           "minimum": 1,
@@ -13294,18 +13297,24 @@
                         },
                         "isWorking": { "type": "boolean" },
                         "startTime": { "type": "string", "nullable": true },
-                        "endTime": { "type": "string", "nullable": true }
+                        "endTime": { "type": "string", "nullable": true },
+                        "endDayOffset": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 1
+                        }
                       }
                     }
                   },
                   "breakTemplates": {
                     "type": "array",
-                    "maxItems": 10,
+                    "maxItems": 20,
                     "items": {
                       "type": "object",
                       "additionalProperties": false,
-                      "required": ["name", "durationMinutes"],
+                      "required": ["shift", "name", "durationMinutes"],
                       "properties": {
+                        "shift": { "enum": ["day", "night"] },
                         "name": { "type": "string", "maxLength": 120 },
                         "durationMinutes": {
                           "type": "integer",
@@ -13330,6 +13339,7 @@
                       ],
                       "properties": {
                         "employmentId": { "type": "string", "format": "uuid" },
+                        "shift": { "enum": ["day", "night"] },
                         "confirmedJobRoleId": {
                           "type": "string",
                           "format": "uuid"
@@ -13370,10 +13380,10 @@
                     "items": {
                       "type": "object",
                       "additionalProperties": false,
-                      "required": [
-                        "machineId",
-                        "startMeterReadingId",
-                        "operatorEmploymentId"
+                      "required": ["machineId", "startMeterReadingId"],
+                      "anyOf": [
+                        { "required": ["operatorEmploymentId"] },
+                        { "required": ["operatorAssignments"] }
                       ],
                       "properties": {
                         "machineId": { "type": "string", "format": "uuid" },
@@ -13384,6 +13394,23 @@
                         "operatorEmploymentId": {
                           "type": "string",
                           "format": "uuid"
+                        },
+                        "operatorAssignments": {
+                          "type": "array",
+                          "minItems": 1,
+                          "maxItems": 2,
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["shift", "operatorEmploymentId"],
+                            "properties": {
+                              "shift": { "enum": ["day", "night"] },
+                              "operatorEmploymentId": {
+                                "type": "string",
+                                "format": "uuid"
+                              }
+                            }
+                          }
                         }
                       }
                     }
@@ -14281,6 +14308,7 @@
                       ],
                       "properties": {
                         "employmentId": { "type": "string", "format": "uuid" },
+                        "shift": { "enum": ["day", "night"] },
                         "confirmedJobRoleId": {
                           "type": "string",
                           "format": "uuid"
@@ -14321,10 +14349,10 @@
                     "items": {
                       "type": "object",
                       "additionalProperties": false,
-                      "required": [
-                        "machineId",
-                        "startMeterReadingId",
-                        "operatorEmploymentId"
+                      "required": ["machineId", "startMeterReadingId"],
+                      "anyOf": [
+                        { "required": ["operatorEmploymentId"] },
+                        { "required": ["operatorAssignments"] }
                       ],
                       "properties": {
                         "machineId": { "type": "string", "format": "uuid" },
@@ -14335,6 +14363,23 @@
                         "operatorEmploymentId": {
                           "type": "string",
                           "format": "uuid"
+                        },
+                        "operatorAssignments": {
+                          "type": "array",
+                          "minItems": 1,
+                          "maxItems": 2,
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["shift", "operatorEmploymentId"],
+                            "properties": {
+                              "shift": { "enum": ["day", "night"] },
+                              "operatorEmploymentId": {
+                                "type": "string",
+                                "format": "uuid"
+                              }
+                            }
+                          }
                         }
                       }
                     }
@@ -15482,6 +15527,7 @@
                       ],
                       "properties": {
                         "employmentId": { "type": "string", "format": "uuid" },
+                        "shift": { "enum": ["day", "night"] },
                         "confirmedJobRoleId": {
                           "type": "string",
                           "format": "uuid"
@@ -15513,6 +15559,57 @@
                         },
                         "compensationValue": { "type": "string" },
                         "overtimeRate": { "type": "string" }
+                      }
+                    }
+                  },
+                  "weeklySchedule": {
+                    "type": "array",
+                    "minItems": 7,
+                    "maxItems": 14,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "shift",
+                        "dayOfWeek",
+                        "isWorking",
+                        "startTime",
+                        "endTime",
+                        "endDayOffset"
+                      ],
+                      "properties": {
+                        "shift": { "enum": ["day", "night"] },
+                        "dayOfWeek": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 7
+                        },
+                        "isWorking": { "type": "boolean" },
+                        "startTime": { "type": "string", "nullable": true },
+                        "endTime": { "type": "string", "nullable": true },
+                        "endDayOffset": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 1
+                        }
+                      }
+                    }
+                  },
+                  "breakTemplates": {
+                    "type": "array",
+                    "maxItems": 20,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["shift", "name", "durationMinutes"],
+                      "properties": {
+                        "shift": { "enum": ["day", "night"] },
+                        "name": { "type": "string", "maxLength": 120 },
+                        "durationMinutes": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 1440
+                        }
                       }
                     }
                   },
@@ -15773,10 +15870,10 @@
                     "items": {
                       "type": "object",
                       "additionalProperties": false,
-                      "required": [
-                        "machineId",
-                        "startMeterReadingId",
-                        "operatorEmploymentId"
+                      "required": ["machineId", "startMeterReadingId"],
+                      "anyOf": [
+                        { "required": ["operatorEmploymentId"] },
+                        { "required": ["operatorAssignments"] }
                       ],
                       "properties": {
                         "machineId": { "type": "string", "format": "uuid" },
@@ -15787,6 +15884,23 @@
                         "operatorEmploymentId": {
                           "type": "string",
                           "format": "uuid"
+                        },
+                        "operatorAssignments": {
+                          "type": "array",
+                          "minItems": 1,
+                          "maxItems": 2,
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["shift", "operatorEmploymentId"],
+                            "properties": {
+                              "shift": { "enum": ["day", "night"] },
+                              "operatorEmploymentId": {
+                                "type": "string",
+                                "format": "uuid"
+                              }
+                            }
+                          }
                         }
                       }
                     }
@@ -16040,7 +16154,11 @@
               "schema": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": ["employmentIds", "machineIds"],
+                "required": ["employmentIds"],
+                "anyOf": [
+                  { "required": ["machineIds"] },
+                  { "required": ["machineAssignments"] }
+                ],
                 "properties": {
                   "employmentIds": {
                     "type": "array",
@@ -16053,6 +16171,19 @@
                     "maxItems": 100,
                     "uniqueItems": true,
                     "items": { "type": "string", "format": "uuid" }
+                  },
+                  "machineAssignments": {
+                    "type": "array",
+                    "maxItems": 200,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["machineId", "shift"],
+                      "properties": {
+                        "machineId": { "type": "string", "format": "uuid" },
+                        "shift": { "enum": ["day", "night"] }
+                      }
+                    }
                   },
                   "reason": {
                     "type": "string",

@@ -3,6 +3,11 @@
 Este documento é a fonte canônica do lançamento de produção por obra, frente,
 serviço, data e turno.
 
+O turno precisa estar habilitado na obra. Responsáveis pertencem à equipe do
+turno, e as opções de equipamento contêm somente máquinas mobilizadas na frente
+e naquele turno. A máquina física pode participar de outra frente no turno
+oposto. Turno desabilitado retorna `409 PROJECT_SHIFT_NOT_ENABLED`.
+
 ## Identidade e ciclo de vida
 
 - Cada produção representa um serviço e uma única rota. Mudança de origem,

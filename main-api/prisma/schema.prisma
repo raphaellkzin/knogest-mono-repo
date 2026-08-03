@@ -281,6 +281,8 @@ model User {
   endedProjectEmployeeAllocations       ProjectEmployeeAllocation[]          @relation("ProjectEmployeeAllocationEndedBy")
   createdProjectMachineAllocations      ProjectMachineAllocation[]           @relation("ProjectMachineAllocationCreatedBy")
   endedProjectMachineAllocations        ProjectMachineAllocation[]           @relation("ProjectMachineAllocationEndedBy")
+  createdProjectMachineShiftAssignments ProjectMachineShiftAssignment[]      @relation("ProjectMachineShiftAssignmentCreatedBy")
+  endedProjectMachineShiftAssignments   ProjectMachineShiftAssignment[]      @relation("ProjectMachineShiftAssignmentEndedBy")
   createdWorkFrontEmployeeAssignments   ProjectWorkFrontEmployeeAssignment[] @relation("WorkFrontEmployeeAssignmentCreatedBy")
   endedWorkFrontEmployeeAssignments     ProjectWorkFrontEmployeeAssignment[] @relation("WorkFrontEmployeeAssignmentEndedBy")
   createdWorkFrontMachineAssignments    ProjectWorkFrontMachineAssignment[]  @relation("WorkFrontMachineAssignmentCreatedBy")
@@ -574,6 +576,7 @@ model Employment {
   supervisedDailyReports       ProjectDailyReport[]                        @relation("ProjectDailyReportSupervisor")
   dailyReportResponsibilities  ProjectDailyReportTechnicalResponsibility[] @relation("ProjectDailyReportTechnicalResponsibilityEmployment")
   dailyReportEntries           ProjectDailyReportEmployee[]                @relation("ProjectDailyReportEmployeeEmployment")
+  projectMachineAllocations    ProjectMachineAllocation[]
 
   @@unique([corporationId, companyId, id])
   @@index([corporationId, companyId, isActive])
@@ -877,29 +880,32 @@ model ProjectScheduleRevision {
 }
 
 model ProjectScheduleDay {
-  id                 String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  corporationId      String  @map("corporation_id") @db.Uuid
-  companyId          String  @map("company_id") @db.Uuid
-  scheduleRevisionId String  @map("schedule_revision_id") @db.Uuid
-  dayOfWeek          Int     @map("day_of_week")
-  isWorking          Boolean @map("is_working")
-  startTime          String? @map("start_time") @db.VarChar(5)
-  endTime            String? @map("end_time") @db.VarChar(5)
+  id                 String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId      String                  @map("corporation_id") @db.Uuid
+  companyId          String                  @map("company_id") @db.Uuid
+  scheduleRevisionId String                  @map("schedule_revision_id") @db.Uuid
+  shift              ProjectDailyReportShift @default(DAY)
+  dayOfWeek          Int                     @map("day_of_week")
+  isWorking          Boolean                 @map("is_working")
+  startTime          String?                 @map("start_time") @db.VarChar(5)
+  endTime            String?                 @map("end_time") @db.VarChar(5)
+  endDayOffset       Int                     @default(0) @map("end_day_offset")
 
-  @@unique([scheduleRevisionId, dayOfWeek])
+  @@unique([scheduleRevisionId, shift, dayOfWeek])
   @@map("project_schedule_days")
 }
 
 model ProjectBreakTemplate {
-  id                 String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  corporationId      String @map("corporation_id") @db.Uuid
-  companyId          String @map("company_id") @db.Uuid
-  scheduleRevisionId String @map("schedule_revision_id") @db.Uuid
+  id                 String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId      String                  @map("corporation_id") @db.Uuid
+  companyId          String                  @map("company_id") @db.Uuid
+  scheduleRevisionId String                  @map("schedule_revision_id") @db.Uuid
+  shift              ProjectDailyReportShift @default(DAY)
   position           Int
-  name               String @db.VarChar(120)
-  durationMinutes    Int    @map("duration_minutes")
+  name               String                  @db.VarChar(120)
+  durationMinutes    Int                     @map("duration_minutes")
 
-  @@unique([scheduleRevisionId, position])
+  @@unique([scheduleRevisionId, shift, position])
   @@map("project_break_templates")
 }
 
@@ -910,6 +916,7 @@ model ProjectEmployeeAllocation {
   projectId                    String                   @map("project_id") @db.Uuid
   employmentId                 String                   @map("employment_id") @db.Uuid
   personId                     String                   @map("person_id") @db.Uuid
+  shift                        ProjectDailyReportShift  @default(DAY)
   jobRole                      String                   @map("job_role") @db.VarChar(120)
   employmentJobRolePeriodId    String?                  @map("employment_job_role_period_id") @db.Uuid
   expectedDailyWorkloadMinutes Int                      @map("expected_daily_workload_minutes")
@@ -931,24 +938,50 @@ model ProjectEmployeeAllocation {
 }
 
 model ProjectMachineAllocation {
-  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  corporationId        String    @map("corporation_id") @db.Uuid
-  companyId            String    @map("company_id") @db.Uuid
-  projectId            String    @map("project_id") @db.Uuid
-  machineId            String    @map("machine_id") @db.Uuid
-  startMeterReadingId  String    @map("start_meter_reading_id") @db.Uuid
-  operatorEmploymentId String    @map("operator_employment_id") @db.Uuid
-  effectiveFrom        DateTime  @map("effective_from") @db.Timestamptz(3)
-  effectiveTo          DateTime? @map("effective_to") @db.Timestamptz(3)
-  createdByUserId      String?   @map("created_by_user_id") @db.Uuid
-  endedByUserId        String?   @map("ended_by_user_id") @db.Uuid
-  endedReason          String?   @map("ended_reason") @db.VarChar(500)
-  createdBy            User?     @relation("ProjectMachineAllocationCreatedBy", fields: [corporationId, createdByUserId], references: [corporationId, id], onDelete: Restrict, map: "pma_created_by_user_fkey")
-  endedBy              User?     @relation("ProjectMachineAllocationEndedBy", fields: [corporationId, endedByUserId], references: [corporationId, id], onDelete: Restrict, map: "pma_ended_by_user_fkey")
+  id                   String                          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId        String                          @map("corporation_id") @db.Uuid
+  companyId            String                          @map("company_id") @db.Uuid
+  projectId            String                          @map("project_id") @db.Uuid
+  machineId            String                          @map("machine_id") @db.Uuid
+  startMeterReadingId  String                          @map("start_meter_reading_id") @db.Uuid
+  operatorEmploymentId String                          @map("operator_employment_id") @db.Uuid
+  effectiveFrom        DateTime                        @map("effective_from") @db.Timestamptz(3)
+  effectiveTo          DateTime?                       @map("effective_to") @db.Timestamptz(3)
+  createdByUserId      String?                         @map("created_by_user_id") @db.Uuid
+  endedByUserId        String?                         @map("ended_by_user_id") @db.Uuid
+  endedReason          String?                         @map("ended_reason") @db.VarChar(500)
+  createdBy            User?                           @relation("ProjectMachineAllocationCreatedBy", fields: [corporationId, createdByUserId], references: [corporationId, id], onDelete: Restrict, map: "pma_created_by_user_fkey")
+  endedBy              User?                           @relation("ProjectMachineAllocationEndedBy", fields: [corporationId, endedByUserId], references: [corporationId, id], onDelete: Restrict, map: "pma_ended_by_user_fkey")
+  operator             Employment                      @relation(fields: [corporationId, companyId, operatorEmploymentId], references: [corporationId, companyId, id], onDelete: Restrict, map: "project_machine_allocations_operator_employment_fkey")
+  shiftAssignments     ProjectMachineShiftAssignment[]
 
   @@index([corporationId, companyId, projectId])
-  @@index([corporationId, companyId, operatorEmploymentId])
+  @@index([corporationId, companyId, projectId, operatorEmploymentId], map: "project_machine_allocations_operator_employment_idx")
   @@map("project_machine_allocations")
+}
+
+model ProjectMachineShiftAssignment {
+  id                         String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId              String                   @map("corporation_id") @db.Uuid
+  companyId                  String                   @map("company_id") @db.Uuid
+  projectId                  String                   @map("project_id") @db.Uuid
+  projectMachineAllocationId String                   @map("project_machine_allocation_id") @db.Uuid
+  machineId                  String                   @map("machine_id") @db.Uuid
+  shift                      ProjectDailyReportShift
+  operatorEmploymentId       String                   @map("operator_employment_id") @db.Uuid
+  effectiveFrom              DateTime                 @map("effective_from") @db.Timestamptz(3)
+  effectiveTo                DateTime?                @map("effective_to") @db.Timestamptz(3)
+  createdByUserId            String?                  @map("created_by_user_id") @db.Uuid
+  endedByUserId              String?                  @map("ended_by_user_id") @db.Uuid
+  endedReason                String?                  @map("ended_reason") @db.VarChar(500)
+  projectMachineAllocation   ProjectMachineAllocation @relation(fields: [projectMachineAllocationId], references: [id], onDelete: Cascade)
+  createdBy                  User?                    @relation("ProjectMachineShiftAssignmentCreatedBy", fields: [corporationId, createdByUserId], references: [corporationId, id], onDelete: Restrict)
+  endedBy                    User?                    @relation("ProjectMachineShiftAssignmentEndedBy", fields: [corporationId, endedByUserId], references: [corporationId, id], onDelete: Restrict)
+
+  @@index([corporationId, companyId, projectId, machineId, shift], map: "pmsa_machine_shift_idx")
+  @@index([corporationId, companyId, projectId, operatorEmploymentId], map: "pmsa_operator_history_idx")
+  @@index([projectMachineAllocationId], map: "pmsa_allocation_idx")
+  @@map("project_machine_shift_assignments")
 }
 
 model ProjectFuelAgreement {
@@ -1088,6 +1121,7 @@ model ProjectWorkFrontEmployeeAssignment {
   projectId       String                                   @map("project_id") @db.Uuid
   workFrontId     String                                   @map("work_front_id") @db.Uuid
   employmentId    String                                   @map("employment_id") @db.Uuid
+  shift           ProjectDailyReportShift                  @default(DAY)
   source          ProjectWorkFrontEmployeeAssignmentSource
   effectiveFrom   DateTime                                 @map("effective_from") @db.Timestamptz(3)
   effectiveTo     DateTime?                                @map("effective_to") @db.Timestamptz(3)
@@ -1106,24 +1140,25 @@ model ProjectWorkFrontEmployeeAssignment {
 }
 
 model ProjectWorkFrontMachineAssignment {
-  id                   String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  corporationId        String           @map("corporation_id") @db.Uuid
-  companyId            String           @map("company_id") @db.Uuid
-  projectId            String           @map("project_id") @db.Uuid
-  workFrontId          String           @map("work_front_id") @db.Uuid
-  machineId            String           @map("machine_id") @db.Uuid
-  operatorEmploymentId String           @map("operator_employment_id") @db.Uuid
-  effectiveFrom        DateTime         @map("effective_from") @db.Timestamptz(3)
-  effectiveTo          DateTime?        @map("effective_to") @db.Timestamptz(3)
-  createdByUserId      String           @map("created_by_user_id") @db.Uuid
-  endedByUserId        String?          @map("ended_by_user_id") @db.Uuid
-  endedReason          String?          @map("ended_reason") @db.VarChar(500)
-  project              Project          @relation(fields: [corporationId, companyId, projectId], references: [corporationId, companyId, id], onDelete: Restrict, map: "pwfma_project_fkey")
-  workFront            ProjectWorkFront @relation(fields: [corporationId, companyId, projectId, workFrontId], references: [corporationId, companyId, projectId, id], onDelete: Restrict, map: "pwfma_front_fkey")
-  machine              Machine          @relation(fields: [corporationId, machineId], references: [corporationId, id], onDelete: Restrict, map: "pwfma_machine_fkey")
-  operator             Employment       @relation("WorkFrontMachineAssignmentOperator", fields: [corporationId, companyId, operatorEmploymentId], references: [corporationId, companyId, id], onDelete: Restrict, map: "pwfma_operator_fkey")
-  createdBy            User             @relation("WorkFrontMachineAssignmentCreatedBy", fields: [corporationId, createdByUserId], references: [corporationId, id], onDelete: Restrict, map: "pwfma_created_by_user_fkey")
-  endedBy              User?            @relation("WorkFrontMachineAssignmentEndedBy", fields: [corporationId, endedByUserId], references: [corporationId, id], onDelete: Restrict, map: "pwfma_ended_by_user_fkey")
+  id                   String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId        String                  @map("corporation_id") @db.Uuid
+  companyId            String                  @map("company_id") @db.Uuid
+  projectId            String                  @map("project_id") @db.Uuid
+  workFrontId          String                  @map("work_front_id") @db.Uuid
+  machineId            String                  @map("machine_id") @db.Uuid
+  shift                ProjectDailyReportShift @default(DAY)
+  operatorEmploymentId String                  @map("operator_employment_id") @db.Uuid
+  effectiveFrom        DateTime                @map("effective_from") @db.Timestamptz(3)
+  effectiveTo          DateTime?               @map("effective_to") @db.Timestamptz(3)
+  createdByUserId      String                  @map("created_by_user_id") @db.Uuid
+  endedByUserId        String?                 @map("ended_by_user_id") @db.Uuid
+  endedReason          String?                 @map("ended_reason") @db.VarChar(500)
+  project              Project                 @relation(fields: [corporationId, companyId, projectId], references: [corporationId, companyId, id], onDelete: Restrict, map: "pwfma_project_fkey")
+  workFront            ProjectWorkFront        @relation(fields: [corporationId, companyId, projectId, workFrontId], references: [corporationId, companyId, projectId, id], onDelete: Restrict, map: "pwfma_front_fkey")
+  machine              Machine                 @relation(fields: [corporationId, machineId], references: [corporationId, id], onDelete: Restrict, map: "pwfma_machine_fkey")
+  operator             Employment              @relation("WorkFrontMachineAssignmentOperator", fields: [corporationId, companyId, operatorEmploymentId], references: [corporationId, companyId, id], onDelete: Restrict, map: "pwfma_operator_fkey")
+  createdBy            User                    @relation("WorkFrontMachineAssignmentCreatedBy", fields: [corporationId, createdByUserId], references: [corporationId, id], onDelete: Restrict, map: "pwfma_created_by_user_fkey")
+  endedBy              User?                   @relation("WorkFrontMachineAssignmentEndedBy", fields: [corporationId, endedByUserId], references: [corporationId, id], onDelete: Restrict, map: "pwfma_ended_by_user_fkey")
 
   @@index([corporationId, companyId, projectId, workFrontId, effectiveFrom], map: "pwfma_front_history_idx")
   @@index([corporationId, companyId, projectId, machineId, effectiveFrom], map: "pwfma_machine_history_idx")

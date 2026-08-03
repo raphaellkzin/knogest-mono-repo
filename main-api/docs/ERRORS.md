@@ -47,6 +47,7 @@ RDO usa `409` para conflitos esperados e mantém códigos públicos estáveis:
   elegível;
 - `DAILY_REPORT_METER_READING_CONFLICT`: a cadeia oficial de uma máquina mudou
   ou impede finalização retroativa.
+- `PROJECT_SHIFT_NOT_ENABLED`: o turno solicitado não está habilitado na obra.
 
 Detalhes podem expor somente identificadores, nomes e categorias seguras do
 recurso. Não inclua leitura interna não solicitada, body, SQL ou metadados
@@ -58,6 +59,7 @@ type indevido.
 Produção de terraplenagem usa os seguintes códigos públicos:
 
 - `PRODUCTION_PROJECT_UNAVAILABLE`: obra inativa ou indisponível;
+- `PROJECT_SHIFT_NOT_ENABLED`: turno não habilitado para a obra;
 - `PRODUCTION_RESOURCE_UNAVAILABLE`: frente, serviço, responsável, operador ou
   máquina não elegível no turno;
 - `PRODUCTION_IMMUTABLE`: operação incompatível com estado ou forma de

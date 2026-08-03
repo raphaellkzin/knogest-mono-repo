@@ -187,6 +187,37 @@ export function ProjectProductions({
     }
   }
 
+  async function changeTemporalContext(
+    productionDate: string,
+    shift: "day" | "night",
+  ) {
+    if (!editable) return;
+    setBusy(true);
+    try {
+      const resolved = await getProjectProductionOptionsAction({
+        projectId,
+        productionDate,
+        shift,
+      });
+      const front = resolved.workFronts[0];
+      setOptions(resolved);
+      setDraft((current) => ({
+        ...current,
+        productionDate,
+        shift,
+        workFrontId: front?.id ?? "",
+        workFrontServiceId: front?.services[0]?.id ?? "",
+        responsibleEmploymentId: resolved.responsibleOptions[0]?.id ?? "",
+        location: front?.location ?? "",
+        equipment: machineDrafts(resolved, front?.id ?? ""),
+      }));
+    } catch {
+      toast.error("O turno selecionado não está habilitado nesta obra.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function save(approveNow: boolean) {
     if (!options) return;
     setBusy(true);
@@ -499,7 +530,10 @@ export function ProjectProductions({
                     value={draft.productionDate}
                     disabled={!editable}
                     onChange={(event) =>
-                      setDraft({ ...draft, productionDate: event.target.value })
+                      void changeTemporalContext(
+                        event.target.value,
+                        draft.shift,
+                      )
                     }
                   />
                 </Field>
@@ -509,10 +543,10 @@ export function ProjectProductions({
                     value={draft.shift}
                     disabled={!editable}
                     onChange={(event) =>
-                      setDraft({
-                        ...draft,
-                        shift: event.target.value as "day" | "night",
-                      })
+                      void changeTemporalContext(
+                        draft.productionDate,
+                        event.target.value as "day" | "night",
+                      )
                     }
                   >
                     <option value="day">Diurno</option>
