@@ -48,6 +48,21 @@ action de finalização chama
 `Content-Type`. O componente só aplica o snapshot `finalized` quando o resultado
 de domínio é `success`; um `200` do protocolo da Server Action não basta.
 
+O fluxo de produção usa os clientes gerados para opções do turno, listagem,
+detalhe, rascunho, aprovação, reabertura e viagens rápidas. O componente nunca
+incrementa viagens apenas em estado local: cada toque envia UUID de
+idempotência e substitui o detalhe pela revisão retornada pela API.
+
+Antes de finalizar o RDO, a interface:
+
+1. salva o rascunho do relatório;
+2. consulta todas as produções da data e turno;
+3. interrompe se encontrar rascunhos;
+4. confirma os IDs das produções aprovadas;
+5. chama a finalização do RDO.
+
+Falha em qualquer etapa mantém o RDO em rascunho e mostra o erro de domínio.
+
 ## Testes e manutencao
 
 - Testes que mockam uma Server Action cobrem o componente, mas nao validam o

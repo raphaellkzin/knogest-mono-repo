@@ -1,0 +1,297 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { z } from "zod";
+
+import { deleteApiV1ProjectsProjectidProductionsProductionidTripsTripid } from "@/generated/clients/deleteApiV1ProjectsProjectidProductionsProductionidTripsTripid";
+import { getApiV1ProjectsProjectidDailyReportsReportidProductions } from "@/generated/clients/getApiV1ProjectsProjectidDailyReportsReportidProductions";
+import { getApiV1ProjectsProjectidProductions } from "@/generated/clients/getApiV1ProjectsProjectidProductions";
+import { getApiV1ProjectsProjectidProductionsOptions } from "@/generated/clients/getApiV1ProjectsProjectidProductionsOptions";
+import { getApiV1ProjectsProjectidProductionsProductionid } from "@/generated/clients/getApiV1ProjectsProjectidProductionsProductionid";
+import { postApiV1ProjectsProjectidDailyReportsReportidProductionsConfirm } from "@/generated/clients/postApiV1ProjectsProjectidDailyReportsReportidProductionsConfirm";
+import { postApiV1ProjectsProjectidProductions } from "@/generated/clients/postApiV1ProjectsProjectidProductions";
+import { postApiV1ProjectsProjectidProductionsProductionidApprove } from "@/generated/clients/postApiV1ProjectsProjectidProductionsProductionidApprove";
+import { postApiV1ProjectsProjectidProductionsProductionidReopen } from "@/generated/clients/postApiV1ProjectsProjectidProductionsProductionidReopen";
+import { postApiV1ProjectsProjectidProductionsProductionidTrips } from "@/generated/clients/postApiV1ProjectsProjectidProductionsProductionidTrips";
+import { putApiV1ProjectsProjectidProductionsProductionid } from "@/generated/clients/putApiV1ProjectsProjectidProductionsProductionid";
+import { ApiClientError } from "@/lib/api/api-client-error";
+
+import type {
+  ProjectDailyReportProductionSummary,
+  ProjectProductionCommand,
+  ProjectProductionDetail,
+  ProjectProductionMutationResult,
+  ProjectProductionOptions,
+} from "./productions.types";
+
+const uuid = z.string().uuid();
+
+export async function getProjectProductionOptionsAction(input: {
+  projectId: string;
+  productionDate: string;
+  shift: "day" | "night";
+}): Promise<ProjectProductionOptions> {
+  const response = await getApiV1ProjectsProjectidProductionsOptions({
+    projectId: uuid.parse(input.projectId),
+    params: {
+      productionDate: z.iso.date().parse(input.productionDate),
+      shift: input.shift,
+    },
+  });
+  return response.data as ProjectProductionOptions;
+}
+
+export async function getProjectProductionAction(
+  projectId: string,
+  productionId: string,
+): Promise<ProjectProductionDetail> {
+  const response = await getApiV1ProjectsProjectidProductionsProductionid({
+    projectId: uuid.parse(projectId),
+    productionId: uuid.parse(productionId),
+  });
+  return response.data as ProjectProductionDetail;
+}
+
+export async function getMoreProjectProductionsAction(
+  projectId: string,
+  cursor: string,
+) {
+  const response = await getApiV1ProjectsProjectidProductions({
+    projectId: uuid.parse(projectId),
+    params: {
+      cursor: z.string().min(1).max(2048).parse(cursor),
+      limit: 25,
+      sortBy: "productionDate",
+      sortDirection: "desc",
+    },
+  });
+  return response.data;
+}
+
+export async function getShiftProjectProductionsAction(input: {
+  projectId: string;
+  productionDate: string;
+  shift: "day" | "night";
+}) {
+  const projectId = uuid.parse(input.projectId);
+  const productionDate = z.iso.date().parse(input.productionDate);
+  let cursor: string | undefined;
+  let page:
+    | Awaited<ReturnType<typeof getApiV1ProjectsProjectidProductions>>["data"]
+    | undefined;
+  const data: NonNullable<typeof page>["data"] = [];
+  do {
+    const response = await getApiV1ProjectsProjectidProductions({
+      projectId,
+      params: {
+        productionDate,
+        shift: input.shift,
+        limit: 100,
+        cursor,
+        sortBy: "productionDate",
+        sortDirection: "asc",
+      },
+    });
+    page = response.data;
+    data.push(...page.data);
+    cursor = page.pageInfo.nextCursor ?? undefined;
+  } while (cursor);
+  return {
+    ...page!,
+    data,
+    pageInfo: { hasNextPage: false, nextCursor: null },
+  };
+}
+
+export async function saveProjectProductionAction(input: {
+  projectId: string;
+  productionId?: string;
+  command: ProjectProductionCommand;
+}): Promise<ProjectProductionMutationResult> {
+  const projectId = uuid.parse(input.projectId);
+  try {
+    const response = input.productionId
+      ? await putApiV1ProjectsProjectidProductionsProductionid({
+          projectId,
+          productionId: uuid.parse(input.productionId),
+          data: input.command,
+        })
+      : await postApiV1ProjectsProjectidProductions({
+          projectId,
+          data: input.command,
+        });
+    revalidate(projectId);
+    return {
+      kind: "success",
+      production: response.data as ProjectProductionDetail,
+    };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function approveProjectProductionAction(
+  projectId: string,
+  productionId: string,
+  expectedRevision: number,
+): Promise<ProjectProductionMutationResult> {
+  const parsedProjectId = uuid.parse(projectId);
+  try {
+    const response =
+      await postApiV1ProjectsProjectidProductionsProductionidApprove({
+        projectId: parsedProjectId,
+        productionId: uuid.parse(productionId),
+        data: { expectedRevision },
+      });
+    revalidate(parsedProjectId);
+    return {
+      kind: "success",
+      production: response.data as ProjectProductionDetail,
+    };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function reopenProjectProductionAction(input: {
+  projectId: string;
+  productionId: string;
+  expectedRevision: number;
+  reason: string;
+}): Promise<ProjectProductionMutationResult> {
+  const projectId = uuid.parse(input.projectId);
+  try {
+    const response =
+      await postApiV1ProjectsProjectidProductionsProductionidReopen({
+        projectId,
+        productionId: uuid.parse(input.productionId),
+        data: {
+          expectedRevision: input.expectedRevision,
+          reason: z.string().trim().min(3).max(500).parse(input.reason),
+        },
+      });
+    revalidate(projectId);
+    return {
+      kind: "success",
+      production: response.data as ProjectProductionDetail,
+    };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function addProjectProductionTripAction(input: {
+  projectId: string;
+  productionId: string;
+  expectedRevision: number;
+  productionEquipmentId: string;
+  idempotencyKey: string;
+  capacityM3?: string;
+}): Promise<ProjectProductionMutationResult> {
+  const projectId = uuid.parse(input.projectId);
+  try {
+    const response =
+      await postApiV1ProjectsProjectidProductionsProductionidTrips({
+        projectId,
+        productionId: uuid.parse(input.productionId),
+        data: {
+          expectedRevision: input.expectedRevision,
+          productionEquipmentId: uuid.parse(input.productionEquipmentId),
+          idempotencyKey: uuid.parse(input.idempotencyKey),
+          capacityM3: input.capacityM3,
+        },
+      });
+    revalidate(projectId);
+    return {
+      kind: "success",
+      production: response.data as ProjectProductionDetail,
+    };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function removeProjectProductionTripAction(input: {
+  projectId: string;
+  productionId: string;
+  tripId: string;
+  expectedRevision: number;
+}): Promise<ProjectProductionMutationResult> {
+  const projectId = uuid.parse(input.projectId);
+  try {
+    const response =
+      await deleteApiV1ProjectsProjectidProductionsProductionidTripsTripid({
+        projectId,
+        productionId: uuid.parse(input.productionId),
+        tripId: uuid.parse(input.tripId),
+        params: { expectedRevision: input.expectedRevision },
+      });
+    revalidate(projectId);
+    return {
+      kind: "success",
+      production: response.data as ProjectProductionDetail,
+    };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function getDailyReportProductionsAction(
+  projectId: string,
+  reportId: string,
+): Promise<ProjectDailyReportProductionSummary> {
+  const response =
+    await getApiV1ProjectsProjectidDailyReportsReportidProductions({
+      projectId: uuid.parse(projectId),
+      reportId: uuid.parse(reportId),
+    });
+  return response.data as ProjectDailyReportProductionSummary;
+}
+
+export async function confirmDailyReportProductionsAction(input: {
+  projectId: string;
+  reportId: string;
+  productionIds: string[];
+}): Promise<ProjectDailyReportProductionSummary> {
+  const projectId = uuid.parse(input.projectId);
+  const response =
+    await postApiV1ProjectsProjectidDailyReportsReportidProductionsConfirm({
+      projectId,
+      reportId: uuid.parse(input.reportId),
+      data: { productionIds: input.productionIds.map((id) => uuid.parse(id)) },
+    });
+  revalidate(projectId);
+  return response.data as ProjectDailyReportProductionSummary;
+}
+
+function revalidate(projectId: string) {
+  revalidatePath(`/home/obras/${projectId}`);
+}
+
+function failure(error: unknown): ProjectProductionMutationResult {
+  if (!(error instanceof ApiClientError))
+    return {
+      kind: "failure",
+      code: "PRODUCTION_ACTION_FAILED",
+      message: "Não foi possível concluir a operação de produção.",
+    };
+  const envelope =
+    error.data && typeof error.data === "object"
+      ? (error.data as Record<string, unknown>)
+      : {};
+  return {
+    kind: "failure",
+    code:
+      typeof envelope.code === "string"
+        ? envelope.code
+        : "PRODUCTION_ACTION_FAILED",
+    message:
+      typeof envelope.message === "string" ? envelope.message : error.message,
+    requestId:
+      typeof envelope.requestId === "string" ? envelope.requestId : undefined,
+    details:
+      envelope.details && typeof envelope.details === "object"
+        ? (envelope.details as Record<string, unknown>)
+        : undefined,
+  };
+}

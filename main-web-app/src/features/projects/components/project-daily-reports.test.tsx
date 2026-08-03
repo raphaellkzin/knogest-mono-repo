@@ -13,6 +13,14 @@ vi.mock("../daily-reports.actions", () => ({
   saveProjectDailyReportAction: vi.fn(),
 }));
 
+vi.mock("../productions.actions", () => ({
+  confirmDailyReportProductionsAction: vi.fn(),
+  getShiftProjectProductionsAction: vi.fn().mockResolvedValue({
+    data: [],
+    pageInfo: { hasNextPage: false, nextCursor: null },
+  }),
+}));
+
 vi.mock("sonner", () => ({
   toast: { error: vi.fn(), info: vi.fn(), success: vi.fn() },
 }));

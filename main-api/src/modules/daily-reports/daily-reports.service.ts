@@ -24,6 +24,7 @@ import {
   type DailyReportScope,
   type DailyReportWriteData,
 } from "./handlers/daily-reports.handler";
+import { dailyReportProductionReadinessHandler } from "../productions/handlers/productions.handler";
 
 const BUSINESS_TIME_ZONE = "America/Sao_Paulo";
 const dayLabels = ["Seg.", "Ter.", "Qua.", "Qui.", "Sex.", "Sáb.", "Dom."];
@@ -368,6 +369,33 @@ export class DailyReportsService {
               code: "DAILY_REPORT_PROJECT_UNAVAILABLE",
               message: "Daily report cannot be finalized before the shift ends",
               statusCode: 409,
+            });
+
+          const productionReadiness =
+            await dailyReportProductionReadinessHandler(
+              transactionContext,
+              scope,
+              {
+                projectId,
+                reportId,
+                productionDate: record.reportDate,
+                shift: record.shift,
+              },
+            );
+          if (
+            productionReadiness.hasDrafts ||
+            productionReadiness.hasUnconfirmed
+          )
+            throw new AppError({
+              code: "PRODUCTION_RDO_CONFIRMATION_REQUIRED",
+              message:
+                "Productions from this shift must be approved and confirmed before finalizing the daily report",
+              statusCode: 409,
+              data: {
+                productionCount: productionReadiness.count,
+                hasDrafts: productionReadiness.hasDrafts,
+                hasUnconfirmed: productionReadiness.hasUnconfirmed,
+              },
             });
 
           const entries = [...record.machineEntries].sort((left, right) =>

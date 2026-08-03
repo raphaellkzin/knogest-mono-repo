@@ -20117,6 +20117,4176 @@
           }
         }
       }
+    },
+    "/api/v1/projects/{projectId}/productions": {
+      "get": {
+        "summary": "List earthworks productions",
+        "tags": ["Project productions"],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 25
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          },
+          {
+            "schema": { "type": "string" },
+            "in": "query",
+            "name": "cursor",
+            "required": false
+          },
+          {
+            "schema": { "type": "string", "format": "date" },
+            "in": "query",
+            "name": "productionDate",
+            "required": false
+          },
+          {
+            "schema": { "type": "string", "enum": ["day", "night"] },
+            "in": "query",
+            "name": "shift",
+            "required": false
+          },
+          {
+            "schema": { "type": "string", "enum": ["draft", "approved"] },
+            "in": "query",
+            "name": "status",
+            "required": false
+          },
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "in": "query",
+            "name": "workFrontId",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": ["productionDate"],
+              "default": "productionDate"
+            },
+            "in": "query",
+            "name": "sortBy",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": ["asc", "desc"],
+              "default": "desc"
+            },
+            "in": "query",
+            "name": "sortDirection",
+            "required": false
+          },
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "in": "path",
+            "name": "projectId",
+            "required": true
+          }
+        ],
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["success", "message", "data"],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [true] },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "required": ["data", "pageInfo", "capabilities"],
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "id",
+                              "serviceCode",
+                              "unitCode",
+                              "productionDate",
+                              "shift",
+                              "status",
+                              "revision",
+                              "location",
+                              "route",
+                              "dmtKm",
+                              "volumeCondition",
+                              "officialQuantity",
+                              "operationalVolumeM3",
+                              "tripCount",
+                              "equipmentCount",
+                              "needsApproval",
+                              "rdo",
+                              "updatedAt"
+                            ],
+                            "properties": {
+                              "id": { "type": "string", "format": "uuid" },
+                              "serviceCode": { "type": "string" },
+                              "unitCode": { "type": "string" },
+                              "productionDate": {
+                                "type": "string",
+                                "format": "date"
+                              },
+                              "shift": {
+                                "type": "string",
+                                "enum": ["day", "night"]
+                              },
+                              "status": {
+                                "type": "string",
+                                "enum": ["draft", "approved"]
+                              },
+                              "revision": { "type": "integer" },
+                              "location": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "route": {
+                                "type": "object",
+                                "nullable": true,
+                                "required": ["origin", "destination"],
+                                "properties": {
+                                  "origin": {
+                                    "type": "string",
+                                    "nullable": true
+                                  },
+                                  "destination": {
+                                    "type": "string",
+                                    "nullable": true
+                                  }
+                                }
+                              },
+                              "dmtKm": { "type": "string", "nullable": true },
+                              "volumeCondition": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "officialQuantity": {
+                                "type": "string",
+                                "pattern": "^(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,6})?$"
+                              },
+                              "operationalVolumeM3": {
+                                "type": "string",
+                                "pattern": "^(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,6})?$"
+                              },
+                              "tripCount": { "type": "integer" },
+                              "equipmentCount": { "type": "integer" },
+                              "needsApproval": { "type": "boolean" },
+                              "rdo": {
+                                "type": "object",
+                                "required": ["linked", "stale"],
+                                "properties": {
+                                  "linked": { "type": "boolean" },
+                                  "stale": { "type": "boolean" }
+                                }
+                              },
+                              "updatedAt": {
+                                "type": "string",
+                                "format": "date-time"
+                              }
+                            }
+                          }
+                        },
+                        "pageInfo": {
+                          "type": "object",
+                          "required": ["hasNextPage", "nextCursor"],
+                          "properties": {
+                            "hasNextPage": { "type": "boolean" },
+                            "nextCursor": { "type": "string", "nullable": true }
+                          }
+                        },
+                        "capabilities": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "createDraft",
+                            "publishDirect",
+                            "approveOthers",
+                            "reopen"
+                          ],
+                          "properties": {
+                            "createDraft": { "type": "boolean" },
+                            "publishDirect": { "type": "boolean" },
+                            "approveOthers": { "type": "boolean" },
+                            "reopen": { "type": "boolean" }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a production draft or publish directly",
+        "tags": ["Project productions"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "workFrontId",
+                  "workFrontServiceId",
+                  "productionDate",
+                  "shift",
+                  "entryMode"
+                ],
+                "properties": {
+                  "expectedRevision": { "type": "integer", "minimum": 1 },
+                  "approveNow": { "type": "boolean", "default": false },
+                  "workFrontId": { "type": "string", "format": "uuid" },
+                  "workFrontServiceId": { "type": "string", "format": "uuid" },
+                  "productionDate": { "type": "string", "format": "date" },
+                  "shift": { "type": "string", "enum": ["day", "night"] },
+                  "entryMode": {
+                    "type": "string",
+                    "enum": ["direct_total", "trips"]
+                  },
+                  "startTime": {
+                    "type": "string",
+                    "nullable": true,
+                    "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$"
+                  },
+                  "endTime": {
+                    "type": "string",
+                    "nullable": true,
+                    "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$"
+                  },
+                  "endDayOffset": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "default": 0
+                  },
+                  "responsibleEmploymentId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "nullable": true
+                  },
+                  "location": {
+                    "type": "string",
+                    "nullable": true,
+                    "maxLength": 240
+                  },
+                  "startStation": {
+                    "type": "string",
+                    "nullable": true,
+                    "maxLength": 80
+                  },
+                  "endStation": {
+                    "type": "string",
+                    "nullable": true,
+                    "maxLength": 80
+                  },
+                  "layer": {
+                    "type": "string",
+                    "nullable": true,
+                    "maxLength": 80
+                  },
+                  "elevation": {
+                    "type": "string",
+                    "nullable": true,
+                    "maxLength": 80
+                  },
+                  "materialName": {
+                    "type": "string",
+                    "nullable": true,
+                    "maxLength": 160
+                  },
+                  "materialCategory": {
+                    "type": "string",
+                    "nullable": true,
+                    "maxLength": 120
+                  },
+                  "volumeCondition": {
+                    "type": "string",
+                    "nullable": true,
+                    "enum": ["cut", "loose", "compacted"]
+                  },
+                  "directQuantity": {
+                    "type": "string",
+                    "pattern": "^(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,6})?$",
+                    "nullable": true
+                  },
+                  "measuredQuantity": {
+                    "type": "string",
+                    "pattern": "^(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,6})?$",
+                    "nullable": true
+                  },
+                  "conversionFactor": {
+                    "type": "string",
+                    "pattern": "^(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,6})?$",
+                    "nullable": true
+                  },
+                  "origin": {
+                    "type": "string",
+                    "nullable": true,
+                    "maxLength": 240
+                  },
+                  "destination": {
+                    "type": "string",
+                    "nullable": true,
+                    "maxLength": 240
+                  },
+                  "dmtKm": {
+                    "type": "string",
+                    "pattern": "^(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,6})?$",
+                    "nullable": true
+                  },
+                  "layerThicknessCm": {
+                    "type": "string",
+                    "pattern": "^(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,6})?$",
+                    "nullable": true
+                  },
+                  "compactionPasses": {
+                    "type": "integer",
+                    "nullable": true,
+                    "minimum": 0,
+                    "maximum": 100
+                  },
+                  "moistureCondition": {
+                    "type": "string",
+                    "nullable": true,
+                    "maxLength": 120
+                  },
+                  "evidence": {
+                    "type": "array",
+                    "maxItems": 20,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["kind", "name", "url"],
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": ["photo", "ticket", "attachment"]
+                        },
+                        "name": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 160
+                        },
+                        "url": {
+                          "type": "string",
+                          "format": "uri",
+                          "maxLength": 2000
+                        },
+                        "notes": {
+                          "type": "string",
+                          "nullable": true,
+                          "maxLength": 500
+                        }
+                      }
+                    }
+                  },
+                  "notes": {
+                    "type": "string",
+                    "nullable": true,
+                    "maxLength": 10000
+                  },
+                  "equipment": {
+                    "type": "array",
+                    "maxItems": 100,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["machineId", "role"],
+                      "properties": {
+                        "machineId": { "type": "string", "format": "uuid" },
+                        "role": {
+                          "type": "string",
+                          "enum": [
+                            "excavation",
+                            "loading",
+                            "transport",
+                            "spreading",
+                            "grading",
+                            "compaction",
+                            "watering",
+                            "support"
+                          ]
+                        },
+                        "operatorEmploymentId": {
+                          "type": "string",
+                          "format": "uuid",
+                          "nullable": true
+                        },
+                        "initialMeterValue": {
+                          "type": "string",
+                          "pattern": "^(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,6})?$",
+                          "nullable": true
+                        },
+                        "finalMeterValue": {
+                          "type": "string",
+                          "pattern": "^(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,6})?$",
+                          "nullable": true
+                        },
+                        "workedMinutes": {
+                          "type": "integer",
+                          "nullable": true,
+                          "minimum": 0,
+                          "maximum": 1440
+                        },
+                        "defaultTripCapacityM3": {
+                          "type": "string",
+                          "pattern": "^(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,6})?$",
+                          "nullable": true
+                        },
+                        "stops": {
+                          "type": "array",
+                          "maxItems": 20,
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["durationMinutes", "reason"],
+                            "properties": {
+                              "durationMinutes": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 1440
+                              },
+                              "reason": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 160
+                              },
+                              "notes": {
+                                "type": "string",
+                                "nullable": true,
+                                "maxLength": 500
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "in": "path",
+            "name": "projectId",
+            "required": true
+          }
+        ],
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "201": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["success", "message", "data"],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [true] },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "required": [
+                        "id",
+                        "projectId",
+                        "workFrontId",
+                        "workFrontServiceId",
+                        "serviceCode",
+                        "unitCode",
+                        "productionProfile",
+                        "dmtPolicy",
+                        "productionDate",
+                        "shift",
+                        "status",
+                        "entryMode",
+                        "revision",
+                        "metrics",
+                        "equipment",
+                        "trips",
+                        "approval",
+                        "rdo",
+                        "createdAt",
+                        "updatedAt"
+                      ],
+                      "properties": {
+                        "id": { "type": "string", "format": "uuid" },
+                        "projectId": { "type": "string", "format": "uuid" },
+                        "workFrontId": { "type": "string", "format": "uuid" },
+                        "workFrontServiceId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "serviceCode": { "type": "string" },
+                        "unitCode": { "type": "string" },
+                        "productionProfile": { "type": "string" },
+                        "dmtPolicy": { "type": "string" },
+                        "productionDate": {
+                          "type": "string",
+                          "format": "date"
+                        },
+                        "shift": { "type": "string", "enum": ["day", "night"] },
+                        "status": {
+                          "type": "string",
+                          "enum": ["draft", "approved"]
+                        },
+                        "entryMode": {
+                          "type": "string",
+                          "enum": ["direct_total", "trips"]
+                        },
+                        "revision": { "type": "integer" },
+                        "evidence": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["kind", "name", "url"],
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "enum": ["photo", "ticket", "attachment"]
+                              },
+                              "name": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 160
+                              },
+                              "url": {
+                                "type": "string",
+                                "format": "uri",
+                                "maxLength": 2000
+                              },
+                              "notes": {
+                                "type": "string",
+                                "nullable": true,
+                                "maxLength": 500
+                              }
+                            }
+                          }
+                        },
+                        "metrics": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "operationalVolumeM3",
+                            "officialQuantity",
+                            "difference",
+                            "differencePercent",
+                            "tripCount",
+                            "tripsPerHour",
+                            "quantityPerHour",
+                            "dmtKm",
+                            "transportMomentM3Km",
+                            "workedMinutes",
+                            "stoppedMinutes"
+                          ],
+                          "properties": {
+                            "operationalVolumeM3": {
+                              "type": "string",
+                              "pattern": "^(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,6})?$"
+                            },
+                            "officialQuantity": {
+                              "type": "string",
+                              "pattern": "^(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,6})?$"
+                            },
+                            "difference": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "differencePercent": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "tripCount": { "type": "integer" },
+                            "tripsPerHour": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "quantityPerHour": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "dmtKm": { "type": "string", "nullable": true },
+                            "transportMomentM3Km": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "workedMinutes": { "type": "integer" },
+                            "stoppedMinutes": { "type": "integer" }
+                          }
+                        },
+                        "equipment": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": true
+                          }
+                        },
+                        "trips": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": true
+                          }
+                        },
+                        "approval": {
+                          "type": "object",
+                          "additionalProperties": true
+                        },
+                        "rdo": {
+                          "type": "object",
+                          "additionalProperties": true
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "updatedAt": { "type": "string", "format": "date-time" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/productions/options": {
+      "get": {
+        "summary": "Resolve production options for a shift",
+        "tags": ["Project productions"],
+        "parameters": [
+          {
+            "schema": { "type": "string", "format": "date" },
+            "in": "query",
+            "name": "productionDate",
+            "required": true
+          },
+          {
+            "schema": { "type": "string", "enum": ["day", "night"] },
+            "in": "query",
+            "name": "shift",
+            "required": true
+          },
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "in": "path",
+            "name": "projectId",
+            "required": true
+          }
+        ],
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["success", "message", "data"],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [true] },
+                    "message": { "type": "string" },
+                    "data": { "type": "object", "additionalProperties": true }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/productions/{productionId}": {
+      "get": {
+        "summary": "Get an earthworks production",
+        "tags": ["Project productions"],
+        "parameters": [
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "in": "path",
+            "name": "projectId",
+            "required": true
+          },
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "in": "path",
+            "name": "productionId",
+            "required": true
+          }
+        ],
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["success", "message", "data"],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [true] },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "required": [
+                        "id",
+                        "projectId",
+                        "workFrontId",
+                        "workFrontServiceId",
+                        "serviceCode",
+                        "unitCode",
+                        "productionProfile",
+                        "dmtPolicy",
+                        "productionDate",
+                        "shift",
+                        "status",
+                        "entryMode",
+                        "revision",
+                        "metrics",
+                        "equipment",
+                        "trips",
+                        "approval",
+                        "rdo",
+                        "createdAt",
+                        "updatedAt"
+                      ],
+                      "properties": {
+                        "id": { "type": "string", "format": "uuid" },
+                        "projectId": { "type": "string", "format": "uuid" },
+                        "workFrontId": { "type": "string", "format": "uuid" },
+                        "workFrontServiceId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "serviceCode": { "type": "string" },
+                        "unitCode": { "type": "string" },
+                        "productionProfile": { "type": "string" },
+                        "dmtPolicy": { "type": "string" },
+                        "productionDate": {
+                          "type": "string",
+                          "format": "date"
+                        },
+                        "shift": { "type": "string", "enum": ["day", "night"] },
+                        "status": {
+                          "type": "string",
+                          "enum": ["draft", "approved"]
+                        },
+                        "entryMode": {
+                          "type": "string",
+                          "enum": ["direct_total", "trips"]
+                        },
+                        "revision": { "type": "integer" },
+                        "evidence": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["kind", "name", "url"],
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "enum": ["photo", "ticket", "attachment"]
+                              },
+                              "name": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 160
+                              },
+                              "url": {
+                                "type": "string",
+                                "format": "uri",
+                                "maxLength": 2000
+                              },
+                              "notes": {
+                                "type": "string",
+                                "nullable": true,
+                                "maxLength": 500
+                              }
+                            }
+                          }
+                        },
+                        "metrics": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "operationalVolumeM3",
+                            "officialQuantity",
+                            "difference",
+                            "differencePercent",
+                            "tripCount",
+                            "tripsPerHour",
+                            "quantityPerHour",
+                            "dmtKm",
+                            "transportMomentM3Km",
+                            "workedMinutes",
+                            "stoppedMinutes"
+                          ],
+                          "properties": {
+                            "operationalVolumeM3": {
+                              "type": "string",
+                              "pattern": "^(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,6})?$"
+                            },
+                            "officialQuantity": {
+                              "type": "string",
+                              "pattern": "^(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,6})?$"
+                            },
+                            "difference": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "differencePercent": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "tripCount": { "type": "integer" },
+                            "tripsPerHour": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "quantityPerHour": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "dmtKm": { "type": "string", "nullable": true },
+                            "transportMomentM3Km": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "workedMinutes": { "type": "integer" },
+                            "stoppedMinutes": { "type": "integer" }
+                          }
+                        },
+                        "equipment": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": true
+                          }
+                        },
+                        "trips": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": true
+                          }
+                        },
+                        "approval": {
+                          "type": "object",
+                          "additionalProperties": true
+                        },
+                        "rdo": {
+                          "type": "object",
+                          "additionalProperties": true
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "updatedAt": { "type": "string", "format": "date-time" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Replace a production draft with optimistic revision control",
+        "tags": ["Project productions"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "workFrontId",
+                  "workFrontServiceId",
+                  "productionDate",
+                  "shift",
+                  "entryMode"
+                ],
+                "properties": {
+                  "expectedRevision": { "type": "integer", "minimum": 1 },
+                  "approveNow": { "type": "boolean", "default": false },
+                  "workFrontId": { "type": "string", "format": "uuid" },
+                  "workFrontServiceId": { "type": "string", "format": "uuid" },
+                  "productionDate": { "type": "string", "format": "date" },
+                  "shift": { "type": "string", "enum": ["day", "night"] },
+                  "entryMode": {
+                    "type": "string",
+                    "enum": ["direct_total", "trips"]
+                  },
+                  "startTime": {
+                    "type": "string",
+                    "nullable": true,
+                    "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$"
+                  },
+                  "endTime": {
+                    "type": "string",
+                    "nullable": true,
+                    "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$"
+                  },
+                  "endDayOffset": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "default": 0
+                  },
+                  "responsibleEmploymentId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "nullable": true
+                  },
+                  "location": {
+                    "type": "string",
+                    "nullable": true,
+                    "maxLength": 240
+                  },
+                  "startStation": {
+                    "type": "string",
+                    "nullable": true,
+                    "maxLength": 80
+                  },
+                  "endStation": {
+                    "type": "string",
+                    "nullable": true,
+                    "maxLength": 80
+                  },
+                  "layer": {
+                    "type": "string",
+                    "nullable": true,
+                    "maxLength": 80
+                  },
+                  "elevation": {
+                    "type": "string",
+                    "nullable": true,
+                    "maxLength": 80
+                  },
+                  "materialName": {
+                    "type": "string",
+                    "nullable": true,
+                    "maxLength": 160
+                  },
+                  "materialCategory": {
+                    "type": "string",
+                    "nullable": true,
+                    "maxLength": 120
+                  },
+                  "volumeCondition": {
+                    "type": "string",
+                    "nullable": true,
+                    "enum": ["cut", "loose", "compacted"]
+                  },
+                  "directQuantity": {
+                    "type": "string",
+                    "pattern": "^(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,6})?$",
+                    "nullable": true
+                  },
+                  "measuredQuantity": {
+                    "type": "string",
+                    "pattern": "^(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,6})?$",
+                    "nullable": true
+                  },
+                  "conversionFactor": {
+                    "type": "string",
+                    "pattern": "^(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,6})?$",
+                    "nullable": true
+                  },
+                  "origin": {
+                    "type": "string",
+                    "nullable": true,
+                    "maxLength": 240
+                  },
+                  "destination": {
+                    "type": "string",
+                    "nullable": true,
+                    "maxLength": 240
+                  },
+                  "dmtKm": {
+                    "type": "string",
+                    "pattern": "^(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,6})?$",
+                    "nullable": true
+                  },
+                  "layerThicknessCm": {
+                    "type": "string",
+                    "pattern": "^(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,6})?$",
+                    "nullable": true
+                  },
+                  "compactionPasses": {
+                    "type": "integer",
+                    "nullable": true,
+                    "minimum": 0,
+                    "maximum": 100
+                  },
+                  "moistureCondition": {
+                    "type": "string",
+                    "nullable": true,
+                    "maxLength": 120
+                  },
+                  "evidence": {
+                    "type": "array",
+                    "maxItems": 20,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["kind", "name", "url"],
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": ["photo", "ticket", "attachment"]
+                        },
+                        "name": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 160
+                        },
+                        "url": {
+                          "type": "string",
+                          "format": "uri",
+                          "maxLength": 2000
+                        },
+                        "notes": {
+                          "type": "string",
+                          "nullable": true,
+                          "maxLength": 500
+                        }
+                      }
+                    }
+                  },
+                  "notes": {
+                    "type": "string",
+                    "nullable": true,
+                    "maxLength": 10000
+                  },
+                  "equipment": {
+                    "type": "array",
+                    "maxItems": 100,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["machineId", "role"],
+                      "properties": {
+                        "machineId": { "type": "string", "format": "uuid" },
+                        "role": {
+                          "type": "string",
+                          "enum": [
+                            "excavation",
+                            "loading",
+                            "transport",
+                            "spreading",
+                            "grading",
+                            "compaction",
+                            "watering",
+                            "support"
+                          ]
+                        },
+                        "operatorEmploymentId": {
+                          "type": "string",
+                          "format": "uuid",
+                          "nullable": true
+                        },
+                        "initialMeterValue": {
+                          "type": "string",
+                          "pattern": "^(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,6})?$",
+                          "nullable": true
+                        },
+                        "finalMeterValue": {
+                          "type": "string",
+                          "pattern": "^(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,6})?$",
+                          "nullable": true
+                        },
+                        "workedMinutes": {
+                          "type": "integer",
+                          "nullable": true,
+                          "minimum": 0,
+                          "maximum": 1440
+                        },
+                        "defaultTripCapacityM3": {
+                          "type": "string",
+                          "pattern": "^(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,6})?$",
+                          "nullable": true
+                        },
+                        "stops": {
+                          "type": "array",
+                          "maxItems": 20,
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["durationMinutes", "reason"],
+                            "properties": {
+                              "durationMinutes": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 1440
+                              },
+                              "reason": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 160
+                              },
+                              "notes": {
+                                "type": "string",
+                                "nullable": true,
+                                "maxLength": 500
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "in": "path",
+            "name": "projectId",
+            "required": true
+          },
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "in": "path",
+            "name": "productionId",
+            "required": true
+          }
+        ],
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["success", "message", "data"],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [true] },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "required": [
+                        "id",
+                        "projectId",
+                        "workFrontId",
+                        "workFrontServiceId",
+                        "serviceCode",
+                        "unitCode",
+                        "productionProfile",
+                        "dmtPolicy",
+                        "productionDate",
+                        "shift",
+                        "status",
+                        "entryMode",
+                        "revision",
+                        "metrics",
+                        "equipment",
+                        "trips",
+                        "approval",
+                        "rdo",
+                        "createdAt",
+                        "updatedAt"
+                      ],
+                      "properties": {
+                        "id": { "type": "string", "format": "uuid" },
+                        "projectId": { "type": "string", "format": "uuid" },
+                        "workFrontId": { "type": "string", "format": "uuid" },
+                        "workFrontServiceId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "serviceCode": { "type": "string" },
+                        "unitCode": { "type": "string" },
+                        "productionProfile": { "type": "string" },
+                        "dmtPolicy": { "type": "string" },
+                        "productionDate": {
+                          "type": "string",
+                          "format": "date"
+                        },
+                        "shift": { "type": "string", "enum": ["day", "night"] },
+                        "status": {
+                          "type": "string",
+                          "enum": ["draft", "approved"]
+                        },
+                        "entryMode": {
+                          "type": "string",
+                          "enum": ["direct_total", "trips"]
+                        },
+                        "revision": { "type": "integer" },
+                        "evidence": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["kind", "name", "url"],
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "enum": ["photo", "ticket", "attachment"]
+                              },
+                              "name": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 160
+                              },
+                              "url": {
+                                "type": "string",
+                                "format": "uri",
+                                "maxLength": 2000
+                              },
+                              "notes": {
+                                "type": "string",
+                                "nullable": true,
+                                "maxLength": 500
+                              }
+                            }
+                          }
+                        },
+                        "metrics": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "operationalVolumeM3",
+                            "officialQuantity",
+                            "difference",
+                            "differencePercent",
+                            "tripCount",
+                            "tripsPerHour",
+                            "quantityPerHour",
+                            "dmtKm",
+                            "transportMomentM3Km",
+                            "workedMinutes",
+                            "stoppedMinutes"
+                          ],
+                          "properties": {
+                            "operationalVolumeM3": {
+                              "type": "string",
+                              "pattern": "^(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,6})?$"
+                            },
+                            "officialQuantity": {
+                              "type": "string",
+                              "pattern": "^(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,6})?$"
+                            },
+                            "difference": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "differencePercent": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "tripCount": { "type": "integer" },
+                            "tripsPerHour": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "quantityPerHour": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "dmtKm": { "type": "string", "nullable": true },
+                            "transportMomentM3Km": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "workedMinutes": { "type": "integer" },
+                            "stoppedMinutes": { "type": "integer" }
+                          }
+                        },
+                        "equipment": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": true
+                          }
+                        },
+                        "trips": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": true
+                          }
+                        },
+                        "approval": {
+                          "type": "object",
+                          "additionalProperties": true
+                        },
+                        "rdo": {
+                          "type": "object",
+                          "additionalProperties": true
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "updatedAt": { "type": "string", "format": "date-time" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/productions/{productionId}/approve": {
+      "post": {
+        "summary": "Approve a production draft",
+        "tags": ["Project productions"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["expectedRevision"],
+                "properties": {
+                  "expectedRevision": { "type": "integer", "minimum": 1 }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "in": "path",
+            "name": "projectId",
+            "required": true
+          },
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "in": "path",
+            "name": "productionId",
+            "required": true
+          }
+        ],
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["success", "message", "data"],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [true] },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "required": [
+                        "id",
+                        "projectId",
+                        "workFrontId",
+                        "workFrontServiceId",
+                        "serviceCode",
+                        "unitCode",
+                        "productionProfile",
+                        "dmtPolicy",
+                        "productionDate",
+                        "shift",
+                        "status",
+                        "entryMode",
+                        "revision",
+                        "metrics",
+                        "equipment",
+                        "trips",
+                        "approval",
+                        "rdo",
+                        "createdAt",
+                        "updatedAt"
+                      ],
+                      "properties": {
+                        "id": { "type": "string", "format": "uuid" },
+                        "projectId": { "type": "string", "format": "uuid" },
+                        "workFrontId": { "type": "string", "format": "uuid" },
+                        "workFrontServiceId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "serviceCode": { "type": "string" },
+                        "unitCode": { "type": "string" },
+                        "productionProfile": { "type": "string" },
+                        "dmtPolicy": { "type": "string" },
+                        "productionDate": {
+                          "type": "string",
+                          "format": "date"
+                        },
+                        "shift": { "type": "string", "enum": ["day", "night"] },
+                        "status": {
+                          "type": "string",
+                          "enum": ["draft", "approved"]
+                        },
+                        "entryMode": {
+                          "type": "string",
+                          "enum": ["direct_total", "trips"]
+                        },
+                        "revision": { "type": "integer" },
+                        "evidence": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["kind", "name", "url"],
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "enum": ["photo", "ticket", "attachment"]
+                              },
+                              "name": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 160
+                              },
+                              "url": {
+                                "type": "string",
+                                "format": "uri",
+                                "maxLength": 2000
+                              },
+                              "notes": {
+                                "type": "string",
+                                "nullable": true,
+                                "maxLength": 500
+                              }
+                            }
+                          }
+                        },
+                        "metrics": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "operationalVolumeM3",
+                            "officialQuantity",
+                            "difference",
+                            "differencePercent",
+                            "tripCount",
+                            "tripsPerHour",
+                            "quantityPerHour",
+                            "dmtKm",
+                            "transportMomentM3Km",
+                            "workedMinutes",
+                            "stoppedMinutes"
+                          ],
+                          "properties": {
+                            "operationalVolumeM3": {
+                              "type": "string",
+                              "pattern": "^(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,6})?$"
+                            },
+                            "officialQuantity": {
+                              "type": "string",
+                              "pattern": "^(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,6})?$"
+                            },
+                            "difference": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "differencePercent": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "tripCount": { "type": "integer" },
+                            "tripsPerHour": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "quantityPerHour": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "dmtKm": { "type": "string", "nullable": true },
+                            "transportMomentM3Km": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "workedMinutes": { "type": "integer" },
+                            "stoppedMinutes": { "type": "integer" }
+                          }
+                        },
+                        "equipment": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": true
+                          }
+                        },
+                        "trips": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": true
+                          }
+                        },
+                        "approval": {
+                          "type": "object",
+                          "additionalProperties": true
+                        },
+                        "rdo": {
+                          "type": "object",
+                          "additionalProperties": true
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "updatedAt": { "type": "string", "format": "date-time" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/productions/{productionId}/reopen": {
+      "post": {
+        "summary": "Reopen an approved production with an audit reason",
+        "tags": ["Project productions"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["expectedRevision", "reason"],
+                "properties": {
+                  "expectedRevision": { "type": "integer", "minimum": 1 },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 500
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "in": "path",
+            "name": "projectId",
+            "required": true
+          },
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "in": "path",
+            "name": "productionId",
+            "required": true
+          }
+        ],
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["success", "message", "data"],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [true] },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "required": [
+                        "id",
+                        "projectId",
+                        "workFrontId",
+                        "workFrontServiceId",
+                        "serviceCode",
+                        "unitCode",
+                        "productionProfile",
+                        "dmtPolicy",
+                        "productionDate",
+                        "shift",
+                        "status",
+                        "entryMode",
+                        "revision",
+                        "metrics",
+                        "equipment",
+                        "trips",
+                        "approval",
+                        "rdo",
+                        "createdAt",
+                        "updatedAt"
+                      ],
+                      "properties": {
+                        "id": { "type": "string", "format": "uuid" },
+                        "projectId": { "type": "string", "format": "uuid" },
+                        "workFrontId": { "type": "string", "format": "uuid" },
+                        "workFrontServiceId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "serviceCode": { "type": "string" },
+                        "unitCode": { "type": "string" },
+                        "productionProfile": { "type": "string" },
+                        "dmtPolicy": { "type": "string" },
+                        "productionDate": {
+                          "type": "string",
+                          "format": "date"
+                        },
+                        "shift": { "type": "string", "enum": ["day", "night"] },
+                        "status": {
+                          "type": "string",
+                          "enum": ["draft", "approved"]
+                        },
+                        "entryMode": {
+                          "type": "string",
+                          "enum": ["direct_total", "trips"]
+                        },
+                        "revision": { "type": "integer" },
+                        "evidence": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["kind", "name", "url"],
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "enum": ["photo", "ticket", "attachment"]
+                              },
+                              "name": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 160
+                              },
+                              "url": {
+                                "type": "string",
+                                "format": "uri",
+                                "maxLength": 2000
+                              },
+                              "notes": {
+                                "type": "string",
+                                "nullable": true,
+                                "maxLength": 500
+                              }
+                            }
+                          }
+                        },
+                        "metrics": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "operationalVolumeM3",
+                            "officialQuantity",
+                            "difference",
+                            "differencePercent",
+                            "tripCount",
+                            "tripsPerHour",
+                            "quantityPerHour",
+                            "dmtKm",
+                            "transportMomentM3Km",
+                            "workedMinutes",
+                            "stoppedMinutes"
+                          ],
+                          "properties": {
+                            "operationalVolumeM3": {
+                              "type": "string",
+                              "pattern": "^(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,6})?$"
+                            },
+                            "officialQuantity": {
+                              "type": "string",
+                              "pattern": "^(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,6})?$"
+                            },
+                            "difference": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "differencePercent": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "tripCount": { "type": "integer" },
+                            "tripsPerHour": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "quantityPerHour": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "dmtKm": { "type": "string", "nullable": true },
+                            "transportMomentM3Km": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "workedMinutes": { "type": "integer" },
+                            "stoppedMinutes": { "type": "integer" }
+                          }
+                        },
+                        "equipment": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": true
+                          }
+                        },
+                        "trips": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": true
+                          }
+                        },
+                        "approval": {
+                          "type": "object",
+                          "additionalProperties": true
+                        },
+                        "rdo": {
+                          "type": "object",
+                          "additionalProperties": true
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "updatedAt": { "type": "string", "format": "date-time" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/productions/{productionId}/trips": {
+      "post": {
+        "summary": "Quick-add an idempotent truck trip",
+        "tags": ["Project productions"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "expectedRevision",
+                  "idempotencyKey",
+                  "productionEquipmentId"
+                ],
+                "properties": {
+                  "expectedRevision": { "type": "integer", "minimum": 1 },
+                  "idempotencyKey": { "type": "string", "format": "uuid" },
+                  "productionEquipmentId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "recordedAt": { "type": "string", "format": "date-time" },
+                  "capacityM3": {
+                    "type": "string",
+                    "pattern": "^(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,6})?$"
+                  },
+                  "adjustedVolumeM3": {
+                    "type": "string",
+                    "pattern": "^(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,6})?$",
+                    "nullable": true
+                  },
+                  "ticketNumber": {
+                    "type": "string",
+                    "nullable": true,
+                    "maxLength": 80
+                  },
+                  "notes": {
+                    "type": "string",
+                    "nullable": true,
+                    "maxLength": 500
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "in": "path",
+            "name": "projectId",
+            "required": true
+          },
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "in": "path",
+            "name": "productionId",
+            "required": true
+          }
+        ],
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "201": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["success", "message", "data"],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [true] },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "required": [
+                        "id",
+                        "projectId",
+                        "workFrontId",
+                        "workFrontServiceId",
+                        "serviceCode",
+                        "unitCode",
+                        "productionProfile",
+                        "dmtPolicy",
+                        "productionDate",
+                        "shift",
+                        "status",
+                        "entryMode",
+                        "revision",
+                        "metrics",
+                        "equipment",
+                        "trips",
+                        "approval",
+                        "rdo",
+                        "createdAt",
+                        "updatedAt"
+                      ],
+                      "properties": {
+                        "id": { "type": "string", "format": "uuid" },
+                        "projectId": { "type": "string", "format": "uuid" },
+                        "workFrontId": { "type": "string", "format": "uuid" },
+                        "workFrontServiceId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "serviceCode": { "type": "string" },
+                        "unitCode": { "type": "string" },
+                        "productionProfile": { "type": "string" },
+                        "dmtPolicy": { "type": "string" },
+                        "productionDate": {
+                          "type": "string",
+                          "format": "date"
+                        },
+                        "shift": { "type": "string", "enum": ["day", "night"] },
+                        "status": {
+                          "type": "string",
+                          "enum": ["draft", "approved"]
+                        },
+                        "entryMode": {
+                          "type": "string",
+                          "enum": ["direct_total", "trips"]
+                        },
+                        "revision": { "type": "integer" },
+                        "evidence": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["kind", "name", "url"],
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "enum": ["photo", "ticket", "attachment"]
+                              },
+                              "name": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 160
+                              },
+                              "url": {
+                                "type": "string",
+                                "format": "uri",
+                                "maxLength": 2000
+                              },
+                              "notes": {
+                                "type": "string",
+                                "nullable": true,
+                                "maxLength": 500
+                              }
+                            }
+                          }
+                        },
+                        "metrics": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "operationalVolumeM3",
+                            "officialQuantity",
+                            "difference",
+                            "differencePercent",
+                            "tripCount",
+                            "tripsPerHour",
+                            "quantityPerHour",
+                            "dmtKm",
+                            "transportMomentM3Km",
+                            "workedMinutes",
+                            "stoppedMinutes"
+                          ],
+                          "properties": {
+                            "operationalVolumeM3": {
+                              "type": "string",
+                              "pattern": "^(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,6})?$"
+                            },
+                            "officialQuantity": {
+                              "type": "string",
+                              "pattern": "^(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,6})?$"
+                            },
+                            "difference": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "differencePercent": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "tripCount": { "type": "integer" },
+                            "tripsPerHour": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "quantityPerHour": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "dmtKm": { "type": "string", "nullable": true },
+                            "transportMomentM3Km": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "workedMinutes": { "type": "integer" },
+                            "stoppedMinutes": { "type": "integer" }
+                          }
+                        },
+                        "equipment": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": true
+                          }
+                        },
+                        "trips": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": true
+                          }
+                        },
+                        "approval": {
+                          "type": "object",
+                          "additionalProperties": true
+                        },
+                        "rdo": {
+                          "type": "object",
+                          "additionalProperties": true
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "updatedAt": { "type": "string", "format": "date-time" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/productions/{productionId}/trips/{tripId}": {
+      "delete": {
+        "summary": "Remove a trip from a production draft",
+        "tags": ["Project productions"],
+        "parameters": [
+          {
+            "schema": { "type": "integer", "minimum": 1 },
+            "in": "query",
+            "name": "expectedRevision",
+            "required": true
+          },
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "in": "path",
+            "name": "projectId",
+            "required": true
+          },
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "in": "path",
+            "name": "productionId",
+            "required": true
+          },
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "in": "path",
+            "name": "tripId",
+            "required": true
+          }
+        ],
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["success", "message", "data"],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [true] },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "required": [
+                        "id",
+                        "projectId",
+                        "workFrontId",
+                        "workFrontServiceId",
+                        "serviceCode",
+                        "unitCode",
+                        "productionProfile",
+                        "dmtPolicy",
+                        "productionDate",
+                        "shift",
+                        "status",
+                        "entryMode",
+                        "revision",
+                        "metrics",
+                        "equipment",
+                        "trips",
+                        "approval",
+                        "rdo",
+                        "createdAt",
+                        "updatedAt"
+                      ],
+                      "properties": {
+                        "id": { "type": "string", "format": "uuid" },
+                        "projectId": { "type": "string", "format": "uuid" },
+                        "workFrontId": { "type": "string", "format": "uuid" },
+                        "workFrontServiceId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "serviceCode": { "type": "string" },
+                        "unitCode": { "type": "string" },
+                        "productionProfile": { "type": "string" },
+                        "dmtPolicy": { "type": "string" },
+                        "productionDate": {
+                          "type": "string",
+                          "format": "date"
+                        },
+                        "shift": { "type": "string", "enum": ["day", "night"] },
+                        "status": {
+                          "type": "string",
+                          "enum": ["draft", "approved"]
+                        },
+                        "entryMode": {
+                          "type": "string",
+                          "enum": ["direct_total", "trips"]
+                        },
+                        "revision": { "type": "integer" },
+                        "evidence": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["kind", "name", "url"],
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "enum": ["photo", "ticket", "attachment"]
+                              },
+                              "name": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 160
+                              },
+                              "url": {
+                                "type": "string",
+                                "format": "uri",
+                                "maxLength": 2000
+                              },
+                              "notes": {
+                                "type": "string",
+                                "nullable": true,
+                                "maxLength": 500
+                              }
+                            }
+                          }
+                        },
+                        "metrics": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "operationalVolumeM3",
+                            "officialQuantity",
+                            "difference",
+                            "differencePercent",
+                            "tripCount",
+                            "tripsPerHour",
+                            "quantityPerHour",
+                            "dmtKm",
+                            "transportMomentM3Km",
+                            "workedMinutes",
+                            "stoppedMinutes"
+                          ],
+                          "properties": {
+                            "operationalVolumeM3": {
+                              "type": "string",
+                              "pattern": "^(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,6})?$"
+                            },
+                            "officialQuantity": {
+                              "type": "string",
+                              "pattern": "^(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,6})?$"
+                            },
+                            "difference": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "differencePercent": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "tripCount": { "type": "integer" },
+                            "tripsPerHour": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "quantityPerHour": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "dmtKm": { "type": "string", "nullable": true },
+                            "transportMomentM3Km": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "workedMinutes": { "type": "integer" },
+                            "stoppedMinutes": { "type": "integer" }
+                          }
+                        },
+                        "equipment": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": true
+                          }
+                        },
+                        "trips": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": true
+                          }
+                        },
+                        "approval": {
+                          "type": "object",
+                          "additionalProperties": true
+                        },
+                        "rdo": {
+                          "type": "object",
+                          "additionalProperties": true
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "updatedAt": { "type": "string", "format": "date-time" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/daily-reports/{reportId}/productions": {
+      "get": {
+        "summary": "Get the production summary for a daily report",
+        "tags": ["Project productions"],
+        "parameters": [
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "in": "path",
+            "name": "projectId",
+            "required": true
+          },
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "in": "path",
+            "name": "reportId",
+            "required": true
+          }
+        ],
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["success", "message", "data"],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [true] },
+                    "message": { "type": "string" },
+                    "data": { "type": "object", "additionalProperties": true }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/daily-reports/{reportId}/productions/confirm": {
+      "post": {
+        "summary": "Confirm approved production revisions in a daily report",
+        "tags": ["Project productions"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["productionIds"],
+                "properties": {
+                  "productionIds": {
+                    "type": "array",
+                    "maxItems": 200,
+                    "items": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "in": "path",
+            "name": "projectId",
+            "required": true
+          },
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "in": "path",
+            "name": "reportId",
+            "required": true
+          }
+        ],
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["success", "message", "data"],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [true] },
+                    "message": { "type": "string" },
+                    "data": { "type": "object", "additionalProperties": true }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "servers": [{ "url": "http://0.0.0.0:3333", "description": "Servidor local" }]

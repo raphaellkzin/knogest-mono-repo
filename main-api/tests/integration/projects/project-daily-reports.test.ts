@@ -544,6 +544,289 @@ describe("project daily reports", () => {
     expect(report.status).toBe("DRAFT");
     expect(report.machineEntries[0]?.endMeterReadingId).toBeNull();
   });
+
+  it("links only approved production revisions and invalidates the RDO link after reopening", async () => {
+    const scope = await setup();
+    const project = await app.prisma.project.findUniqueOrThrow({
+      where: { id: scope.projectId },
+    });
+    const session = await app.prisma.session.findFirstOrThrow({
+      where: {
+        corporationId: project.corporationId,
+        companyId: project.companyId,
+      },
+    });
+    const effectiveFrom = new Date(`${scope.reportDate}T00:00:00-03:00`);
+    const front = await app.prisma.projectWorkFront.create({
+      data: {
+        corporationId: project.corporationId,
+        companyId: project.companyId,
+        projectId: project.id,
+        name: "Frente de transporte",
+        location: "Estacas 10 a 25",
+        status: "ACTIVE",
+        actualStartedAt: effectiveFrom,
+      },
+    });
+    const service = await app.prisma.projectWorkFrontService.create({
+      data: {
+        corporationId: project.corporationId,
+        companyId: project.companyId,
+        projectId: project.id,
+        workFrontId: front.id,
+        serviceCode: "cut",
+        unitCode: "M3",
+        quantity: "5000.00",
+        productionProfile: "TRANSPORT",
+        dmtPolicy: "REQUIRED",
+      },
+    });
+    await app.prisma.projectWorkFrontMachineAssignment.create({
+      data: {
+        corporationId: project.corporationId,
+        companyId: project.companyId,
+        projectId: project.id,
+        workFrontId: front.id,
+        machineId: scope.machineId,
+        operatorEmploymentId: scope.employmentId,
+        effectiveFrom,
+        createdByUserId: session.userId,
+      },
+    });
+    const baseProduction = {
+      workFrontId: front.id,
+      workFrontServiceId: service.id,
+      productionDate: scope.reportDate,
+      shift: "day",
+      startTime: "07:00",
+      endTime: "18:00",
+      endDayOffset: 0,
+      responsibleEmploymentId: scope.employmentId,
+      location: "Estacas 10 a 25",
+      startStation: "10+000",
+      endStation: "25+000",
+      materialName: "Solo de 1ª categoria",
+      materialCategory: "Material comum",
+      volumeCondition: "loose",
+      conversionFactor: null,
+      origin: "Corte A",
+      destination: "Aterro B",
+      dmtKm: "5.000",
+      layer: null,
+      elevation: null,
+      layerThicknessCm: null,
+      compactionPasses: null,
+      moistureCondition: null,
+      evidence: [
+        {
+          kind: "ticket",
+          name: "Ticket 001",
+          url: "https://example.test/tickets/001.pdf",
+          notes: null,
+        },
+      ],
+      notes: null,
+    };
+
+    const direct = await app.inject({
+      method: "POST",
+      url: `/api/v1/projects/${scope.projectId}/productions`,
+      headers: { authorization: scope.authorization },
+      payload: {
+        ...baseProduction,
+        approveNow: true,
+        entryMode: "direct_total",
+        directQuantity: "100.125",
+        measuredQuantity: "96.500",
+        equipment: [
+          {
+            machineId: scope.machineId,
+            role: "transport",
+            operatorEmploymentId: scope.employmentId,
+            workedMinutes: 600,
+            initialMeterValue: "2168.10",
+            finalMeterValue: "2174.60",
+            defaultTripCapacityM3: null,
+            stops: [],
+          },
+        ],
+      },
+    });
+    expect(direct.statusCode, direct.body).toBe(201);
+    expect(direct.json().data.metrics.officialQuantity).toBe("96.500");
+    expect(direct.json().data.approval.direct).toBe(true);
+
+    const draft = await app.inject({
+      method: "POST",
+      url: `/api/v1/projects/${scope.projectId}/productions`,
+      headers: { authorization: scope.authorization },
+      payload: {
+        ...baseProduction,
+        approveNow: false,
+        entryMode: "trips",
+        directQuantity: null,
+        measuredQuantity: null,
+        equipment: [
+          {
+            machineId: scope.machineId,
+            role: "transport",
+            operatorEmploymentId: scope.employmentId,
+            workedMinutes: 600,
+            initialMeterValue: null,
+            finalMeterValue: null,
+            defaultTripCapacityM3: "10.000",
+            stops: [
+              {
+                durationMinutes: 30,
+                reason: "Manutenção preventiva",
+                notes: null,
+              },
+            ],
+          },
+        ],
+      },
+    });
+    expect(draft.statusCode, draft.body).toBe(201);
+    const draftId = draft.json().data.id as string;
+    const productionEquipmentId = draft.json().data.equipment[0].id as string;
+    const idempotencyKey = "00000000-0000-4000-8000-000000002999";
+    const firstTripPayload = {
+      expectedRevision: 1,
+      idempotencyKey,
+      productionEquipmentId,
+      recordedAt: `${scope.reportDate}T13:00:00-03:00`,
+      capacityM3: "10.000",
+      adjustedVolumeM3: "9.500",
+      ticketNumber: "VT-001",
+      notes: null,
+    };
+    const firstTrip = await app.inject({
+      method: "POST",
+      url: `/api/v1/projects/${scope.projectId}/productions/${draftId}/trips`,
+      headers: { authorization: scope.authorization },
+      payload: firstTripPayload,
+    });
+    expect(firstTrip.statusCode, firstTrip.body).toBe(201);
+    expect(firstTrip.json().data.metrics.operationalVolumeM3).toBe("9.500");
+    const repeatedTrip = await app.inject({
+      method: "POST",
+      url: `/api/v1/projects/${scope.projectId}/productions/${draftId}/trips`,
+      headers: { authorization: scope.authorization },
+      payload: firstTripPayload,
+    });
+    expect(repeatedTrip.statusCode, repeatedTrip.body).toBe(201);
+    expect(repeatedTrip.json().data.metrics.tripCount).toBe(1);
+
+    const secondTrip = await app.inject({
+      method: "POST",
+      url: `/api/v1/projects/${scope.projectId}/productions/${draftId}/trips`,
+      headers: { authorization: scope.authorization },
+      payload: {
+        ...firstTripPayload,
+        expectedRevision: 2,
+        idempotencyKey: "00000000-0000-4000-8000-000000002998",
+        recordedAt: `${scope.reportDate}T14:00:00-03:00`,
+        adjustedVolumeM3: null,
+        ticketNumber: "VT-002",
+      },
+    });
+    expect(secondTrip.statusCode, secondTrip.body).toBe(201);
+    expect(secondTrip.json().data.metrics.operationalVolumeM3).toBe("19.500");
+
+    const updated = await app.inject({
+      method: "PUT",
+      url: `/api/v1/projects/${scope.projectId}/productions/${draftId}`,
+      headers: { authorization: scope.authorization },
+      payload: {
+        ...baseProduction,
+        expectedRevision: 3,
+        approveNow: false,
+        entryMode: "trips",
+        directQuantity: null,
+        measuredQuantity: "18.000",
+        equipment: [
+          {
+            machineId: scope.machineId,
+            role: "transport",
+            operatorEmploymentId: scope.employmentId,
+            workedMinutes: 600,
+            initialMeterValue: null,
+            finalMeterValue: null,
+            defaultTripCapacityM3: "10.000",
+            stops: [],
+          },
+        ],
+      },
+    });
+    expect(updated.statusCode, updated.body).toBe(200);
+    expect(updated.json().data.metrics).toMatchObject({
+      officialQuantity: "18.000",
+      operationalVolumeM3: "19.500",
+      difference: "-1.500",
+      transportMomentM3Km: "97.500",
+    });
+    const approved = await app.inject({
+      method: "POST",
+      url: `/api/v1/projects/${scope.projectId}/productions/${draftId}/approve`,
+      headers: { authorization: scope.authorization },
+      payload: { expectedRevision: 4 },
+    });
+    expect(approved.statusCode, approved.body).toBe(200);
+    expect(approved.json().data.approval.direct).toBe(false);
+
+    const report = await app.inject({
+      method: "POST",
+      url: `/api/v1/projects/${scope.projectId}/daily-reports`,
+      headers: { authorization: scope.authorization },
+      payload: command(scope),
+    });
+    expect(report.statusCode, report.body).toBe(201);
+    const reportId = report.json().data.id as string;
+    const unconfirmed = await app.inject({
+      method: "POST",
+      url: `/api/v1/projects/${scope.projectId}/daily-reports/${reportId}/finalize`,
+      headers: { authorization: scope.authorization },
+    });
+    expect(unconfirmed.statusCode, unconfirmed.body).toBe(409);
+    expect(unconfirmed.json().code).toBe(
+      "PRODUCTION_RDO_CONFIRMATION_REQUIRED",
+    );
+    const confirmation = await app.inject({
+      method: "POST",
+      url: `/api/v1/projects/${scope.projectId}/daily-reports/${reportId}/productions/confirm`,
+      headers: { authorization: scope.authorization },
+      payload: {
+        productionIds: [direct.json().data.id, draftId],
+      },
+    });
+    expect(confirmation.statusCode, confirmation.body).toBe(200);
+    expect(confirmation.json().data.needsReconfirmation).toBe(false);
+    const finalized = await app.inject({
+      method: "POST",
+      url: `/api/v1/projects/${scope.projectId}/daily-reports/${reportId}/finalize`,
+      headers: { authorization: scope.authorization },
+    });
+    expect(finalized.statusCode, finalized.body).toBe(200);
+
+    const reopened = await app.inject({
+      method: "POST",
+      url: `/api/v1/projects/${scope.projectId}/productions/${draftId}/reopen`,
+      headers: { authorization: scope.authorization },
+      payload: {
+        expectedRevision: approved.json().data.revision,
+        reason: "Correção do volume medido",
+      },
+    });
+    expect(reopened.statusCode, reopened.body).toBe(200);
+    expect(reopened.json().data.rdo).toEqual({ linked: true, stale: true });
+    const summary = await app.inject({
+      method: "GET",
+      url: `/api/v1/projects/${scope.projectId}/daily-reports/${reportId}/productions`,
+      headers: { authorization: scope.authorization },
+    });
+    expect(summary.statusCode, summary.body).toBe(200);
+    expect(summary.json().data.needsReconfirmation).toBe(true);
+  });
 });
 
 function dateInSaoPauloDaysAgo(days: number) {

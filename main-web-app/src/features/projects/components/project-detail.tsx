@@ -54,6 +54,8 @@ import {
 import { cn } from "@/lib/utils";
 import type { ProjectDailyReportsPage } from "../daily-reports.types";
 import { ProjectDailyReports } from "./project-daily-reports";
+import type { ProjectProductionsPage } from "../productions.types";
+import { ProjectProductions } from "./project-productions";
 import {
   activateProjectAction,
   createProjectWorkFrontAction,
@@ -1743,6 +1745,7 @@ export function FuelEditEditor({
 
 export function ProjectDetail({
   initialDailyReports,
+  initialProductions,
   lookupSuppliedItemOfferSuppliersAction,
   lookupSuppliedItemOffersAction,
   lookupSuppliedItemsAction,
@@ -1751,6 +1754,7 @@ export function ProjectDetail({
   project: serverProject,
 }: {
   initialDailyReports?: ProjectDailyReportsPage;
+  initialProductions?: ProjectProductionsPage;
   lookupSuppliedItemOfferSuppliersAction: LookupSuppliedItemOfferSuppliersAction;
   lookupSuppliedItemOffersAction: LookupSuppliedItemOffersAction;
   lookupSuppliedItemsAction: LookupSuppliedItemsAction;
@@ -2257,11 +2261,33 @@ export function ProjectDetail({
       label: <TabLabel label="Equipe" status={teamStatus} />,
     },
     {
+      value: "fronts" as const,
+      label: (
+        <TabLabel
+          label="Frentes"
+          status={
+            project.workFronts.some(
+              (front) => front.planningEligibility.isValid,
+            )
+              ? { label: "OK", tone: "ready" }
+              : { label: "Pendente", tone: "pending" }
+          }
+        />
+      ),
+    },
+    {
       value: "production" as const,
       label: (
         <TabLabel
           label="Produção"
-          status={{ label: "Preparado", tone: "neutral" }}
+          status={
+            initialProductions?.data.length
+              ? {
+                  label: String(initialProductions.data.length),
+                  tone: "ready",
+                }
+              : { label: "Novo", tone: "neutral" }
+          }
         />
       ),
     },
@@ -3553,7 +3579,37 @@ export function ProjectDetail({
             </div>
           )}
 
-          {(activeTab === "fronts" || activeTab === "production") && (
+          {activeTab === "production" && (
+            <Section
+              icon={Gauge}
+              title="Produção"
+              description="Registre quantidades, viagens, DMT, máquinas, horas e paradas por serviço e turno."
+              status={{
+                label: initialProductions?.data.length
+                  ? `${initialProductions.data.length} lançamento(s)`
+                  : "Sem produção",
+                tone: initialProductions?.data.length ? "ready" : "neutral",
+              }}
+            >
+              <ProjectProductions
+                projectId={project.id}
+                initialPage={
+                  initialProductions ?? {
+                    data: [],
+                    pageInfo: { hasNextPage: false, nextCursor: null },
+                    capabilities: {
+                      createDraft: true,
+                      publishDirect: true,
+                      approveOthers: true,
+                      reopen: true,
+                    },
+                  }
+                }
+              />
+            </Section>
+          )}
+
+          {activeTab === "fronts" && (
             <div className="space-y-4">
               <Section
                 icon={HardHat}
@@ -4581,9 +4637,6 @@ export function ProjectDetail({
         description="Defina a área de atuação, os requisitos de início e os quantitativos planejados para esta frente."
         footer={
           <>
-            <p className="text-xs font-medium leading-5 text-muted-foreground">
-              O saldo não distribuído permanece disponível para novas frentes.
-            </p>
             <div className="flex flex-col-reverse gap-2 sm:flex-row">
               <Button
                 type="button"

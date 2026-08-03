@@ -35,6 +35,19 @@ vi.mock("../daily-reports.actions", () => ({
   saveProjectDailyReportAction: vi.fn(),
 }));
 
+vi.mock("../productions.actions", () => ({
+  addProjectProductionTripAction: vi.fn(),
+  approveProjectProductionAction: vi.fn(),
+  confirmDailyReportProductionsAction: vi.fn(),
+  getMoreProjectProductionsAction: vi.fn(),
+  getProjectProductionAction: vi.fn(),
+  getProjectProductionOptionsAction: vi.fn(),
+  getShiftProjectProductionsAction: vi.fn(),
+  removeProjectProductionTripAction: vi.fn(),
+  reopenProjectProductionAction: vi.fn(),
+  saveProjectProductionAction: vi.fn(),
+}));
+
 vi.mock("sonner", () => ({
   toast: {
     error: vi.fn(),
@@ -1129,7 +1142,7 @@ describe("Project active work-front mobilization", () => {
     const user = userEvent.setup();
 
     renderProjectDetail(activeProject);
-    await user.click(screen.getByRole("tab", { name: /Produção/u }));
+    await user.click(screen.getByRole("tab", { name: /Frentes/u }));
     expect(screen.queryByText("Iniciar com a obra")).toBeNull();
     await user.click(
       screen.getByRole("button", { name: "Preparar mobilização" }),

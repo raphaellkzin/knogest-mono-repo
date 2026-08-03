@@ -59,6 +59,11 @@ import type {
   ProjectDailyReportSummary,
 } from "../daily-reports.types";
 import { copyTextToClipboard } from "../copy-to-clipboard";
+import {
+  confirmDailyReportProductionsAction,
+  getShiftProjectProductionsAction,
+} from "../productions.actions";
+import type { ProjectProductionSummary } from "../productions.types";
 
 const time = z
   .string()
@@ -243,6 +248,20 @@ const climateOptions = [
   ["dry", "Seco"],
   ["waterlogged_soil", "Solo encharcado"],
 ] as const;
+const serviceLabels: Record<string, string> = {
+  cut: "Corte",
+  fill: "Aterro",
+  finishing: "Acabamento",
+  top_soil: "Top soil",
+  unsuitable_soil_removal: "Remoção de solo impróprio",
+  replacement_fill: "Aterro de substituição",
+};
+
+function formatDecimal(value: string) {
+  return new Intl.NumberFormat("pt-BR", {
+    maximumFractionDigits: 3,
+  }).format(Number(value));
+}
 
 export function ProjectDailyReports({
   initialPage,
@@ -268,6 +287,10 @@ export function ProjectDailyReports({
   const [saving, setSaving] = React.useState(false);
   const [finalizing, setFinalizing] = React.useState(false);
   const [paginationLoading, setPaginationLoading] = React.useState(false);
+  const [productionsLoading, setProductionsLoading] = React.useState(false);
+  const [shiftProductions, setShiftProductions] = React.useState<
+    ProjectProductionSummary[]
+  >([]);
   const [currentStep, setCurrentStep] = React.useState(0);
   const [editingSchedule, setEditingSchedule] = React.useState(false);
   const [pendingDiscard, setPendingDiscard] =
@@ -313,6 +336,11 @@ export function ProjectDailyReports({
     control: form.control,
     name: "activityEndDayOffset",
   });
+  const watchedReportDate = useWatch({
+    control: form.control,
+    name: "reportDate",
+  });
+  const watchedShift = useWatch({ control: form.control, name: "shift" });
   const reportDateRegistration = form.register("reportDate");
   const shiftRegistration = form.register("shift");
   const isFormBusy = contextLoading || saving || finalizing;
@@ -326,6 +354,34 @@ export function ProjectDailyReports({
   React.useEffect(() => {
     if (formIssues.length > 0) errorSummaryRef.current?.focus();
   }, [formIssues.length]);
+
+  React.useEffect(() => {
+    if (
+      currentStep !== dailyReportSteps.length - 1 ||
+      !watchedReportDate ||
+      !watchedShift
+    )
+      return;
+    let active = true;
+    void (async () => {
+      if (active) setProductionsLoading(true);
+      try {
+        const page = await getShiftProjectProductionsAction({
+          projectId,
+          productionDate: watchedReportDate,
+          shift: watchedShift,
+        });
+        if (active) setShiftProductions(page.data);
+      } catch {
+        if (active) setShiftProductions([]);
+      } finally {
+        if (active) setProductionsLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [currentStep, projectId, watchedReportDate, watchedShift]);
 
   async function openNew() {
     setOpening(true);
@@ -510,6 +566,57 @@ export function ProjectDailyReports({
     setEditingId(saved.report.id);
     setDetail(saved.report);
     upsertSummary(saved.report);
+    let productionPage;
+    try {
+      productionPage = await getShiftProjectProductionsAction({
+        projectId,
+        productionDate: saved.report.reportDate,
+        shift: saved.report.shift,
+      });
+    } catch {
+      setFinalizing(false);
+      setIssues([
+        {
+          location: "Produção",
+          message:
+            "Não foi possível conferir as produções deste turno. Tente novamente.",
+        },
+      ]);
+      return;
+    }
+    const drafts = productionPage.data.filter(
+      (production) => production.status === "draft",
+    );
+    if (drafts.length) {
+      setFinalizing(false);
+      setShiftProductions(productionPage.data);
+      setIssues([
+        {
+          location: "Produção",
+          message: `${drafts.length} lançamento(s) de produção ainda estão em rascunho. Aprove-os antes de finalizar o RDO.`,
+        },
+      ]);
+      return;
+    }
+    if (productionPage.data.length) {
+      try {
+        await confirmDailyReportProductionsAction({
+          projectId,
+          reportId: saved.report.id,
+          productionIds: productionPage.data.map((production) => production.id),
+        });
+      } catch {
+        setFinalizing(false);
+        setIssues([
+          {
+            location: "Produção",
+            message:
+              "As produções mudaram durante a conferência. Revise o resumo antes de finalizar.",
+          },
+        ]);
+        return;
+      }
+    }
     const result = await finalizeProjectDailyReportAction(
       projectId,
       saved.report.id,
@@ -756,9 +863,10 @@ export function ProjectDailyReports({
                     <AlertDialogHeader>
                       <AlertDialogTitle>Finalizar este RDO?</AlertDialogTitle>
                       <AlertDialogDescription>
-                        As jornadas e as leituras finais das máquinas serão
-                        registradas. Depois de finalizar, este RDO não poderá
-                        mais ser editado.
+                        As produções aprovadas exibidas na revisão serão
+                        confirmadas, e as jornadas e leituras finais das
+                        máquinas serão registradas. Produções em rascunho
+                        impedem a finalização.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
@@ -1344,6 +1452,8 @@ export function ProjectDailyReports({
           {currentStep === 5 && (
             <DailyReportReview
               options={options}
+              productions={shiftProductions}
+              productionsLoading={productionsLoading}
               values={form.getValues()}
               onEdit={setCurrentStep}
             />
@@ -1419,10 +1529,14 @@ export function ProjectDailyReports({
 function DailyReportReview({
   onEdit,
   options,
+  productions,
+  productionsLoading,
   values,
 }: {
   onEdit: (step: number) => void;
   options: ProjectDailyReportOptions | null;
+  productions: ProjectProductionSummary[];
+  productionsLoading: boolean;
   values: DailyReportFormValues;
 }) {
   const supervisor = options?.responsibleOptions.find(
@@ -1506,6 +1620,57 @@ function DailyReportReview({
         <ReviewSection title="Máquinas" step={4} onEdit={onEdit}>
           <ReviewList values={machines} empty="Nenhuma máquina selecionada." />
         </ReviewSection>
+
+        <section className="grid gap-3 p-4">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="font-bold">Produções do turno</h3>
+            {productions.some(
+              (production) => production.status === "draft",
+            ) && (
+              <span className="rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-bold text-amber-700">
+                Aprovação pendente
+              </span>
+            )}
+          </div>
+          {productionsLoading ? (
+            <p className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="size-4 animate-spin" />
+              Carregando produções…
+            </p>
+          ) : productions.length ? (
+            <div className="grid gap-2">
+              {productions.map((production) => (
+                <div
+                  key={production.id}
+                  className="flex flex-col gap-1 rounded-md border border-border bg-secondary/20 p-3 text-sm sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <span>
+                    <strong>
+                      {serviceLabels[production.serviceCode] ??
+                        production.serviceCode}
+                    </strong>{" "}
+                    · {formatDecimal(production.officialQuantity)}{" "}
+                    {production.unitCode} · {production.tripCount} viagem(ns)
+                  </span>
+                  <span
+                    className={cn(
+                      "text-xs font-bold",
+                      production.status === "approved"
+                        ? "text-emerald-700"
+                        : "text-amber-700",
+                    )}
+                  >
+                    {production.status === "approved" ? "Aprovada" : "Rascunho"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Nenhuma produção lançada para esta data e turno.
+            </p>
+          )}
+        </section>
       </div>
 
       <p className="text-sm leading-5 text-muted-foreground">

@@ -13,6 +13,7 @@ import {
   getProjectReadinessOptions,
 } from "@/features/projects/projects.server";
 import { getProjectDailyReports } from "@/features/projects/daily-reports.server";
+import { getProjectProductions } from "@/features/projects/productions.server";
 
 export default async function Page({
   params,
@@ -25,11 +26,13 @@ export default async function Page({
   let project;
   let options;
   let dailyReports;
+  let productions;
   try {
-    [project, options, dailyReports] = await Promise.all([
+    [project, options, dailyReports, productions] = await Promise.all([
       getProjectDetail(projectId),
       getProjectReadinessOptions(projectId),
       getProjectDailyReports(projectId),
+      getProjectProductions(projectId),
     ]);
   } catch {
     notFound();
@@ -43,6 +46,7 @@ export default async function Page({
     >
       <ProjectDetail
         initialDailyReports={dailyReports}
+        initialProductions={productions}
         lookupSuppliedItemOfferSuppliersAction={
           lookupProjectSuppliedItemOfferSuppliersAction
         }

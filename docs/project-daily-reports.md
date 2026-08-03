@@ -10,7 +10,8 @@ um registro consolidado da obra, não de uma frente específica.
 - Os turnos disponíveis são `DIURNO` e `NOTURNO`. A data do turno noturno é a
   data em que ele começa.
 - O ciclo é `RASCUNHO → FINALIZADO`. Rascunhos podem ser substituídos;
-  finalizados são imutáveis.
+  finalizados são imutáveis quanto ao conteúdo principal, jornadas e
+  medidores. O vínculo versionado de produções pode ser reconfirmado.
 - Não há exclusão, reabertura ou correção de RDO finalizado nesta versão.
 - Um RDO só pode ser criado para uma obra ativa, entre a data civil do início
   real da obra e a data atual.
@@ -44,6 +45,11 @@ iniciados em zero.
 
 Atividades executadas são obrigatórias; interferências são opcionais. O RDO
 exige ao menos uma atividade e um participante. Máquinas são opcionais.
+
+Na revisão, o RDO também consulta as produções da mesma obra, data e turno.
+Rascunhos aparecem com alerta. Somente revisões aprovadas podem ser vinculadas,
+e a finalização exige que todas as produções do turno estejam aprovadas e
+confirmadas.
 
 ## Jornadas
 
@@ -81,6 +87,8 @@ gravada quando uma máquina entra em conflito.
 - `POST /projects/:projectId/daily-reports`
 - `PUT /projects/:projectId/daily-reports/:reportId`
 - `POST /projects/:projectId/daily-reports/:reportId/finalize`
+- `GET /projects/:projectId/daily-reports/:reportId/productions`
+- `POST /projects/:projectId/daily-reports/:reportId/productions/confirm`
 
 A listagem usa cursor e ordena por data, turno e identificador. Todas as rotas
 usam o escopo autenticado de corporação e empresa. Leituras iniciais e
@@ -123,8 +131,9 @@ interrompe a sequência; falha ao finalizar mantém o rascunho e apresenta o
 erro no formulário.
 
 Antes da finalização, um `AlertDialog` informa que jornadas e medidores serão
-gravados e o RDO ficará imutável. O detalhe finalizado é somente leitura e
-exibe **Copiar mensagem** no footer.
+gravados, as revisões aprovadas de produção serão vinculadas e o RDO ficará
+imutável. Existindo produção em rascunho, a sequência é interrompida. O detalhe
+finalizado é somente leitura e exibe **Copiar mensagem** no footer.
 
 A mensagem é determinística em português e contém título/data, obra,
 responsáveis, localização/contrato/turno, horário/escala, checklists, chuva,
@@ -139,6 +148,5 @@ a API moderna. Sucesso e falha são informados por toast.
 
 ## Fora desta versão
 
-Abastecimentos persistidos, quantidades produzidas, anexos/fotos, assinaturas,
-PDF, exclusão, reabertura, correção de finalizados e vínculo com uma frente
-específica.
+Abastecimentos persistidos no RDO, assinaturas, PDF, exclusão, reabertura e
+correção do conteúdo principal de finalizados.

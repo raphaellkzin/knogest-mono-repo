@@ -1,0 +1,137 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  productionCommandSchema,
+  productionTripSchema,
+} from "./productions.dto";
+import { calculateProductionMetrics } from "./productions.service";
+
+const frontId = "22222222-2222-4222-8222-222222222222";
+const serviceId = "33333333-3333-4333-8333-333333333333";
+const machineId = "44444444-4444-4444-8444-444444444444";
+
+describe("production command", () => {
+  it("accepts an incomplete draft so it can be continued during the shift", () => {
+    expect(
+      productionCommandSchema.parse({
+        workFrontId: frontId,
+        workFrontServiceId: serviceId,
+        productionDate: "2026-07-28",
+        shift: "day",
+        entryMode: "trips",
+      }),
+    ).toMatchObject({
+      approveNow: false,
+      equipment: [],
+      entryMode: "trips",
+    });
+  });
+
+  it("rejects duplicate machines and decreasing meter readings", () => {
+    const result = productionCommandSchema.safeParse({
+      workFrontId: frontId,
+      workFrontServiceId: serviceId,
+      productionDate: "2026-07-28",
+      shift: "day",
+      entryMode: "direct_total",
+      equipment: [
+        {
+          machineId,
+          role: "excavation",
+          initialMeterValue: "20.00",
+          finalMeterValue: "19.00",
+        },
+        { machineId, role: "support" },
+      ],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success)
+      expect(result.error.issues.map((issue) => issue.message)).toEqual(
+        expect.arrayContaining([
+          "Final meter value cannot be lower than initial value",
+          "Machine cannot be repeated",
+        ]),
+      );
+  });
+
+  it("requires a UUID idempotency key for every quick trip", () => {
+    const result = productionTripSchema.safeParse({
+      expectedRevision: 1,
+      idempotencyKey: "same-button-click",
+      productionEquipmentId: machineId,
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("production metrics", () => {
+  it("keeps trip volume operational and makes measured quantity official", () => {
+    expect(
+      calculateProductionMetrics({
+        tripVolumesM3: ["10.000", "12.500", "10.000"],
+        measuredQuantity: "31.000",
+        directQuantity: null,
+        conversionFactor: null,
+        entryMode: "TRIPS",
+        dmtKm: "2.500",
+        unitCode: "M3",
+        startTime: "07:00",
+        endTime: "12:00",
+        endDayOffset: 0,
+        workedMinutes: 600,
+        stoppedMinutes: 30,
+      }),
+    ).toEqual({
+      operationalVolumeM3: "32.500",
+      officialQuantity: "31.000",
+      difference: "-1.500",
+      differencePercent: "-4.62",
+      tripCount: 3,
+      tripsPerHour: "0.60",
+      quantityPerHour: "6.200",
+      dmtKm: "2.500",
+      transportMomentM3Km: "81.250",
+      workedMinutes: 600,
+      stoppedMinutes: 30,
+    });
+  });
+
+  it("does not calculate transport moment for a non-volumetric unit", () => {
+    const metrics = calculateProductionMetrics({
+      tripVolumesM3: [],
+      measuredQuantity: null,
+      directQuantity: "800.000",
+      conversionFactor: null,
+      entryMode: "DIRECT_TOTAL",
+      dmtKm: "2.000",
+      unitCode: "M2",
+      startTime: null,
+      endTime: null,
+      endDayOffset: 0,
+      workedMinutes: 0,
+      stoppedMinutes: 0,
+    });
+    expect(metrics.officialQuantity).toBe("800.000");
+    expect(metrics.transportMomentM3Km).toBeNull();
+  });
+
+  it("uses an explicit conversion factor for trip-based non-volumetric services", () => {
+    const metrics = calculateProductionMetrics({
+      tripVolumesM3: ["10.000"],
+      measuredQuantity: null,
+      directQuantity: null,
+      conversionFactor: "2.500000",
+      entryMode: "TRIPS",
+      dmtKm: "2.000",
+      unitCode: "T",
+      startTime: "07:00",
+      endTime: "09:00",
+      endDayOffset: 0,
+      workedMinutes: 120,
+      stoppedMinutes: 0,
+    });
+    expect(metrics.officialQuantity).toBe("25.000");
+    expect(metrics.difference).toBeNull();
+    expect(metrics.transportMomentM3Km).toBe("20.000");
+  });
+});

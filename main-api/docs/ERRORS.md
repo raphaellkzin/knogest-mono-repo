@@ -52,3 +52,26 @@ Detalhes podem expor somente identificadores, nomes e categorias seguras do
 recurso. Não inclua leitura interna não solicitada, body, SQL ou metadados
 Prisma. A finalização sem body documenta também `415 BAD_REQUEST` para media
 type indevido.
+
+## Project productions
+
+Produção de terraplenagem usa os seguintes códigos públicos:
+
+- `PRODUCTION_PROJECT_UNAVAILABLE`: obra inativa ou indisponível;
+- `PRODUCTION_RESOURCE_UNAVAILABLE`: frente, serviço, responsável, operador ou
+  máquina não elegível no turno;
+- `PRODUCTION_IMMUTABLE`: operação incompatível com estado ou forma de
+  lançamento;
+- `PRODUCTION_REVISION_CONFLICT`: revisão otimista desatualizada;
+- `PRODUCTION_APPROVAL_INCOMPLETE`: campos técnicos obrigatórios ausentes;
+- `PRODUCTION_DMT_REQUIRED`: rota ou DMT obrigatória incompleta;
+- `PRODUCTION_DMT_NOT_APPLICABLE`: DMT informada para serviço incompatível;
+- `PRODUCTION_EQUIPMENT_HAS_TRIPS`: tentativa de remover caminhão com viagens;
+- `PRODUCTION_SHIFT_LIMIT_EXCEEDED`: limite de 200 lançamentos no turno;
+- `PRODUCTION_RDO_CONFIRMATION_REQUIRED`: produção em rascunho, não confirmada
+  ou com revisão invalidada;
+- `IDEMPOTENCY_PAYLOAD_CONFLICT`: chave de viagem reutilizada com outro
+  payload.
+
+Conflitos retornam apenas identificadores, campos pendentes, limites e
+categorias seguras.
