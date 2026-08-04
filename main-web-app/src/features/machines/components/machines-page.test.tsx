@@ -59,6 +59,19 @@ describe("MachinesPageView registration modal", () => {
     expect(hourMeter.getAttribute("aria-pressed")).toBe("true");
   });
 
+  it("shows load specifications only for white-line Machines", async () => {
+    const user = userEvent.setup();
+    renderMachines();
+
+    await user.click(screen.getByRole("button", { name: "Nova máquina" }));
+    expect(screen.queryByLabelText("Volume de carga (m³)")).toBeNull();
+    await user.selectOptions(screen.getByLabelText("Tipo"), "WHITE_LINE");
+    expect(screen.getByLabelText("Volume de carga (m³)")).toBeTruthy();
+    expect(screen.getByLabelText("Peso máximo suportado (t)")).toBeTruthy();
+    await user.selectOptions(screen.getByLabelText("Tipo"), "YELLOW_LINE");
+    expect(screen.queryByLabelText("Volume de carga (m³)")).toBeNull();
+  });
+
   it("preserves values after an error and a non-explicit close", async () => {
     const user = userEvent.setup();
     renderMachines(async () => ({ ok: false, message: "Revise os dados." }));

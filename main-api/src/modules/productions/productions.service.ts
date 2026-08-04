@@ -114,7 +114,7 @@ export class ProductionsService {
             id: service.id,
             serviceCode: service.serviceCode,
             unitCode: service.unitCode,
-            quantity: service.quantity.toFixed(2),
+            quantity: service.quantity.toFixed(3),
             productionProfile: resolvedProfile(
               service.productionProfile,
               service.serviceCode,
@@ -131,6 +131,11 @@ export class ProductionsService {
                     manufacturer: assignment.machine.manufacturer,
                     model: assignment.machine.model,
                     meterType: assignment.machine.meterType.toLowerCase(),
+                    loadVolumeM3:
+                      assignment.machine.loadVolumeM3?.toFixed(3) ?? null,
+                    maxSupportedWeightT:
+                      assignment.machine.maxSupportedWeightT?.toFixed(3) ??
+                      null,
                     identifier:
                       assignment.machine.identifiers[0]?.value ?? null,
                     operator: {
@@ -224,6 +229,10 @@ export class ProductionsService {
         scope,
         projectId,
         command,
+        current.trips.map(
+          (trip) =>
+            trip.adjustedVolumeM3?.toFixed(3) ?? trip.capacityM3.toFixed(3),
+        ),
       );
       const record = await replaceProductionHandler(
         transactionContext,
@@ -422,9 +431,18 @@ export class ProductionsService {
       );
       if (!equipment || equipment.role !== "TRANSPORT")
         throw resourceUnavailable("transport-equipment");
-      const capacity =
-        command.capacityM3 ?? equipment.defaultTripCapacityM3?.toFixed(3);
+      const capacity = equipment.defaultTripCapacityM3?.toFixed(3);
       if (!capacity) throw resourceUnavailable("trip-capacity");
+      const adjustedVolumeM3 = command.adjustedVolumeM3
+        ? normalizeDecimal(command.adjustedVolumeM3, 3)
+        : null;
+      const officialQuantity = calculateOfficialQuantity(production, [
+        ...production.trips.map(
+          (trip) =>
+            trip.adjustedVolumeM3?.toFixed(3) ?? trip.capacityM3.toFixed(3),
+        ),
+        adjustedVolumeM3 ?? capacity,
+      ]);
       const recordedAt = command.recordedAt
         ? new Date(command.recordedAt)
         : new Date();
@@ -453,11 +471,10 @@ export class ProductionsService {
           productionEquipmentId: command.productionEquipmentId,
           recordedAt,
           capacityM3: normalizeDecimal(capacity, 3),
-          adjustedVolumeM3: command.adjustedVolumeM3
-            ? normalizeDecimal(command.adjustedVolumeM3, 3)
-            : null,
+          adjustedVolumeM3,
           ticketNumber: command.ticketNumber,
           notes: command.notes,
+          officialQuantity,
         },
         snapshotOf(command, "trip-added"),
       );
@@ -481,16 +498,35 @@ export class ProductionsService {
     expectedRevision: number,
   ) {
     assertCapability(scope, "createDraft");
-    const result = await this.context.transaction((transactionContext) =>
-      removeProductionTripHandler(
-        transactionContext,
-        scope,
-        projectId,
-        productionId,
-        tripId,
-        expectedRevision,
-        snapshotOf({ tripId }, "trip-removed"),
-      ),
+    const result = await this.context.transaction(
+      async (transactionContext) => {
+        const current = await findProductionHandler(
+          transactionContext,
+          scope,
+          projectId,
+          productionId,
+        );
+        if (!current) throw notFound();
+        const officialQuantity = calculateOfficialQuantity(
+          current,
+          current.trips
+            .filter((trip) => trip.id !== tripId)
+            .map(
+              (trip) =>
+                trip.adjustedVolumeM3?.toFixed(3) ?? trip.capacityM3.toFixed(3),
+            ),
+        );
+        return removeProductionTripHandler(
+          transactionContext,
+          scope,
+          projectId,
+          productionId,
+          tripId,
+          expectedRevision,
+          officialQuantity,
+          snapshotOf({ tripId }, "trip-removed"),
+        );
+      },
     );
     if (!result) throw changedConcurrently();
     if (result.missing) throw notFound();
@@ -582,6 +618,7 @@ export class ProductionsService {
     scope: ProductionScope,
     projectId: string,
     command: ProductionCommand,
+    tripVolumesM3: string[] = [],
   ): Promise<ProductionWriteData> {
     const options = await findProductionOptionsContextHandler(
       context,
@@ -646,9 +683,8 @@ export class ProductionsService {
           ? normalizeDecimal(entry.finalMeterValue, 2)
           : null,
         workedMinutes: entry.workedMinutes,
-        defaultTripCapacityM3: entry.defaultTripCapacityM3
-          ? normalizeDecimal(entry.defaultTripCapacityM3, 3)
-          : null,
+        defaultTripCapacityM3:
+          assignment.machine.loadVolumeM3?.toFixed(3) ?? null,
         stops: entry.stops,
       };
     });
@@ -657,6 +693,30 @@ export class ProductionsService {
       service.serviceCode,
     );
     validateDmt(service.dmtPolicy, command);
+    const directQuantity = command.directQuantity
+      ? normalizeDecimal(command.directQuantity, 3)
+      : null;
+    const measuredQuantity = command.measuredQuantity
+      ? normalizeDecimal(command.measuredQuantity, 3)
+      : null;
+    const conversionFactor = command.conversionFactor
+      ? normalizeDecimal(command.conversionFactor, 6)
+      : null;
+    const entryMode = command.entryMode === "trips" ? "TRIPS" : "DIRECT_TOTAL";
+    const officialQuantity = calculateProductionMetrics({
+      tripVolumesM3,
+      measuredQuantity,
+      directQuantity,
+      conversionFactor,
+      entryMode,
+      dmtKm: command.dmtKm,
+      unitCode: service.unitCode,
+      startTime: command.startTime,
+      endTime: command.endTime,
+      endDayOffset: command.endDayOffset,
+      workedMinutes: 0,
+      stoppedMinutes: 0,
+    }).officialQuantity;
 
     return {
       workFrontId: command.workFrontId,
@@ -668,7 +728,7 @@ export class ProductionsService {
       productionDate: civilDateValue(command.productionDate),
       shift: shiftToDb(command.shift),
       shiftOrder: command.shift === "day" ? 0 : 1,
-      entryMode: command.entryMode === "trips" ? "TRIPS" : "DIRECT_TOTAL",
+      entryMode,
       startTime: command.startTime,
       endTime: command.endTime,
       endDayOffset: command.endDayOffset,
@@ -687,15 +747,10 @@ export class ProductionsService {
             | "LOOSE"
             | "COMPACTED")
         : null,
-      directQuantity: command.directQuantity
-        ? normalizeDecimal(command.directQuantity, 3)
-        : null,
-      measuredQuantity: command.measuredQuantity
-        ? normalizeDecimal(command.measuredQuantity, 3)
-        : null,
-      conversionFactor: command.conversionFactor
-        ? normalizeDecimal(command.conversionFactor, 6)
-        : null,
+      directQuantity,
+      measuredQuantity,
+      officialQuantity,
+      conversionFactor,
       origin: command.origin,
       destination: command.destination,
       dmtKm: command.dmtKm ? normalizeDecimal(command.dmtKm, 3) : null,
@@ -841,8 +896,39 @@ function toSummaryDto(record: ProductionRecord) {
   };
 }
 
-function calculateMetrics(record: ProductionRecord) {
+function calculateOfficialQuantity(
+  record: ProductionRecord,
+  tripVolumesM3: string[],
+) {
   return calculateProductionMetrics({
+    tripVolumesM3,
+    measuredQuantity: record.measuredQuantity?.toFixed(3) ?? null,
+    directQuantity: record.directQuantity?.toFixed(3) ?? null,
+    conversionFactor: record.conversionFactor?.toFixed(6) ?? null,
+    entryMode: record.entryMode,
+    dmtKm: record.dmtKm?.toFixed(3) ?? null,
+    unitCode: record.unitCodeSnapshot,
+    startTime: record.startTime,
+    endTime: record.endTime,
+    endDayOffset: record.endDayOffset,
+    workedMinutes: record.equipment.reduce(
+      (total, item) => total + (item.workedMinutes ?? 0),
+      0,
+    ),
+    stoppedMinutes: record.equipment.reduce(
+      (total, item) =>
+        total +
+        item.stops.reduce(
+          (stopTotal, stop) => stopTotal + stop.durationMinutes,
+          0,
+        ),
+      0,
+    ),
+  }).officialQuantity;
+}
+
+function calculateMetrics(record: ProductionRecord) {
+  const calculated = calculateProductionMetrics({
     tripVolumesM3: record.trips.map(
       (trip) => trip.adjustedVolumeM3?.toFixed(3) ?? trip.capacityM3.toFixed(3),
     ),
@@ -869,6 +955,10 @@ function calculateMetrics(record: ProductionRecord) {
       0,
     ),
   });
+  return {
+    ...calculated,
+    officialQuantity: record.officialQuantity.toFixed(3),
+  };
 }
 
 export function calculateProductionMetrics(input: {

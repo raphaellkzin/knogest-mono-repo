@@ -362,6 +362,36 @@ const capabilitiesSchema = {
   },
 } as const;
 
+const productionOptionsSchema = {
+  type: "object",
+  additionalProperties: true,
+  required: ["workFronts"],
+  properties: {
+    workFronts: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: true,
+        required: ["machines"],
+        properties: {
+          machines: {
+            type: "array",
+            items: {
+              type: "object",
+              additionalProperties: true,
+              required: ["loadVolumeM3", "maxSupportedWeightT"],
+              properties: {
+                loadVolumeM3: { type: "string" },
+                maxSupportedWeightT: { type: "string", nullable: true },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+} as const;
+
 const commonErrors = {
   400: errorSchema,
   401: errorSchema,
@@ -487,7 +517,7 @@ export const v1ProductionsController = async (app: FastifyInstance) => {
           },
         },
         response: {
-          200: successSchema({ type: "object", additionalProperties: true }),
+          200: successSchema(productionOptionsSchema),
           ...commonErrors,
         },
       },

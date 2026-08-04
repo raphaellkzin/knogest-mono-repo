@@ -53,12 +53,16 @@ function Field({
   defaultValue,
   label,
   name,
+  inputMode,
+  placeholder,
   required = false,
   type = "text",
 }: {
   defaultValue?: string;
   label: string;
   name: string;
+  inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
+  placeholder?: string;
   required?: boolean;
   type?: string;
 }) {
@@ -69,6 +73,8 @@ function Field({
         name={name}
         required={required}
         type={type}
+        inputMode={inputMode}
+        placeholder={placeholder}
         defaultValue={defaultValue}
         className="h-11"
       />
@@ -293,6 +299,30 @@ export function MachinesPageView({
                   </div>
                 </FormSection>
 
+                {(machineDraft.type ?? "YELLOW_LINE") === "WHITE_LINE" && (
+                  <FormSection
+                    title="Capacidade de carga"
+                    description="Campos opcionais. O volume será usado como capacidade padrão nos lançamentos de produção."
+                  >
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <Field
+                        defaultValue={machineDraft.loadVolumeM3}
+                        label="Volume de carga (m³)"
+                        name="loadVolumeM3"
+                        inputMode="decimal"
+                        placeholder="Ex.: 12,500"
+                      />
+                      <Field
+                        defaultValue={machineDraft.maxSupportedWeightT}
+                        label="Peso máximo suportado (t)"
+                        name="maxSupportedWeightT"
+                        inputMode="decimal"
+                        placeholder="Ex.: 20,000"
+                      />
+                    </div>
+                  </FormSection>
+                )}
+
                 <FormSection
                   title="Medição inicial"
                   description="Escolha a unidade que será usada nas leituras futuras. Essa escolha não poderá ser alterada depois do cadastro."
@@ -363,13 +393,14 @@ export function MachinesPageView({
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[860px] text-left text-sm">
+          <table className="w-full min-w-[980px] text-left text-sm">
             <thead>
               <tr className="border-b border-border">
                 <TableHead icon={Truck} label="Máquina" />
                 <TableHead icon={Tag} label="Identificadores" />
                 <TableHead label="Tipo" />
                 <TableHead label="Fabricante / modelo" />
+                <TableHead label="Capacidade de carga" />
                 <TableHead icon={Gauge} label="Leitura atual" />
                 <TableHead label="Disponibilidade" />
                 <th className="px-4 py-3 text-right text-xs font-bold text-muted-foreground">
@@ -394,6 +425,24 @@ export function MachinesPageView({
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">
                       {row.manufacturer} / {row.model}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {row.type === "WHITE_LINE" ? (
+                        <>
+                          <span className="block font-semibold text-foreground">
+                            {row.loadVolumeM3
+                              ? `${row.loadVolumeM3.replace(".", ",")} m³`
+                              : "Volume não informado"}
+                          </span>
+                          <span className="block text-xs">
+                            {row.maxSupportedWeightT
+                              ? `${row.maxSupportedWeightT.replace(".", ",")} t máx.`
+                              : "Peso não informado"}
+                          </span>
+                        </>
+                      ) : (
+                        "Não aplicável"
+                      )}
                     </td>
                     <td className="px-4 py-3 font-semibold">
                       {row.latestMeterReading
@@ -424,7 +473,7 @@ export function MachinesPageView({
                 ))
               ) : (
                 <tr>
-                  <td colSpan={7} className="px-4 py-14 text-center">
+                  <td colSpan={8} className="px-4 py-14 text-center">
                     <p className="text-base font-bold">
                       Nenhuma máquina encontrada
                     </p>

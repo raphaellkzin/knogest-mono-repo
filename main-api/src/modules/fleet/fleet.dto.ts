@@ -23,6 +23,12 @@ export const decimalStringSchema = z
   .trim()
   .regex(/^(?:0|[1-9]\d{0,11})(?:\.\d{1,2})?$/);
 
+const positiveSpecificationDecimalSchema = z
+  .string()
+  .trim()
+  .regex(/^(?:0|[1-9]\d{0,6})(?:\.\d{1,3})?$/)
+  .refine((value) => Number(value) > 0, "Value must be greater than zero");
+
 export const createMachineSchema = z
   .object({
     name: z.string().trim().min(1).max(160),
@@ -36,6 +42,8 @@ export const createMachineSchema = z
     manufacturer: z.string().trim().min(1).max(120),
     model: z.string().trim().min(1).max(120),
     meterType: z.enum(["HOUR_METER", "ODOMETER"]),
+    loadVolumeM3: positiveSpecificationDecimalSchema.optional(),
+    maxSupportedWeightT: positiveSpecificationDecimalSchema.optional(),
     plate: optionalIdentifier,
     companyTag: optionalIdentifier,
     initialMeterReading: decimalStringSchema,
@@ -47,6 +55,17 @@ export const createMachineSchema = z
   });
 
 export type CreateMachineInput = z.infer<typeof createMachineSchema>;
+
+export const updateMachineLoadSpecificationSchema = z
+  .object({
+    loadVolumeM3: positiveSpecificationDecimalSchema.nullable(),
+    maxSupportedWeightT: positiveSpecificationDecimalSchema.nullable(),
+  })
+  .strict();
+
+export type UpdateMachineLoadSpecificationInput = z.infer<
+  typeof updateMachineLoadSpecificationSchema
+>;
 
 export const allocateMachineSchema = z
   .object({

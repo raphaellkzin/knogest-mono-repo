@@ -169,6 +169,64 @@ describe("fleet Machine registry and meter readings", () => {
     });
   });
 
+  it("creates and updates load specifications only for white-line Machines", async () => {
+    const pilot = await provision("load-specification");
+    const authorization = await authFor({
+      corporationId: pilot.corporation.id,
+      userId: pilot.administrator.id,
+      companyId: pilot.companies[0].id,
+    });
+
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/v1/machines",
+      headers: { authorization },
+      payload: {
+        ...platePayload("CAP-1A23"),
+        loadVolumeM3: "12.345",
+        maxSupportedWeightT: "20.500",
+      },
+    });
+    expect(created.statusCode, created.body).toBe(201);
+    expect(created.json().data).toMatchObject({
+      loadVolumeM3: "12.345",
+      maxSupportedWeightT: "20.500",
+    });
+
+    const updated = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/machines/${created.json().data.id}/load-specification`,
+      headers: { authorization },
+      payload: { loadVolumeM3: "15.125", maxSupportedWeightT: null },
+    });
+    expect(updated.statusCode, updated.body).toBe(200);
+    expect(updated.json().data).toMatchObject({
+      loadVolumeM3: "15.125",
+      maxSupportedWeightT: null,
+    });
+
+    const yellowWithSpecification = await app.inject({
+      method: "POST",
+      url: "/api/v1/machines",
+      headers: { authorization },
+      payload: { ...payload("YEL-LOAD"), loadVolumeM3: "10.000" },
+    });
+    expect(yellowWithSpecification.statusCode).toBe(422);
+    expect(yellowWithSpecification.json().code).toBe(
+      "MACHINE_LOAD_SPEC_NOT_APPLICABLE",
+    );
+
+    const yellow = await createMachine(authorization, "YEL-PATCH");
+    const patchYellow = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/machines/${yellow.id}/load-specification`,
+      headers: { authorization },
+      payload: { loadVolumeM3: "10.000", maxSupportedWeightT: null },
+    });
+    expect(patchYellow.statusCode).toBe(422);
+    expect(patchYellow.json().code).toBe("MACHINE_LOAD_SPEC_NOT_APPLICABLE");
+  });
+
   it("rejects duplicate active identifiers only inside the selected Company", async () => {
     const pilot = await provision("duplicates");
     const companyOne = await authFor({

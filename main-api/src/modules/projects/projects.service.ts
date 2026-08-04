@@ -13,6 +13,7 @@ import type {
   ProjectQuantityBaselineRevisionCommand,
   ProjectWorkFrontCommand,
   ProjectWorkFrontMobilizationCommand,
+  ProjectWorkFrontServicesCommand,
 } from "./projects.dto";
 
 export type { ProjectScope } from "./handlers/projects.handler";
@@ -76,6 +77,20 @@ export class ProjectsService {
     command: ProjectWorkFrontCommand,
   ) {
     return this.handler.updateWorkFront(scope, projectId, frontId, command);
+  }
+
+  saveWorkFrontServices(
+    scope: ProjectScope,
+    projectId: string,
+    frontId: string,
+    command: ProjectWorkFrontServicesCommand,
+  ) {
+    return this.handler.saveWorkFrontServices(
+      scope,
+      projectId,
+      frontId,
+      command,
+    );
   }
 
   saveWorkFrontMobilization(

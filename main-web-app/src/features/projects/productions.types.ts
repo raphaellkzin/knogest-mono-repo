@@ -31,6 +31,8 @@ export type ProjectProductionOptions = {
       model: string;
       meterType: "hour_meter" | "odometer";
       identifier: string | null;
+      loadVolumeM3: string;
+      maxSupportedWeightT: string | null;
       operator: { id: string; name: string };
     }>;
   }>;

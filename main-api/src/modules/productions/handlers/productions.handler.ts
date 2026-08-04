@@ -66,6 +66,7 @@ export type ProductionWriteData = {
   volumeCondition: "CUT" | "LOOSE" | "COMPACTED" | null;
   directQuantity: string | null;
   measuredQuantity: string | null;
+  officialQuantity: string;
   conversionFactor: string | null;
   origin: string | null;
   destination: string | null;
@@ -177,6 +178,13 @@ export async function findProductionOptionsContextHandler(
             workFrontId: { in: frontIds },
             ...overlap,
             shift,
+            machine: {
+              is: {
+                isActive: true,
+                type: "WHITE_LINE",
+                loadVolumeM3: { gt: 0 },
+              },
+            },
           },
           orderBy: { effectiveFrom: "desc" },
           include: {
@@ -494,6 +502,7 @@ export async function addProductionTripHandler(
     adjustedVolumeM3: string | null;
     ticketNumber: string | null;
     notes: string | null;
+    officialQuantity: string;
   },
   snapshot: Prisma.InputJsonValue,
 ) {
@@ -533,7 +542,10 @@ export async function addProductionTripHandler(
       entryMode: "TRIPS",
       revision: input.expectedRevision,
     },
-    data: { revision: { increment: 1 } },
+    data: {
+      revision: { increment: 1 },
+      officialQuantity: input.officialQuantity,
+    },
   });
   if (bumped.count !== 1) return null;
   const trip = await context.prisma.projectProductionTrip.create({
@@ -577,6 +589,7 @@ export async function removeProductionTripHandler(
   productionId: string,
   tripId: string,
   expectedRevision: number,
+  officialQuantity: string,
   snapshot: Prisma.InputJsonValue,
 ) {
   const existing = await context.prisma.projectProductionTrip.findFirst({
@@ -591,7 +604,10 @@ export async function removeProductionTripHandler(
       status: "DRAFT",
       revision: expectedRevision,
     },
-    data: { revision: { increment: 1 } },
+    data: {
+      revision: { increment: 1 },
+      officialQuantity,
+    },
   });
   if (bumped.count !== 1) return null;
   await context.prisma.projectProductionTrip.deleteMany({

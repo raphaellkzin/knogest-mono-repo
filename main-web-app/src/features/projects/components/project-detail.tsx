@@ -44,12 +44,9 @@ import { Input } from "@/components/ui/input";
 import { OperationTabs } from "@/components/ui/operation-tabs";
 import { useDebouncer } from "@/hooks/useDebouncer";
 import {
-  canonicalDecimalToBrazilianInteger,
   canonicalDecimalToBrazilian,
   decimalInputToCanonical,
   formatBrazilianDecimalInput,
-  formatBrazilianIntegerInput,
-  integerInputToCanonicalDecimal,
 } from "@/lib/brazilian-input-mask";
 import { cn } from "@/lib/utils";
 import type { ProjectDailyReportsPage } from "../daily-reports.types";
@@ -65,6 +62,7 @@ import {
   saveProjectQuantityBaselineAction,
   saveProjectReadinessAction,
   saveProjectWorkFrontMobilizationAction,
+  saveProjectWorkFrontServicesAction,
   startProjectWorkFrontAction,
   updateProjectWorkFrontAction,
   type ProjectReadinessActionInput,
@@ -153,16 +151,16 @@ const metricDefinitions: Array<{
   },
 ];
 
-function canonicalDecimalToHundredths(value: string) {
-  const match = /^(\d+)(?:\.(\d{1,2}))?$/u.exec(value);
+function canonicalDecimalToThousandths(value: string) {
+  const match = /^(\d+)(?:\.(\d{1,3}))?$/u.exec(value);
   if (!match) return null;
   return (
-    BigInt(match[1]) * BigInt(100) + BigInt((match[2] ?? "").padEnd(2, "0"))
+    BigInt(match[1]) * BigInt(1000) + BigInt((match[2] ?? "").padEnd(3, "0"))
   );
 }
 
-function hundredthsToCanonicalDecimal(value: bigint) {
-  return `${value / BigInt(100)}.${String(value % BigInt(100)).padStart(2, "0")}`;
+function thousandthsToCanonicalDecimal(value: bigint) {
+  return `${value / BigInt(1000)}.${String(value % BigInt(1000)).padStart(3, "0")}`;
 }
 
 const compensationLabels: Record<CompensationMode, string> = {
@@ -318,7 +316,7 @@ function metricInitialState(project: ProjectDetailSnapshot) {
     ...metric,
     enabled: existing.has(metric.code),
     targetTotal: existing.has(metric.code)
-      ? canonicalDecimalToBrazilianInteger(existing.get(metric.code)!)
+      ? canonicalDecimalToBrazilian(existing.get(metric.code)!, 3)
       : "",
   }));
 }
@@ -1863,15 +1861,16 @@ export function ProjectDetail({
   >(
     () =>
       project.quantityBaseline.items.flatMap((item) => {
-        const quantity = integerInputToCanonicalDecimal(
+        const quantity = decimalInputToCanonical(
           frontQuantities[item.serviceCode] ?? "",
+          3,
         );
-        const requested = canonicalDecimalToHundredths(quantity);
-        const unallocated = canonicalDecimalToHundredths(item.unallocated);
-        const current = canonicalDecimalToHundredths(
+        const requested = canonicalDecimalToThousandths(quantity);
+        const unallocated = canonicalDecimalToThousandths(item.unallocated);
+        const current = canonicalDecimalToThousandths(
           editingFront?.services.find(
             (service) => service.serviceCode === item.serviceCode,
-          )?.quantity ?? "0.00",
+          )?.quantity ?? "0.000",
         );
         const available =
           unallocated === null || current === null
@@ -1886,13 +1885,59 @@ export function ProjectDetail({
           {
             location: "Quantitativos",
             field: label,
-            message: `Solicitado ${canonicalDecimalToBrazilianInteger(quantity)} ${item.unitCode}; saldo disponível ${canonicalDecimalToBrazilianInteger(hundredthsToCanonicalDecimal(available))} ${item.unitCode}.`,
+            message: `Solicitado ${canonicalDecimalToBrazilian(quantity, 3)} ${item.unitCode}; saldo disponível ${canonicalDecimalToBrazilian(thousandthsToCanonicalDecimal(available), 3)} ${item.unitCode}.`,
           },
         ];
       }),
     [editingFront, frontQuantities, project.quantityBaseline.items],
   );
-  const visibleFrontIssues = [...frontExcessIssues, ...frontIssues];
+  const frontMinimumIssues = React.useMemo<
+    React.ComponentProps<typeof FormErrorDeclaration>["issues"]
+  >(
+    () =>
+      project.quantityBaseline.items.flatMap((item) => {
+        const currentService = editingFront?.services.find(
+          (service) => service.serviceCode === item.serviceCode,
+        );
+        if (!currentService) return [];
+        const quantity = decimalInputToCanonical(
+          frontQuantities[item.serviceCode] ?? "",
+          3,
+        );
+        const requested = canonicalDecimalToThousandths(quantity || "0.000");
+        const minimum = canonicalDecimalToThousandths(
+          currentService.minimumQuantity,
+        );
+        if (requested === null || minimum === null) return [];
+        const label =
+          metricDefinitions.find((metric) => metric.code === item.serviceCode)
+            ?.label ?? item.serviceCode;
+        if (requested === BigInt(0) && currentService.hasProductions) {
+          return [
+            {
+              location: "Quantitativos",
+              field: label,
+              message:
+                "Este serviço não pode ser removido porque possui produção vinculada, inclusive em rascunho.",
+            },
+          ];
+        }
+        if (requested >= minimum) return [];
+        return [
+          {
+            location: "Quantitativos",
+            field: label,
+            message: `O mínimo permitido é ${canonicalDecimalToBrazilian(currentService.minimumQuantity, 3)} ${item.unitCode}, correspondente ao total já produzido.`,
+          },
+        ];
+      }),
+    [editingFront, frontQuantities, project.quantityBaseline.items],
+  );
+  const visibleFrontIssues = [
+    ...frontMinimumIssues,
+    ...frontExcessIssues,
+    ...frontIssues,
+  ];
   const quantityBaselineAllocationIssues = React.useMemo<
     React.ComponentProps<typeof FormErrorDeclaration>["issues"]
   >(
@@ -1901,13 +1946,13 @@ export function ProjectDetail({
         const persisted = project.quantityBaseline.items.find(
           (item) => item.serviceCode === metric.code,
         );
-        const allocated = canonicalDecimalToHundredths(
-          persisted?.allocated ?? "0.00",
+        const allocated = canonicalDecimalToThousandths(
+          persisted?.allocated ?? "0.000",
         );
         if (allocated === null || allocated === BigInt(0)) return [];
         const requested = metric.enabled
-          ? canonicalDecimalToHundredths(
-              integerInputToCanonicalDecimal(metric.targetTotal),
+          ? canonicalDecimalToThousandths(
+              decimalInputToCanonical(metric.targetTotal, 3),
             )
           : null;
         if (requested !== null && requested >= allocated) return [];
@@ -1915,7 +1960,7 @@ export function ProjectDetail({
           {
             location: "Quantitativos",
             field: metric.label,
-            message: `O total deve ser igual ou superior aos ${canonicalDecimalToBrazilianInteger(persisted?.allocated ?? "0.00")} ${persisted?.unitCode ?? ""} já distribuídos.`,
+            message: `O total deve ser igual ou superior aos ${canonicalDecimalToBrazilian(persisted?.allocated ?? "0.000", 3)} ${persisted?.unitCode ?? ""} já distribuídos.`,
           },
         ];
       }),
@@ -2274,6 +2319,10 @@ export function ProjectDetail({
       ),
     },
     {
+      value: "planning" as const,
+      label: <TabLabel label="Planejamento" status={planningStatus} />,
+    },
+    {
       value: "team" as const,
       label: <TabLabel label="Equipe" status={teamStatus} />,
     },
@@ -2481,9 +2530,9 @@ export function ProjectDetail({
           : metric.code === "top_soil"
             ? "M3_KM"
             : "M3") as "M3" | "M2" | "M3_KM",
-        total: integerInputToCanonicalDecimal(metric.targetTotal),
+        total: decimalInputToCanonical(metric.targetTotal, 3),
       }))
-      .filter((metric) => metric.total && metric.total !== "0.00");
+      .filter((metric) => metric.total && metric.total !== "0.000");
     if (quantityBaselineAllocationIssues.length) {
       setQuantityBaselineIssues([]);
       return;
@@ -2870,18 +2919,19 @@ export function ProjectDetail({
       .map((item) => ({
         serviceCode: item.serviceCode,
         unitCode: item.unitCode,
-        quantity: integerInputToCanonicalDecimal(
+        quantity: decimalInputToCanonical(
           frontQuantities[item.serviceCode] ?? "",
+          3,
         ),
       }))
-      .filter((item) => item.quantity && item.quantity !== "0.00");
-    if (frontExcessIssues.length) {
+      .filter((item) => item.quantity && item.quantity !== "0.000");
+    if (frontExcessIssues.length || frontMinimumIssues.length) {
       setFrontIssues([]);
       return;
     }
     if (
       !frontName.trim() ||
-      !services.length ||
+      (!services.length && editingFront?.status !== "active") ||
       (!frontRequiresEmployees && !frontRequiresMachines)
     ) {
       setFrontIssues([
@@ -2897,6 +2947,32 @@ export function ProjectDetail({
     }
     setFrontIssues([]);
     startTransition(async () => {
+      if (editingFront?.status === "active") {
+        const result = await saveProjectWorkFrontServicesAction(
+          project.id,
+          editingFront.id,
+          { services },
+        );
+        if (result.kind === "success") {
+          toast.success("Distribuição da frente atualizada.");
+          setEditingFrontId(null);
+          setFrontQuantities({});
+          setFrontIssues([]);
+          setOpenModal(null);
+          router.refresh();
+          return;
+        }
+        setFrontIssues(
+          result.kind === "recoverable-conflict" && result.blockers?.length
+            ? result.blockers.map((blocker) => ({
+                location: "Frente",
+                field: "Quantitativos",
+                message: blocker.message,
+              }))
+            : [{ location: "Frente", message: result.message }],
+        );
+        return;
+      }
       const command = {
         name: frontName,
         location: frontLocation || null,
@@ -2972,7 +3048,7 @@ export function ProjectDetail({
       Object.fromEntries(
         front.services.map((service) => [
           service.serviceCode,
-          canonicalDecimalToBrazilianInteger(service.quantity),
+          canonicalDecimalToBrazilian(service.quantity, 3),
         ]),
       ),
     );
@@ -3350,11 +3426,11 @@ export function ProjectDetail({
                       </span>
                       <span>
                         Distribuído:{" "}
-                        {canonicalDecimalToBrazilianInteger(item.allocated)}
+                        {canonicalDecimalToBrazilian(item.allocated, 3)}
                       </span>
                       <span>
                         Saldo:{" "}
-                        {canonicalDecimalToBrazilianInteger(item.unallocated)}{" "}
+                        {canonicalDecimalToBrazilian(item.unallocated, 3)}{" "}
                         {item.unitCode}
                       </span>
                     </div>
@@ -3522,7 +3598,7 @@ export function ProjectDetail({
                 description="Este é o total aprovado da obra. As frentes distribuem esse total e não o substituem."
                 status={metricsStatus}
                 action={
-                  isEditable && (
+                  canManageFronts && (
                     <Button
                       type="button"
                       variant="outline"
@@ -3563,7 +3639,7 @@ export function ProjectDetail({
                           <p>
                             <span className="font-bold md:hidden">Total: </span>
                             <strong>
-                              {canonicalDecimalToBrazilianInteger(item.total)}
+                              {canonicalDecimalToBrazilian(item.total, 3)}
                             </strong>{" "}
                             {item.unitCode}
                           </p>
@@ -3571,13 +3647,11 @@ export function ProjectDetail({
                             <span className="font-bold md:hidden">
                               Distribuído:{" "}
                             </span>
-                            {canonicalDecimalToBrazilianInteger(item.allocated)}
+                            {canonicalDecimalToBrazilian(item.allocated, 3)}
                           </p>
                           <p>
                             <span className="font-bold md:hidden">Saldo: </span>
-                            {canonicalDecimalToBrazilianInteger(
-                              item.unallocated,
-                            )}
+                            {canonicalDecimalToBrazilian(item.unallocated, 3)}
                           </p>
                         </div>
                       ))}
@@ -3682,7 +3756,8 @@ export function ProjectDetail({
                               Exige máquinas
                             </span>
                           )}
-                          {front.status === "planned" && (
+                          {(front.status === "planned" ||
+                            front.status === "active") && (
                             <Button
                               type="button"
                               size="sm"
@@ -3691,7 +3766,9 @@ export function ProjectDetail({
                               onClick={() => openEditWorkFrontModal(front)}
                             >
                               <Pencil className="size-4" />
-                              Editar frente
+                              {front.status === "active"
+                                ? "Editar distribuição"
+                                : "Editar frente"}
                             </Button>
                           )}
                         </div>
@@ -3716,10 +3793,7 @@ export function ProjectDetail({
                             {metricDefinitions.find(
                               (metric) => metric.code === service.serviceCode,
                             )?.label ?? service.serviceCode}
-                            :{" "}
-                            {canonicalDecimalToBrazilianInteger(
-                              service.quantity,
-                            )}{" "}
+                            : {canonicalDecimalToBrazilian(service.quantity, 3)}{" "}
                             {service.unitCode}
                           </span>
                         ))}
@@ -4308,8 +4382,8 @@ export function ProjectDetail({
               const persisted = project.quantityBaseline.items.find(
                 (item) => item.serviceCode === metric.code,
               );
-              const allocated = canonicalDecimalToHundredths(
-                persisted?.allocated ?? "0.00",
+              const allocated = canonicalDecimalToThousandths(
+                persisted?.allocated ?? "0.000",
               );
               const hasAllocated = allocated !== null && allocated > BigInt(0);
               const hasIssue = quantityBaselineAllocationIssues.some(
@@ -4352,9 +4426,7 @@ export function ProjectDetail({
                       {hasAllocated && persisted && (
                         <span className="mt-1.5 block text-xs font-semibold text-foreground">
                           Já distribuído:{" "}
-                          {canonicalDecimalToBrazilianInteger(
-                            persisted.allocated,
-                          )}{" "}
+                          {canonicalDecimalToBrazilian(persisted.allocated, 3)}{" "}
                           {persisted.unitCode}. Este serviço não pode ser
                           removido.
                         </span>
@@ -4365,7 +4437,7 @@ export function ProjectDetail({
                     <span>Total de referência ({metric.unit})</span>
                     <Input
                       className="h-11"
-                      inputMode="numeric"
+                      inputMode="decimal"
                       value={metric.targetTotal}
                       disabled={isPending || !metric.enabled}
                       aria-invalid={hasIssue}
@@ -4375,8 +4447,9 @@ export function ProjectDetail({
                             itemIndex === index
                               ? {
                                   ...item,
-                                  targetTotal: formatBrazilianIntegerInput(
+                                  targetTotal: formatBrazilianDecimalInput(
                                     event.target.value,
+                                    3,
                                   ),
                                 }
                               : item,
@@ -4657,11 +4730,17 @@ export function ProjectDetail({
         }}
         size="lg"
         title={
-          editingFront
-            ? "Editar frente de serviço"
-            : "Cadastrar frente de serviço"
+          editingFront?.status === "active"
+            ? "Editar distribuição da frente"
+            : editingFront
+              ? "Editar frente de serviço"
+              : "Cadastrar frente de serviço"
         }
-        description="Defina a área de atuação, os requisitos de início e os quantitativos planejados para esta frente."
+        description={
+          editingFront?.status === "active"
+            ? "Ajuste somente os serviços e quantitativos. Os demais dados da frente ativa serão preservados."
+            : "Defina a área de atuação, os requisitos de início e os quantitativos planejados para esta frente."
+        }
         footer={
           <>
             <div className="flex flex-col-reverse gap-2 sm:flex-row">
@@ -4678,7 +4757,10 @@ export function ProjectDetail({
                 disabled={
                   isPending ||
                   frontExcessIssues.length > 0 ||
-                  (!frontRequiresEmployees && !frontRequiresMachines)
+                  frontMinimumIssues.length > 0 ||
+                  (editingFront?.status !== "active" &&
+                    !frontRequiresEmployees &&
+                    !frontRequiresMachines)
                 }
                 onClick={saveWorkFront}
               >
@@ -4686,7 +4768,9 @@ export function ProjectDetail({
                 {isPending
                   ? "Salvando..."
                   : editingFront
-                    ? "Salvar frente"
+                    ? editingFront.status === "active"
+                      ? "Salvar distribuição"
+                      : "Salvar frente"
                     : "Cadastrar frente"}
               </Button>
             </div>
@@ -4697,25 +4781,34 @@ export function ProjectDetail({
           <FormErrorDeclaration
             issues={visibleFrontIssues}
             title={
-              frontExcessIssues.length
-                ? "Quantitativo acima do saldo disponível."
-                : editingFront
-                  ? "Não foi possível atualizar a frente."
-                  : "Não foi possível cadastrar a frente."
+              frontMinimumIssues.length
+                ? "Quantitativo abaixo do produzido."
+                : frontExcessIssues.length
+                  ? "Quantitativo acima do saldo disponível."
+                  : editingFront
+                    ? "Não foi possível atualizar a frente."
+                    : "Não foi possível cadastrar a frente."
             }
             description={
-              frontExcessIssues.length
-                ? "Reduza os valores indicados antes de salvar a frente."
-                : "Corrija os pontos indicados e tente novamente."
+              frontMinimumIssues.length
+                ? "Mantenha os valores no mínimo produzido antes de salvar."
+                : frontExcessIssues.length
+                  ? "Reduza os valores indicados antes de salvar a frente."
+                  : "Corrija os pontos indicados e tente novamente."
             }
           />
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div
+            className={cn(
+              "grid gap-3 sm:grid-cols-2",
+              editingFront?.status === "active" && "opacity-70",
+            )}
+          >
             <label className="grid gap-1.5 text-sm font-semibold">
               <span>Nome da frente</span>
               <Input
                 autoFocus
                 value={frontName}
-                disabled={isPending}
+                disabled={isPending || editingFront?.status === "active"}
                 placeholder="Ex.: Frente 01 — acesso norte"
                 onChange={(event) => {
                   setFrontName(event.target.value);
@@ -4732,7 +4825,7 @@ export function ProjectDetail({
               </span>
               <Input
                 value={frontLocation}
-                disabled={isPending}
+                disabled={isPending || editingFront?.status === "active"}
                 placeholder="Estaca, trecho ou setor"
                 onChange={(event) => {
                   setFrontLocation(event.target.value);
@@ -4742,30 +4835,32 @@ export function ProjectDetail({
             </label>
           </div>
 
-          <FormSection
-            title="Exigências para iniciar"
-            description="Defina quais recursos precisam estar mobilizados antes do início desta frente."
-          >
-            <div className="grid gap-2 sm:grid-cols-2">
-              <SelectableRow
-                checked={frontRequiresEmployees}
-                onChange={setFrontRequiresEmployees}
-              >
-                Exige equipe mobilizada
-              </SelectableRow>
-              <SelectableRow
-                checked={frontRequiresMachines}
-                onChange={setFrontRequiresMachines}
-              >
-                Exige máquinas mobilizadas
-              </SelectableRow>
-            </div>
-            {!frontRequiresEmployees && !frontRequiresMachines && (
-              <p className="mt-2 text-sm font-semibold text-destructive">
-                Selecione ao menos uma exigência.
-              </p>
-            )}
-          </FormSection>
+          {editingFront?.status !== "active" && (
+            <FormSection
+              title="Exigências para iniciar"
+              description="Defina quais recursos precisam estar mobilizados antes do início desta frente."
+            >
+              <div className="grid gap-2 sm:grid-cols-2">
+                <SelectableRow
+                  checked={frontRequiresEmployees}
+                  onChange={setFrontRequiresEmployees}
+                >
+                  Exige equipe mobilizada
+                </SelectableRow>
+                <SelectableRow
+                  checked={frontRequiresMachines}
+                  onChange={setFrontRequiresMachines}
+                >
+                  Exige máquinas mobilizadas
+                </SelectableRow>
+              </div>
+              {!frontRequiresEmployees && !frontRequiresMachines && (
+                <p className="mt-2 text-sm font-semibold text-destructive">
+                  Selecione ao menos uma exigência.
+                </p>
+              )}
+            </FormSection>
+          )}
 
           <div className="grid gap-2">
             <div>
@@ -4774,59 +4869,63 @@ export function ProjectDetail({
                 Preencha apenas os serviços que serão executados nesta frente.
               </p>
             </div>
-            {project.quantityBaseline.items.map((item) => (
-              <label
-                key={item.serviceCode}
-                className="grid gap-2 rounded-md border border-border bg-background px-3 py-3 sm:grid-cols-[minmax(0,1fr)_180px] sm:items-center"
-              >
-                <span className="min-w-0 text-sm">
-                  <strong className="block">
-                    {metricDefinitions.find(
-                      (metric) => metric.code === item.serviceCode,
-                    )?.label ?? item.serviceCode}
-                  </strong>
-                  <span className="mt-1 block text-muted-foreground">
-                    Saldo disponível:{" "}
-                    {canonicalDecimalToBrazilianInteger(
-                      hundredthsToCanonicalDecimal(
-                        (canonicalDecimalToHundredths(item.unallocated) ??
-                          BigInt(0)) +
-                          (canonicalDecimalToHundredths(
-                            editingFront?.services.find(
-                              (service) =>
-                                service.serviceCode === item.serviceCode,
-                            )?.quantity ?? "0.00",
-                          ) ?? BigInt(0)),
-                      ),
-                    )}{" "}
-                    {item.unitCode}
+            {project.quantityBaseline.items.map((item) => {
+              const currentService = editingFront?.services.find(
+                (service) => service.serviceCode === item.serviceCode,
+              );
+              const maximum =
+                currentService?.maximumQuantity ?? item.unallocated;
+              const label =
+                metricDefinitions.find(
+                  (metric) => metric.code === item.serviceCode,
+                )?.label ?? item.serviceCode;
+              const hasQuantityIssue = [
+                ...frontMinimumIssues,
+                ...frontExcessIssues,
+              ].some((issue) => issue.field === label);
+              return (
+                <label
+                  key={item.serviceCode}
+                  className="grid gap-2 rounded-md border border-border bg-background px-3 py-3 sm:grid-cols-[minmax(0,1fr)_180px] sm:items-center"
+                >
+                  <span className="min-w-0 text-sm">
+                    <strong className="block">{label}</strong>
+                    <span className="mt-1 block text-muted-foreground">
+                      Produzido:{" "}
+                      {canonicalDecimalToBrazilian(
+                        currentService?.produced ?? "0.000",
+                        3,
+                      )}{" "}
+                      {item.unitCode} · mínimo:{" "}
+                      {canonicalDecimalToBrazilian(
+                        currentService?.minimumQuantity ?? "0.000",
+                        3,
+                      )}{" "}
+                      · máximo: {canonicalDecimalToBrazilian(maximum, 3)}{" "}
+                      {item.unitCode}
+                    </span>
                   </span>
-                </span>
-                <Input
-                  aria-label={`Quantidade para ${metricDefinitions.find((metric) => metric.code === item.serviceCode)?.label ?? item.serviceCode}`}
-                  aria-invalid={frontExcessIssues.some(
-                    (issue) =>
-                      issue.field ===
-                      (metricDefinitions.find(
-                        (metric) => metric.code === item.serviceCode,
-                      )?.label ?? item.serviceCode),
-                  )}
-                  inputMode="numeric"
-                  disabled={isPending}
-                  placeholder="0"
-                  value={frontQuantities[item.serviceCode] ?? ""}
-                  onChange={(event) => {
-                    setFrontQuantities((current) => ({
-                      ...current,
-                      [item.serviceCode]: formatBrazilianIntegerInput(
-                        event.target.value,
-                      ),
-                    }));
-                    if (frontIssues.length) setFrontIssues([]);
-                  }}
-                />
-              </label>
-            ))}
+                  <Input
+                    aria-label={`Quantidade para ${label}`}
+                    aria-invalid={hasQuantityIssue}
+                    inputMode="decimal"
+                    disabled={isPending}
+                    placeholder="0"
+                    value={frontQuantities[item.serviceCode] ?? ""}
+                    onChange={(event) => {
+                      setFrontQuantities((current) => ({
+                        ...current,
+                        [item.serviceCode]: formatBrazilianDecimalInput(
+                          event.target.value,
+                          3,
+                        ),
+                      }));
+                      if (frontIssues.length) setFrontIssues([]);
+                    }}
+                  />
+                </label>
+              );
+            })}
           </div>
         </div>
       </OperationsModal>

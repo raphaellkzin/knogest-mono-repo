@@ -6,6 +6,7 @@ import {
   projectQuantityBaselineRevisionCommandSchema,
   projectReadinessCommandSchema,
   projectWorkFrontCommandSchema,
+  projectWorkFrontServicesCommandSchema,
   type ProjectCommand,
 } from "./projects.dto";
 
@@ -376,6 +377,19 @@ describe("Projects DTO", () => {
         requiresEmployees: false,
         requiresMachines: false,
         services: [{ serviceCode: "cut", unitCode: "M3", quantity: "10.00" }],
+      }).success,
+    ).toBe(false);
+    expect(
+      projectWorkFrontServicesCommandSchema.safeParse({ services: [] }).success,
+    ).toBe(true);
+    expect(
+      projectWorkFrontServicesCommandSchema.safeParse({
+        services: [{ serviceCode: "cut", unitCode: "M3", quantity: "10.125" }],
+      }).success,
+    ).toBe(true);
+    expect(
+      projectWorkFrontServicesCommandSchema.safeParse({
+        services: [{ serviceCode: "cut", unitCode: "M3", quantity: "10.1255" }],
       }).success,
     ).toBe(false);
   });

@@ -59,6 +59,18 @@ usam `operatorAssignments` por turno; frentes usam `machineAssignments` com o
 par `machineId + shift`. Ao trocar data ou turno na produção, a interface
 reconsulta as opções antes de substituir responsáveis, frente e máquinas.
 
+A linha de base e as distribuições usam strings decimais com três casas. A
+edição de serviços de uma frente ativa chama
+`PUT /projects/:projectId/fronts/:frontId/services`; ela não reutiliza o PATCH
+de metadados da frente. A interface consome `produced`, `minimumQuantity` e
+`maximumQuantity` do snapshot, sem recalcular a regra de domínio.
+
+O cadastro de máquina envia `loadVolumeM3` e `maxSupportedWeightT` somente para
+`WHITE_LINE`. A edição usa
+`PATCH /machines/:machineId/load-specification`, enviando cada campo como string
+decimal ou `null`. Em produção, a capacidade é somente leitura e vem das opções
+do turno; valores legados enviados no comando são ignorados pela API.
+
 Antes de finalizar o RDO, a interface:
 
 1. salva o rascunho do relatório;

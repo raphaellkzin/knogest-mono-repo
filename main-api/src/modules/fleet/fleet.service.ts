@@ -10,6 +10,7 @@ import type {
   CreateMachineInput,
   AllocateMachineInput,
   ListMachinesQuery,
+  UpdateMachineLoadSpecificationInput,
 } from "./fleet.dto";
 import {
   appendMachineMeterReadingHandler,
@@ -19,6 +20,7 @@ import {
   findAllocatedMachineIdsHandler,
   allocateMachineHandler,
   listMachinesHandler,
+  updateMachineLoadSpecificationHandler,
   type MachineRecord,
 } from "./handlers/fleet.handler";
 import {
@@ -39,6 +41,19 @@ function normalizeIdentifier(value: string) {
 function normalizeDecimal(value: string) {
   const [whole, fraction = ""] = value.split(".");
   return `${whole}.${fraction.padEnd(2, "0").slice(0, 2)}`;
+}
+
+function normalizeSpecificationDecimal(value: string) {
+  const [whole, fraction = ""] = value.split(".");
+  return `${whole}.${fraction.padEnd(3, "0").slice(0, 3)}`;
+}
+
+function loadSpecificationNotApplicable(): never {
+  throw new AppError({
+    code: "MACHINE_LOAD_SPEC_NOT_APPLICABLE",
+    message: "Load specification is available only for white-line machines",
+    statusCode: 422,
+  });
 }
 
 function decimalToCents(value: string): bigint {
@@ -120,6 +135,8 @@ function toMachineDto(
     manufacturer: record.manufacturer,
     model: record.model,
     meterType: record.meterType,
+    loadVolumeM3: record.loadVolumeM3?.toFixed(3) ?? null,
+    maxSupportedWeightT: record.maxSupportedWeightT?.toFixed(3) ?? null,
     identifiers: {
       plate: plate
         ? { value: plate.value, normalizedValue: plate.normalizedValue }
@@ -190,6 +207,11 @@ export class FleetService {
   ) {}
 
   async create(scope: AuthenticatedCompanyScope, input: CreateMachineInput) {
+    if (
+      input.type !== "WHITE_LINE" &&
+      (input.loadVolumeM3 || input.maxSupportedWeightT)
+    )
+      loadSpecificationNotApplicable();
     return this.context.transaction(async (transactionContext) => {
       const record = await createMachineHandler(transactionContext, {
         ...scope,
@@ -200,6 +222,12 @@ export class FleetService {
         manufacturer: input.manufacturer,
         model: input.model,
         meterType: input.meterType,
+        loadVolumeM3: input.loadVolumeM3
+          ? normalizeSpecificationDecimal(input.loadVolumeM3)
+          : undefined,
+        maxSupportedWeightT: input.maxSupportedWeightT
+          ? normalizeSpecificationDecimal(input.maxSupportedWeightT)
+          : undefined,
         initialMeterReading: normalizeDecimal(input.initialMeterReading),
       });
       return toMachineDetailDto(record);
@@ -265,16 +293,62 @@ export class FleetService {
     return toMachineDetailDto(record);
   }
 
-  async allocate(scope: AuthenticatedCompanyScope, machineId: string, input: AllocateMachineInput) {
+  async updateLoadSpecification(
+    scope: AuthenticatedCompanyScope,
+    machineId: string,
+    input: UpdateMachineLoadSpecificationInput,
+  ) {
+    const current = await findMachineDetailHandler(this.context, {
+      ...scope,
+      machineId,
+    });
+    if (current.type !== "WHITE_LINE") loadSpecificationNotApplicable();
+    const record = await updateMachineLoadSpecificationHandler(this.context, {
+      ...scope,
+      machineId,
+      loadVolumeM3: input.loadVolumeM3
+        ? normalizeSpecificationDecimal(input.loadVolumeM3)
+        : null,
+      maxSupportedWeightT: input.maxSupportedWeightT
+        ? normalizeSpecificationDecimal(input.maxSupportedWeightT)
+        : null,
+    });
+    return toMachineDetailDto(record);
+  }
+
+  async allocate(
+    scope: AuthenticatedCompanyScope,
+    machineId: string,
+    input: AllocateMachineInput,
+  ) {
     return runSerializableWithRetry(() =>
-      this.context.transaction(async (tx) => {
-        const status = await this.operationalStatus.getStatus({ ...scope, machineId });
-        if (status.hasOpenShift || status.hasPendingFinalReading) {
-          throw new AppError({ code: "MACHINE_ALLOCATION_OPERATIONALLY_BLOCKED", message: "Machine has an operational blocker", statusCode: 409 });
-        }
-        const allocation = await allocateMachineHandler(tx, { ...scope, machineId, projectId: input.projectId, operatorEmploymentId: input.operatorEmploymentId, effectiveFrom: new Date() });
-        return { ...allocation, effectiveFrom: allocation.effectiveFrom.toISOString() };
-      }, { isolationLevel: "Serializable" }),
+      this.context.transaction(
+        async (tx) => {
+          const status = await this.operationalStatus.getStatus({
+            ...scope,
+            machineId,
+          });
+          if (status.hasOpenShift || status.hasPendingFinalReading) {
+            throw new AppError({
+              code: "MACHINE_ALLOCATION_OPERATIONALLY_BLOCKED",
+              message: "Machine has an operational blocker",
+              statusCode: 409,
+            });
+          }
+          const allocation = await allocateMachineHandler(tx, {
+            ...scope,
+            machineId,
+            projectId: input.projectId,
+            operatorEmploymentId: input.operatorEmploymentId,
+            effectiveFrom: new Date(),
+          });
+          return {
+            ...allocation,
+            effectiveFrom: allocation.effectiveFrom.toISOString(),
+          };
+        },
+        { isolationLevel: "Serializable" },
+      ),
     );
   }
 

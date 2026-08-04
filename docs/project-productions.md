@@ -4,8 +4,10 @@ Este documento é a fonte canônica do lançamento de produção por obra, frent
 serviço, data e turno.
 
 O turno precisa estar habilitado na obra. Responsáveis pertencem à equipe do
-turno, e as opções de equipamento contêm somente máquinas mobilizadas na frente
-e naquele turno. A máquina física pode participar de outra frente no turno
+turno, e as opções de equipamento contêm somente máquinas ativas de linha
+branca, mobilizadas na frente e naquele turno, cujo volume de carga cadastrado
+seja maior que zero. A validação é repetida ao salvar para bloquear payload
+manual inelegível. A máquina física pode participar de outra frente no turno
 oposto. Turno desabilitado retorna `409 PROJECT_SHIFT_NOT_ENABLED`.
 
 ## Identidade e ciclo de vida
@@ -52,11 +54,13 @@ obrigatória.
 ## Máquinas, paradas e viagens
 
 Cada máquina participante recebe função operacional, operador opcional,
-horímetro/odômetro inicial e final, minutos trabalhados, paradas e, para
-transporte, capacidade padrão.
+horímetro/odômetro inicial e final, minutos trabalhados e paradas. A capacidade
+padrão é sempre o `loadVolumeM3` canônico da máquina e é gravada como snapshot
+imutável do lançamento. Os campos antigos de capacidade continuam aceitos nos
+comandos por compatibilidade, mas não sobrescrevem o cadastro.
 
 Somente máquina com função `TRANSPORTE` aceita viagens. O botão **1 viagem**
-registra horário, capacidade vigente e snapshot da máquina; volume ajustado,
+registra horário, capacidade vigente e snapshot da máquina; `adjustedVolumeM3`,
 ticket e observação são opcionais. A chave UUID de idempotência é única por
 produção: repetição do mesmo payload retorna a viagem já gravada e reutilizar a
 chave com outro payload retorna conflito.
@@ -70,6 +74,10 @@ horas, medidores e volumes não aceitam valores negativos.
   sem ajuste, da capacidade registrada.
 - A quantidade oficial usa primeiro o volume medido/aceito; sem ele, usa a
   soma das viagens ou o total direto.
+- `officialQuantity` é persistida e recalculada na criação, edição e
+  inclusão/remoção de viagens. Para serviços não volumétricos, aplica o fator
+  de conversão atual; para volumes, mantém as regras de medição, total direto e
+  viagens.
 - Diferença absoluta e percentual são calculadas entre volume medido e volume
   operacional.
 - A API calcula viagens/hora, quantidade/hora, minutos trabalhados e parados,
@@ -79,6 +87,8 @@ horas, medidores e volumes não aceitam valores negativos.
   explícito.
 - Valores decimais são calculados em escala inteira/decimal e arredondados
   somente na resposta de apresentação.
+- A distribuição da frente não limita novos lançamentos. Rascunhos e aprovados
+  entram no mínimo permitido somente quando a distribuição for editada.
 
 ## Capacidades de autorização
 

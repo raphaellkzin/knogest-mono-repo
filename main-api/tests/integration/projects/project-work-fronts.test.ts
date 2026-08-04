@@ -280,7 +280,7 @@ describe("project work-front quantities", () => {
           blockers: [
             expect.objectContaining({
               section: "fronts",
-              message: expect.stringContaining("saldo disponível 40.00 M3"),
+              message: expect.stringContaining("saldo disponível 40.000 M3"),
             }),
           ],
         }),
@@ -319,6 +319,205 @@ describe("project work-front quantities", () => {
       },
     });
     expect(updated.statusCode, updated.body).toBe(200);
+  });
+
+  it("edits only active-front services between produced and globally available quantities", async () => {
+    const scope = await setup();
+    const created = await createFront(
+      scope.authorization,
+      scope.projectId,
+      "Frente com produção",
+      "12.000",
+    );
+    expect(created.statusCode, created.body).toBe(200);
+    const front = created
+      .json()
+      .data.workFronts.find(
+        (item: { name: string }) => item.name === "Frente com produção",
+      ) as {
+      id: string;
+      name: string;
+      location: string | null;
+      requiresEmployees: boolean;
+      requiresMachines: boolean;
+      services: Array<{ serviceCode: string }>;
+    };
+    const service = await app.prisma.projectWorkFrontService.findFirstOrThrow({
+      where: { workFrontId: front.id, serviceCode: "cut" },
+      select: { id: true },
+    });
+    await app.prisma.project.update({
+      where: { id: scope.projectId },
+      data: { status: "ACTIVE", actualStartedAt: new Date() },
+    });
+    await app.prisma.projectWorkFront.update({
+      where: { id: front.id },
+      data: { status: "ACTIVE", actualStartedAt: new Date() },
+    });
+    await app.prisma.projectProduction.createMany({
+      data: [
+        {
+          corporationId: scope.corporationId,
+          companyId: scope.companyId,
+          projectId: scope.projectId,
+          workFrontId: front.id,
+          workFrontServiceId: service.id,
+          serviceCodeSnapshot: "cut",
+          unitCodeSnapshot: "M3",
+          productionProfileSnapshot: "EXCAVATION",
+          dmtPolicySnapshot: "OPTIONAL",
+          productionDate: new Date("2026-08-03T00:00:00.000Z"),
+          shift: "DAY",
+          shiftOrder: 0,
+          status: "DRAFT",
+          entryMode: "DIRECT_TOTAL",
+          directQuantity: "2.000",
+          officialQuantity: "2.000",
+          createdByUserId: scope.userId,
+        },
+        {
+          corporationId: scope.corporationId,
+          companyId: scope.companyId,
+          projectId: scope.projectId,
+          workFrontId: front.id,
+          workFrontServiceId: service.id,
+          serviceCodeSnapshot: "cut",
+          unitCodeSnapshot: "M3",
+          productionProfileSnapshot: "EXCAVATION",
+          dmtPolicySnapshot: "OPTIONAL",
+          productionDate: new Date("2026-08-03T00:00:00.000Z"),
+          shift: "DAY",
+          shiftOrder: 0,
+          status: "APPROVED",
+          entryMode: "DIRECT_TOTAL",
+          directQuantity: "4.000",
+          officialQuantity: "4.000",
+          createdByUserId: scope.userId,
+          approvedByUserId: scope.userId,
+          approvedAt: new Date("2026-08-03T12:00:00.000Z"),
+        },
+      ],
+    });
+
+    const belowProduced = await app.inject({
+      method: "PUT",
+      url: `/api/v1/projects/${scope.projectId}/fronts/${front.id}/services`,
+      headers: { authorization: scope.authorization },
+      payload: {
+        services: [{ serviceCode: "cut", unitCode: "M3", quantity: "5.999" }],
+      },
+    });
+    expect(belowProduced.statusCode, belowProduced.body).toBe(422);
+    expect(belowProduced.json().code).toBe(
+      "WORK_FRONT_QUANTITY_BELOW_PRODUCED",
+    );
+
+    const exactMinimum = await app.inject({
+      method: "PUT",
+      url: `/api/v1/projects/${scope.projectId}/fronts/${front.id}/services`,
+      headers: { authorization: scope.authorization },
+      payload: {
+        services: [{ serviceCode: "cut", unitCode: "M3", quantity: "6.000" }],
+      },
+    });
+    expect(exactMinimum.statusCode, exactMinimum.body).toBe(200);
+    const minimumFront = exactMinimum
+      .json()
+      .data.workFronts.find((item: { id: string }) => item.id === front.id);
+    expect(minimumFront).toMatchObject({
+      id: front.id,
+      name: front.name,
+      location: front.location,
+      requiresEmployees: front.requiresEmployees,
+      requiresMachines: front.requiresMachines,
+      services: [
+        expect.objectContaining({
+          quantity: "6.000",
+          produced: "6.000",
+          minimumQuantity: "6.000",
+          maximumQuantity: "100.000",
+          hasProductions: true,
+        }),
+      ],
+    });
+    expect(
+      await app.prisma.projectWorkFrontService.findFirstOrThrow({
+        where: { workFrontId: front.id, serviceCode: "cut" },
+        select: { id: true },
+      }),
+    ).toEqual({ id: service.id });
+
+    const exactMaximum = await app.inject({
+      method: "PUT",
+      url: `/api/v1/projects/${scope.projectId}/fronts/${front.id}/services`,
+      headers: { authorization: scope.authorization },
+      payload: {
+        services: [{ serviceCode: "cut", unitCode: "M3", quantity: "100.000" }],
+      },
+    });
+    expect(exactMaximum.statusCode, exactMaximum.body).toBe(200);
+
+    const aboveMaximum = await app.inject({
+      method: "PUT",
+      url: `/api/v1/projects/${scope.projectId}/fronts/${front.id}/services`,
+      headers: { authorization: scope.authorization },
+      payload: {
+        services: [{ serviceCode: "cut", unitCode: "M3", quantity: "100.001" }],
+      },
+    });
+    expect(aboveMaximum.statusCode).toBe(422);
+    expect(aboveMaximum.json().code).toBe(
+      "WORK_FRONT_QUANTITY_EXCEEDS_BALANCE",
+    );
+  });
+
+  it("blocks removing a front service linked to a zero-quantity draft", async () => {
+    const scope = await setup();
+    const created = await createFront(
+      scope.authorization,
+      scope.projectId,
+      "Frente com rascunho zerado",
+      "12.000",
+    );
+    expect(created.statusCode, created.body).toBe(200);
+    const front = created
+      .json()
+      .data.workFronts.find(
+        (item: { name: string }) => item.name === "Frente com rascunho zerado",
+      ) as { id: string };
+    const service = await app.prisma.projectWorkFrontService.findFirstOrThrow({
+      where: { workFrontId: front.id, serviceCode: "cut" },
+      select: { id: true },
+    });
+    await app.prisma.projectProduction.create({
+      data: {
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        projectId: scope.projectId,
+        workFrontId: front.id,
+        workFrontServiceId: service.id,
+        serviceCodeSnapshot: "cut",
+        unitCodeSnapshot: "M3",
+        productionProfileSnapshot: "EXCAVATION",
+        dmtPolicySnapshot: "OPTIONAL",
+        productionDate: new Date("2026-08-03T00:00:00.000Z"),
+        shift: "DAY",
+        shiftOrder: 0,
+        status: "DRAFT",
+        entryMode: "DIRECT_TOTAL",
+        officialQuantity: "0.000",
+        createdByUserId: scope.userId,
+      },
+    });
+
+    const removed = await app.inject({
+      method: "PUT",
+      url: `/api/v1/projects/${scope.projectId}/fronts/${front.id}/services`,
+      headers: { authorization: scope.authorization },
+      payload: { services: [] },
+    });
+    expect(removed.statusCode, removed.body).toBe(422);
+    expect(removed.json().code).toBe("WORK_FRONT_SERVICE_HAS_PRODUCTION");
   });
 
   it("updates both planned dates through readiness", async () => {

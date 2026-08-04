@@ -25,6 +25,7 @@ import {
   type ProjectReadinessCommand,
   type ProjectWorkFrontCommand,
   type ProjectWorkFrontMobilizationCommand,
+  type ProjectWorkFrontServicesCommand,
 } from "../projects.dto";
 
 export type ProjectScope = {
@@ -614,7 +615,7 @@ async function assertQuantityBaselineCoversAllocatedFronts(
         serviceLabels[serviceCode as EarthworksServiceCode] ?? serviceCode;
       blockers.push({
         section: "metrics",
-        message: `${label}: o total de referência deve ser igual ou superior aos ${decimalString(allocated.quantity, 2)} ${allocated.unitCode} já distribuídos.`,
+        message: `${label}: o total de referência deve ser igual ou superior aos ${decimalString(allocated.quantity, 3)} ${allocated.unitCode} já distribuídos.`,
       });
     }
   }
@@ -707,7 +708,7 @@ async function assertWorkFrontAllocationWithinBaseline(
         service.serviceCode;
       blockers.push({
         section: "fronts",
-        message: `${label}: solicitado ${decimalString(requested, 2)} ${service.unitCode}; saldo disponível ${decimalString(available, 2)} ${service.unitCode}.`,
+        message: `${label}: solicitado ${decimalString(requested, 3)} ${service.unitCode}; saldo disponível ${decimalString(available, 3)} ${service.unitCode}.`,
       });
     }
   }
@@ -718,6 +719,113 @@ async function assertWorkFrontAllocationWithinBaseline(
       message: "Um ou mais quantitativos ultrapassam o saldo disponível.",
       data: { fields: [], resources: [], blockers },
     });
+}
+
+async function assertWorkFrontServicesCoverProduction(
+  tx: HandlerContext,
+  scope: ProjectScope,
+  projectId: string,
+  frontId: string,
+  services: ProjectWorkFrontServicesCommand["services"],
+) {
+  const groups = await tx.prisma.projectProduction.groupBy({
+    by: ["serviceCodeSnapshot"],
+    where: { ...projectScopeWhere(scope, projectId), workFrontId: frontId },
+    _sum: { officialQuantity: true },
+    _count: { _all: true },
+  });
+  const proposed = new Map(
+    services.map((service) => [service.serviceCode, service]),
+  );
+  const removed = groups.find(
+    (group) =>
+      group._count._all > 0 &&
+      !proposed.has(group.serviceCodeSnapshot as EarthworksServiceCode),
+  );
+  if (removed)
+    throw new AppError({
+      code: "WORK_FRONT_SERVICE_HAS_PRODUCTION",
+      statusCode: 422,
+      message: "Um serviço com lançamentos de produção não pode ser removido.",
+      data: {
+        fields: [],
+        resources: [],
+        blockers: [
+          {
+            section: "fronts",
+            message: `${serviceLabels[removed.serviceCodeSnapshot as EarthworksServiceCode] ?? removed.serviceCodeSnapshot}: existem lançamentos de produção vinculados.`,
+          },
+        ],
+      },
+    });
+
+  const blockers: ReadinessBlocker[] = [];
+  for (const group of groups) {
+    const service = proposed.get(
+      group.serviceCodeSnapshot as EarthworksServiceCode,
+    );
+    if (!service) continue;
+    const produced = group._sum.officialQuantity ?? new Prisma.Decimal(0);
+    const requested = new Prisma.Decimal(service.quantity);
+    if (requested.lt(produced))
+      blockers.push({
+        section: "fronts",
+        message: `${serviceLabels[group.serviceCodeSnapshot as EarthworksServiceCode] ?? group.serviceCodeSnapshot}: o mínimo é ${decimalString(produced, 3)} ${service.unitCode}, já produzido nesta frente.`,
+      });
+  }
+  if (blockers.length)
+    throw new AppError({
+      code: "WORK_FRONT_QUANTITY_BELOW_PRODUCED",
+      statusCode: 422,
+      message:
+        "A distribuição da frente não pode ficar abaixo do quantitativo produzido.",
+      data: { fields: [], resources: [], blockers },
+    });
+}
+
+async function reconcileWorkFrontServices(
+  tx: HandlerContext,
+  scope: ProjectScope,
+  projectId: string,
+  frontId: string,
+  services: ProjectWorkFrontServicesCommand["services"],
+) {
+  const scopeWhere = projectScopeWhere(scope, projectId);
+  const current = await tx.prisma.projectWorkFrontService.findMany({
+    where: { ...scopeWhere, workFrontId: frontId },
+    select: { id: true, serviceCode: true },
+  });
+  const desiredCodes = new Set(services.map((service) => service.serviceCode));
+  const removedIds = current
+    .filter(
+      (service) =>
+        !desiredCodes.has(service.serviceCode as EarthworksServiceCode),
+    )
+    .map((service) => service.id);
+  if (removedIds.length)
+    await tx.prisma.projectWorkFrontService.deleteMany({
+      where: { id: { in: removedIds }, ...scopeWhere, workFrontId: frontId },
+    });
+  for (const service of services) {
+    const existing = current.find(
+      (item) => item.serviceCode === service.serviceCode,
+    );
+    if (existing)
+      await tx.prisma.projectWorkFrontService.update({
+        where: { id: existing.id },
+        data: { unitCode: service.unitCode, quantity: service.quantity },
+      });
+    else
+      await tx.prisma.projectWorkFrontService.create({
+        data: {
+          ...scopeWhere,
+          workFrontId: frontId,
+          serviceCode: service.serviceCode,
+          unitCode: service.unitCode,
+          quantity: service.quantity,
+        },
+      });
+  }
 }
 
 async function replaceAccountability(
@@ -2150,6 +2258,7 @@ async function buildProjectSnapshot(
     workFrontServices,
     workFrontEmployeeAssignments,
     workFrontMachineAssignments,
+    productionQuantityGroups,
   ] = await Promise.all([
     context.prisma.projectBaseline.findFirst({
       where: { ...scopeWhere, effectiveTo: null },
@@ -2214,6 +2323,12 @@ async function buildProjectSnapshot(
     context.prisma.projectWorkFrontMachineAssignment.findMany({
       where: { ...scopeWhere, effectiveTo: null },
       orderBy: { effectiveFrom: "asc" },
+    }),
+    context.prisma.projectProduction.groupBy({
+      by: ["workFrontId", "serviceCodeSnapshot"],
+      where: scopeWhere,
+      _sum: { officialQuantity: true },
+      _count: { _all: true },
     }),
   ]);
 
@@ -2573,6 +2688,24 @@ async function buildProjectSnapshot(
       allocatedByService.get(service.serviceCode) ?? new Prisma.Decimal(0);
     allocatedByService.set(service.serviceCode, current.add(service.quantity));
   }
+  const producedByFrontService = new Map(
+    productionQuantityGroups.map((group) => [
+      `${group.workFrontId}:${group.serviceCodeSnapshot}`,
+      {
+        quantity: group._sum.officialQuantity ?? new Prisma.Decimal(0),
+        count: group._count._all,
+      },
+    ]),
+  );
+  const producedByService = new Map<string, Prisma.Decimal>();
+  for (const group of productionQuantityGroups) {
+    const current =
+      producedByService.get(group.serviceCodeSnapshot) ?? new Prisma.Decimal(0);
+    producedByService.set(
+      group.serviceCodeSnapshot,
+      current.add(group._sum.officialQuantity ?? 0),
+    );
+  }
   const quantityBaseline = {
     revision:
       quantityBaselineRevision?.revision ?? (baselineItems.length ? 1 : null),
@@ -2584,20 +2717,39 @@ async function buildProjectSnapshot(
       return {
         serviceCode: item.serviceCode,
         unitCode: item.unitCode,
-        total: decimalString(item.total, 2),
-        allocated: decimalString(allocated, 2),
-        unallocated: decimalString(item.total.sub(allocated), 2),
+        total: decimalString(item.total, 3),
+        allocated: decimalString(allocated, 3),
+        unallocated: decimalString(item.total.sub(allocated), 3),
+        produced: decimalString(
+          producedByService.get(item.serviceCode) ?? 0,
+          3,
+        ),
       };
     }),
   };
   const workFrontDtos = workFronts.map((front) => {
     const services = workFrontServices
       .filter((service) => service.workFrontId === front.id)
-      .map((service) => ({
-        serviceCode: service.serviceCode,
-        unitCode: service.unitCode,
-        quantity: decimalString(service.quantity, 2),
-      }));
+      .map((service) => {
+        const produced = producedByFrontService.get(
+          `${front.id}:${service.serviceCode}`,
+        );
+        const baseline = baselineByService.get(service.serviceCode);
+        const allocated =
+          allocatedByService.get(service.serviceCode) ?? new Prisma.Decimal(0);
+        const maximum = baseline
+          ? service.quantity.add(baseline.total.sub(allocated))
+          : service.quantity;
+        return {
+          serviceCode: service.serviceCode,
+          unitCode: service.unitCode,
+          quantity: decimalString(service.quantity, 3),
+          produced: decimalString(produced?.quantity ?? 0, 3),
+          minimumQuantity: decimalString(produced?.quantity ?? 0, 3),
+          maximumQuantity: decimalString(maximum, 3),
+          hasProductions: Boolean(produced?.count),
+        };
+      });
     const planningBlockers = services.flatMap((service) => {
       const baseline = baselineByService.get(service.serviceCode);
       if (!baseline) return ["Serviço não está na linha de base atual."];
@@ -2842,7 +2994,7 @@ async function buildProjectSnapshot(
     supplierOffers: materialOfferDtos,
     productionMetricTargets: productionMetricTargets.map((item) => ({
       metricCode: item.metricCode,
-      targetTotal: decimalString(item.targetTotal, 2),
+      targetTotal: decimalString(item.targetTotal, 3),
     })),
     quantityBaseline,
     workFronts: workFrontDtos,
@@ -3445,6 +3597,13 @@ export class ProjectsHandler {
         command.services,
         frontId,
       );
+      await assertWorkFrontServicesCoverProduction(
+        tx,
+        scope,
+        projectId,
+        frontId,
+        command.services,
+      );
       await tx.prisma.projectWorkFront.updateMany({
         where: {
           id: frontId,
@@ -3465,18 +3624,60 @@ export class ProjectsHandler {
           requiresMachines: command.requiresMachines,
         },
       });
-      await tx.prisma.projectWorkFrontService.deleteMany({
-        where: { workFrontId: frontId, ...projectScopeWhere(scope, projectId) },
+      await reconcileWorkFrontServices(
+        tx,
+        scope,
+        projectId,
+        frontId,
+        command.services,
+      );
+      return buildProjectSnapshot(tx, scope, projectId);
+    });
+  }
+
+  async saveWorkFrontServices(
+    scope: ProjectScope,
+    projectId: string,
+    frontId: string,
+    command: ProjectWorkFrontServicesCommand,
+  ) {
+    assertServiceUnits(command.services);
+    return runSerializable(this.context, async (tx) => {
+      await lockProjectQuantityAllocation(tx, projectId);
+      const front = await tx.prisma.projectWorkFront.findFirst({
+        where: { id: frontId, ...projectScopeWhere(scope, projectId) },
+        select: { status: true, project: { select: { status: true } } },
       });
-      await tx.prisma.projectWorkFrontService.createMany({
-        data: command.services.map((service) => ({
-          ...projectScopeWhere(scope, projectId),
-          workFrontId: frontId,
-          serviceCode: service.serviceCode,
-          unitCode: service.unitCode,
-          quantity: service.quantity,
-        })),
-      });
+      if (!front) projectNotFound();
+      if (
+        (front.status !== "PLANNED" && front.status !== "ACTIVE") ||
+        (front.project.status !== "PLANNED" &&
+          front.project.status !== "ACTIVE")
+      )
+        projectLifecycleConflict(
+          "Work front services cannot change in this state",
+        );
+      await assertWorkFrontAllocationWithinBaseline(
+        tx,
+        scope,
+        projectId,
+        command.services,
+        frontId,
+      );
+      await assertWorkFrontServicesCoverProduction(
+        tx,
+        scope,
+        projectId,
+        frontId,
+        command.services,
+      );
+      await reconcileWorkFrontServices(
+        tx,
+        scope,
+        projectId,
+        frontId,
+        command.services,
+      );
       return buildProjectSnapshot(tx, scope, projectId);
     });
   }

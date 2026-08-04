@@ -2,7 +2,7 @@
 
 ## Conceitos
 
-O **quantitativo de referência** é a linha de base aprovada do projeto. Ele representa o total contratado ou planejado e é versionado: uma revisão nova não altera a anterior.
+O **quantitativo de referência** é a linha de base aprovada do projeto. Ele representa o total contratado ou planejado, usa precisão de três casas decimais e é versionado: uma revisão nova não altera a anterior.
 
 Uma **frente de serviço** é uma área operacional da obra (trecho, setor, estaca ou acesso) que recebe parte desses quantitativos. A soma das frentes é uma alocação operacional; ela não reescreve o total de referência. A alocação pode ser parcial.
 
@@ -11,6 +11,25 @@ Cada frente declara de quais classes de recurso precisa para começar: **equipe*
 A soma dos quantitativos das frentes não canceladas não pode ultrapassar o total da linha de base atual. O formulário avisa e bloqueia o envio assim que identifica um valor acima do saldo. A API repete a validação em transação serializável, evitando que cadastros simultâneos consumam o mesmo saldo. Um valor exatamente igual ao saldo é permitido; ao cancelar uma frente, sua parcela volta a ficar disponível.
 
 O inverso também é protegido: uma revisão da linha de base não pode remover um serviço já distribuído nem reduzir seu total para menos do que a soma das frentes não canceladas. Datas planejadas e quantitativos são consultados na tab de planejamento e editados em modais independentes, com salvamentos separados.
+
+A tab **Planejamento** também permanece disponível na obra ativa. Nessa fase,
+o quantitativo geral pode ser revisto respeitando o total distribuído, e uma
+operação exclusiva permite substituir os serviços de uma frente ativa sem
+alterar nome, localização, datas, notas ou requisitos de mobilização.
+
+Ao editar a distribuição de uma frente, cada serviço possui limites inclusivos:
+
+- mínimo: soma de `officialQuantity` de todas as produções em rascunho e
+  aprovadas daquela frente e serviço;
+- máximo: distribuição atual mais o saldo global ainda não distribuído;
+- remover um serviço é proibido quando existe qualquer produção vinculada,
+  inclusive um rascunho cuja quantidade oficial ainda seja zero.
+
+Alterar somente a quantidade preserva o ID do serviço. O registro só é criado
+ou removido quando o serviço efetivamente entra ou sai. Produções futuras não
+são limitadas pela distribuição; se passarem dela, a inconsistência será
+apresentada e bloqueada na edição seguinte. Quando o produzido já for superior
+ao máximo disponível, primeiro é necessário aumentar o quantitativo geral.
 
 Cada serviço carrega sua própria unidade. Os serviços iniciais são:
 
@@ -32,7 +51,7 @@ Troca de solo não é um único volume: a remoção do material impróprio e o a
 5. Iniciar a obra altera somente o projeto para `ACTIVE`. Nenhuma frente começa automaticamente.
 6. Depois da mobilização geral da obra, prepare cada frente destinando recursos do pool do projeto conforme as classes exigidas pela frente.
 7. Inicie a frente em uma ação separada, somente quando o projeto estiver ativo e a mobilização mínima da frente estiver atendida.
-8. O RDO manual é consolidado por obra e turno, conforme `project-daily-reports.md`; nesta versão ele não é vinculado a uma frente. Produção, abastecimento, custos reais e medições continuam fora do fluxo de frentes.
+8. O RDO manual é consolidado por obra e turno, conforme `project-daily-reports.md`; a produção é vinculada explicitamente à frente e ao serviço, enquanto o RDO continua sem frente própria.
 
 Ao acionar **Iniciar obra**, a interface abre um alert modal de confirmação e não chama a API até o usuário escolher **Sim, iniciar obra**. Escolher **Não, cancelar** ou fechar o alert encerra o modal e mantém a obra planejada, sem disparar a ativação. Depois da confirmação, a interface bloqueia novos cliques e informa que a ativação está em andamento. O sucesso aplica imediatamente o snapshot ativo devolvido pela API e libera as tabs operacionais; a atualização da rota apenas reconcilia esse estado. Conflitos de prontidão e falhas de comunicação mantêm o projeto planejado, apresentam um toast acionável e permitem nova tentativa. A API continua sendo a autoridade final da prontidão.
 
@@ -66,6 +85,7 @@ Frente: `PLANNED → ACTIVE`; uma frente planejada também pode ser cancelada. C
 - `POST /projects/:projectId/quantity-baseline-revisions`
 - `POST /projects/:projectId/fronts`
 - `PATCH /projects/:projectId/fronts/:frontId`
+- `PUT /projects/:projectId/fronts/:frontId/services`
 - `PUT /projects/:projectId/mobilization/employees`
 - `PUT /projects/:projectId/mobilization/machines`
 - `PUT /projects/:projectId/fronts/:frontId/mobilization`
@@ -79,7 +99,7 @@ Clientes devem omitir `data` e `Content-Type`; não devem enviar `{}` nem
 `application/x-www-form-urlencoded`. A ausência de body faz parte do contrato e
 é preservada pelo cliente HTTP server-only compartilhado.
 
-O detalhe de projeto retorna `quantityBaseline` com total, alocado e saldo por serviço. Cada item de `workFronts` informa requisitos, destinações atuais, validade de planejamento (`planningEligibility`) e aptidão para início (`eligibility`). O histórico é paginado por cursor e pode ser filtrado por classe de recurso e frente.
+O detalhe de projeto retorna `quantityBaseline` com total, alocado, saldo e produzido por serviço. Cada serviço da frente retorna `produced`, `minimumQuantity`, `maximumQuantity` e `hasProductions`, além dos requisitos, destinações atuais, validade de planejamento (`planningEligibility`) e aptidão para início (`eligibility`). O histórico é paginado por cursor e pode ser filtrado por classe de recurso e frente.
 
 ## Regras para evoluções futuras
 

@@ -93,7 +93,6 @@ const readinessDecimal = (scale: number) => {
   return z.string().regex(pattern);
 };
 
-const readinessWholeDecimal = () => z.string().regex(/^\d{1,16}\.00$/u);
 const earthworksServiceCodeSchema = z.enum([
   "cut",
   "fill",
@@ -106,7 +105,7 @@ const quantityUnitSchema = z.enum(["M3", "M2", "M3_KM"]);
 const frontServiceSchema = z.object({
   serviceCode: earthworksServiceCodeSchema,
   unitCode: quantityUnitSchema,
-  quantity: readinessDecimal(2),
+  quantity: readinessDecimal(3),
 });
 const quantityBaselineActionSchema = z.object({
   reason: z.string().max(240).nullable().optional(),
@@ -115,7 +114,7 @@ const quantityBaselineActionSchema = z.object({
       z.object({
         serviceCode: earthworksServiceCodeSchema,
         unitCode: quantityUnitSchema,
-        total: readinessDecimal(2),
+        total: readinessDecimal(3),
       }),
     )
     .min(1)
@@ -145,6 +144,10 @@ const workFrontActionSchema = z
     message: "Selecione ao menos uma exigência de mobilização.",
   });
 
+const workFrontServicesActionSchema = z.object({
+  services: z.array(frontServiceSchema).max(20),
+});
+
 const workFrontMobilizationActionSchema = z.object({
   employmentIds: z.array(z.string().uuid()).max(200),
   machineAssignments: z
@@ -162,6 +165,9 @@ export type QuantityBaselineActionInput = z.infer<
   typeof quantityBaselineActionSchema
 >;
 export type WorkFrontActionInput = z.infer<typeof workFrontActionSchema>;
+export type WorkFrontServicesActionInput = z.infer<
+  typeof workFrontServicesActionSchema
+>;
 export type WorkFrontMobilizationActionInput = z.infer<
   typeof workFrontMobilizationActionSchema
 >;
@@ -185,7 +191,7 @@ const projectReadinessActionSchema = z
       .array(
         z.object({
           metricCode: z.enum(["cut", "fill", "finishing", "top_soil"]),
-          targetTotal: readinessWholeDecimal(),
+          targetTotal: readinessDecimal(3),
         }),
       )
       .min(1)
@@ -733,6 +739,31 @@ export async function updateProjectWorkFrontAction(
     }>({
       url: `/api/v1/projects/${id}/fronts/${front}`,
       method: "PATCH",
+      data: command,
+      headers: { "content-type": "application/json" },
+    });
+    revalidatePath(`/home/obras/${id}`);
+    return { kind: "success", project: response.data.data };
+  } catch (error) {
+    return parseProjectError(error);
+  }
+}
+
+export async function saveProjectWorkFrontServicesAction(
+  projectId: string,
+  frontId: string,
+  input: WorkFrontServicesActionInput,
+): Promise<ProjectReadinessMutationResult> {
+  const id = z.string().uuid().parse(projectId);
+  const front = z.string().uuid().parse(frontId);
+  const command = workFrontServicesActionSchema.parse(input);
+  try {
+    const response = await client<{
+      success: true;
+      data: ProjectDetailSnapshot;
+    }>({
+      url: `/api/v1/projects/${id}/fronts/${front}/services`,
+      method: "PUT",
       data: command,
       headers: { "content-type": "application/json" },
     });

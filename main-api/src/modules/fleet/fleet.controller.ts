@@ -16,11 +16,14 @@ import {
   machineParamsSchema,
   machineReadingParamsSchema,
   allocateMachineSchema,
+  updateMachineLoadSpecificationSchema,
 } from "./fleet.dto";
 import { FleetService } from "./fleet.service";
 
 const decimalStringOpenApiPattern = "^(?:0|[1-9]\\d{0,11})(?:\\.[0-9]{1,2})?$";
 const identifierOpenApiPattern = ".*[A-Za-z0-9].*";
+const positiveSpecificationDecimalOpenApiPattern =
+  "^(?:0|[1-9]\\d{0,6})(?:\\.[0-9]{1,3})?$";
 
 const errorSchema = {
   type: "object",
@@ -54,6 +57,8 @@ const machineSchema = {
     "manufacturer",
     "model",
     "meterType",
+    "loadVolumeM3",
+    "maxSupportedWeightT",
     "identifiers",
     "latestMeterReading",
     "availability",
@@ -68,6 +73,8 @@ const machineSchema = {
     manufacturer: { type: "string" },
     model: { type: "string" },
     meterType: { type: "string", enum: ["HOUR_METER", "ODOMETER"] },
+    loadVolumeM3: { type: "string", nullable: true },
+    maxSupportedWeightT: { type: "string", nullable: true },
     identifiers: {
       type: "object",
       required: ["plate", "companyTag"],
@@ -191,6 +198,32 @@ const createMachineBodySchema = {
       type: "string",
       pattern: decimalStringOpenApiPattern,
     },
+    loadVolumeM3: {
+      type: "string",
+      pattern: positiveSpecificationDecimalOpenApiPattern,
+    },
+    maxSupportedWeightT: {
+      type: "string",
+      pattern: positiveSpecificationDecimalOpenApiPattern,
+    },
+  },
+} as const;
+
+const updateMachineLoadSpecificationBodySchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["loadVolumeM3", "maxSupportedWeightT"],
+  properties: {
+    loadVolumeM3: {
+      type: "string",
+      nullable: true,
+      pattern: positiveSpecificationDecimalOpenApiPattern,
+    },
+    maxSupportedWeightT: {
+      type: "string",
+      nullable: true,
+      pattern: positiveSpecificationDecimalOpenApiPattern,
+    },
   },
 } as const;
 
@@ -282,6 +315,7 @@ export const v1FleetController = async (app: FastifyInstance) => {
           401: errorSchema,
           403: errorSchema,
           409: errorSchema,
+          422: errorSchema,
         },
       },
     },
@@ -323,12 +357,55 @@ export const v1FleetController = async (app: FastifyInstance) => {
     },
   );
 
+  app.patch(
+    "/machines/:machineId/load-specification",
+    {
+      preHandler: [
+        app.requireCompanyScope,
+        validateParams(machineParamsSchema),
+        validateBody(updateMachineLoadSpecificationSchema),
+      ],
+      schema: {
+        tags: ["Fleet"],
+        summary: "Update a white-line Machine load specification",
+        security: [{ bearerAuth: [] }],
+        params: machineParamsOpenApiSchema,
+        body: updateMachineLoadSpecificationBodySchema,
+        response: {
+          200: detailResponseSchema,
+          400: errorSchema,
+          401: errorSchema,
+          403: errorSchema,
+          404: errorSchema,
+          422: errorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { machineId } = request.params as z.infer<
+        typeof machineParamsSchema
+      >;
+      const data = await fleetService.updateLoadSpecification(
+        scopeFromRequest(request),
+        machineId,
+        request.body as z.infer<typeof updateMachineLoadSpecificationSchema>,
+      );
+      return jsonResponse.success({ reply, data });
+    },
+  );
+
   app.post(
     "/machines/:machineId/allocations",
     {
-      preHandler: [app.requireCompanyScope, validateParams(machineParamsSchema), validateBody(allocateMachineSchema)],
+      preHandler: [
+        app.requireCompanyScope,
+        validateParams(machineParamsSchema),
+        validateBody(allocateMachineSchema),
+      ],
       schema: {
-        tags: ["Fleet"], summary: "Allocate a Machine to an eligible Project", security: [{ bearerAuth: [] }],
+        tags: ["Fleet"],
+        summary: "Allocate a Machine to an eligible Project",
+        security: [{ bearerAuth: [] }],
         params: machineParamsOpenApiSchema,
         body: {
           type: "object",
@@ -340,14 +417,52 @@ export const v1FleetController = async (app: FastifyInstance) => {
           },
         },
         response: {
-          200: { type: "object", additionalProperties: false, required: ["success", "message", "data"], properties: { success: { type: "boolean", const: true }, message: { type: "string" }, data: { type: "object", additionalProperties: false, required: ["id", "projectId", "machineId", "startMeterReadingId", "operatorEmploymentId", "effectiveFrom"], properties: { id: { type: "string", format: "uuid" }, projectId: { type: "string", format: "uuid" }, machineId: { type: "string", format: "uuid" }, startMeterReadingId: { type: "string", format: "uuid" }, operatorEmploymentId: { type: "string", format: "uuid" }, effectiveFrom: { type: "string", format: "date-time" } } } } },
-          400: errorSchema, 401: errorSchema, 403: errorSchema, 404: errorSchema, 409: errorSchema,
+          200: {
+            type: "object",
+            additionalProperties: false,
+            required: ["success", "message", "data"],
+            properties: {
+              success: { type: "boolean", const: true },
+              message: { type: "string" },
+              data: {
+                type: "object",
+                additionalProperties: false,
+                required: [
+                  "id",
+                  "projectId",
+                  "machineId",
+                  "startMeterReadingId",
+                  "operatorEmploymentId",
+                  "effectiveFrom",
+                ],
+                properties: {
+                  id: { type: "string", format: "uuid" },
+                  projectId: { type: "string", format: "uuid" },
+                  machineId: { type: "string", format: "uuid" },
+                  startMeterReadingId: { type: "string", format: "uuid" },
+                  operatorEmploymentId: { type: "string", format: "uuid" },
+                  effectiveFrom: { type: "string", format: "date-time" },
+                },
+              },
+            },
+          },
+          400: errorSchema,
+          401: errorSchema,
+          403: errorSchema,
+          404: errorSchema,
+          409: errorSchema,
         },
       },
     },
     async (request, reply) => {
-      const { machineId } = request.params as z.infer<typeof machineParamsSchema>;
-      const data = await fleetService.allocate(scopeFromRequest(request), machineId, request.body as z.infer<typeof allocateMachineSchema>);
+      const { machineId } = request.params as z.infer<
+        typeof machineParamsSchema
+      >;
+      const data = await fleetService.allocate(
+        scopeFromRequest(request),
+        machineId,
+        request.body as z.infer<typeof allocateMachineSchema>,
+      );
       return jsonResponse.success({ reply, data });
     },
   );

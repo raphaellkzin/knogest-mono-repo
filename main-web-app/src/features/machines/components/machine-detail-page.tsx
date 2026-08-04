@@ -1,12 +1,39 @@
+"use client";
+
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { ArrowLeft, Gauge, Tag, Truck } from "lucide-react";
+import { useActionState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { ArrowLeft, Gauge, Save, Scale, Tag, Truck } from "lucide-react";
 
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import type { MachineActionState } from "../machines-action-state";
 import type { MachineDetail } from "../machines.server";
 import { formatMeterReading, meterTypeLabel } from "../meter-format";
 
-export function MachineDetailPage({ machine }: { machine: MachineDetail }) {
+type LoadSpecificationAction = (
+  state: MachineActionState,
+  formData: FormData,
+) => Promise<MachineActionState>;
+
+export function MachineDetailPage({
+  action,
+  machine,
+}: {
+  action: LoadSpecificationAction;
+  machine: MachineDetail;
+}) {
+  const router = useRouter();
+  const [state, formAction, pending] = useActionState(action, {
+    ok: false,
+    message: "",
+  });
+
+  useEffect(() => {
+    if (state.ok) router.refresh();
+  }, [router, state.ok]);
+
   return (
     <div className="space-y-4">
       <Link
@@ -79,6 +106,70 @@ export function MachineDetailPage({ machine }: { machine: MachineDetail }) {
             {machine.description ?? "Sem descrição"}
           </Info>
         </div>
+
+        {machine.type === "WHITE_LINE" && (
+          <form
+            action={formAction}
+            className="grid gap-4 border-t border-border bg-secondary/20 p-4"
+          >
+            <div>
+              <h3 className="font-bold">Capacidade de carga</h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                O volume positivo torna a máquina elegível para lançamentos de
+                produção quando ela estiver mobilizada na frente e no turno. O
+                peso máximo é apenas informativo nesta versão.
+              </p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="grid gap-1.5 text-sm font-semibold">
+                <span className="flex items-center gap-2">
+                  <Truck className="size-4" /> Volume de carga (m³)
+                </span>
+                <Input
+                  name="loadVolumeM3"
+                  inputMode="decimal"
+                  defaultValue={machine.loadVolumeM3?.replace(".", ",") ?? ""}
+                  placeholder="Ex.: 12,500"
+                  disabled={pending}
+                />
+              </label>
+              <label className="grid gap-1.5 text-sm font-semibold">
+                <span className="flex items-center gap-2">
+                  <Scale className="size-4" /> Peso máximo suportado (t)
+                </span>
+                <Input
+                  name="maxSupportedWeightT"
+                  inputMode="decimal"
+                  defaultValue={
+                    machine.maxSupportedWeightT?.replace(".", ",") ?? ""
+                  }
+                  placeholder="Ex.: 20,000"
+                  disabled={pending}
+                />
+              </label>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              {state.message ? (
+                <p
+                  role={state.ok ? "status" : "alert"}
+                  className={
+                    state.ok
+                      ? "text-sm font-semibold text-emerald-800"
+                      : "text-sm font-semibold text-destructive"
+                  }
+                >
+                  {state.message}
+                </p>
+              ) : (
+                <span />
+              )}
+              <Button type="submit" disabled={pending}>
+                <Save className="size-4" />
+                {pending ? "Salvando..." : "Salvar capacidade"}
+              </Button>
+            </div>
+          </form>
+        )}
       </section>
     </div>
   );

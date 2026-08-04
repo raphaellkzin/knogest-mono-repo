@@ -147,6 +147,7 @@ export type ProjectDetailSnapshot = {
       total: string;
       allocated: string;
       unallocated: string;
+      produced: string;
     }[];
   };
   workFronts: {
@@ -164,6 +165,10 @@ export type ProjectDetailSnapshot = {
       serviceCode: EarthworksServiceCode;
       unitCode: "M3" | "M2" | "M3_KM";
       quantity: string;
+      produced: string;
+      minimumQuantity: string;
+      maximumQuantity: string;
+      hasProductions: boolean;
     }[];
     employeeAssignments: {
       id: string;

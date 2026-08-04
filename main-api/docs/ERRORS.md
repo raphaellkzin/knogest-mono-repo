@@ -77,3 +77,15 @@ Produção de terraplenagem usa os seguintes códigos públicos:
 
 Conflitos retornam apenas identificadores, campos pendentes, limites e
 categorias seguras.
+
+## Frentes e frota
+
+- `WORK_FRONT_QUANTITY_BELOW_PRODUCED`: a distribuição proposta ficou abaixo
+  da soma oficial produzida na frente e no serviço;
+- `WORK_FRONT_SERVICE_HAS_PRODUCTION`: tentativa de remover um serviço que tem
+  ao menos um lançamento vinculado, ainda que seja rascunho zerado;
+- `MACHINE_LOAD_SPEC_NOT_APPLICABLE`: volume de carga ou peso máximo enviado
+  para máquina que não pertence à linha branca.
+
+Os três casos usam `422`. Limites quantitativos podem aparecer em `blockers`,
+sem expor payload, SQL ou detalhes de persistência.

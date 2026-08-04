@@ -19,6 +19,8 @@ export interface MachineRecord {
   manufacturer: string;
   model: string;
   meterType: "HOUR_METER" | "ODOMETER";
+  loadVolumeM3: Prisma.Decimal | null;
+  maxSupportedWeightT: Prisma.Decimal | null;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -62,6 +64,8 @@ function machineSelect(companyId: string) {
     manufacturer: true,
     model: true,
     meterType: true,
+    loadVolumeM3: true,
+    maxSupportedWeightT: true,
     isActive: true,
     createdAt: true,
     updatedAt: true,
@@ -294,6 +298,8 @@ export async function createMachineHandler(
     manufacturer: string;
     model: string;
     meterType: "HOUR_METER" | "ODOMETER";
+    loadVolumeM3?: string;
+    maxSupportedWeightT?: string;
     identifiers: {
       kind: "PLATE" | "COMPANY_TAG";
       value: string;
@@ -312,6 +318,8 @@ export async function createMachineHandler(
         manufacturer: input.manufacturer,
         model: input.model,
         meterType: input.meterType,
+        loadVolumeM3: input.loadVolumeM3,
+        maxSupportedWeightT: input.maxSupportedWeightT,
       },
       select: { id: true },
     });
@@ -412,6 +420,32 @@ export async function findMachineDetailHandler(
 
   if (!record) throw notFoundError();
   return record;
+}
+
+export async function updateMachineLoadSpecificationHandler(
+  context: HandlerContext,
+  input: {
+    corporationId: string;
+    companyId: string;
+    machineId: string;
+    loadVolumeM3: string | null;
+    maxSupportedWeightT: string | null;
+  },
+) {
+  await findMachineDetailHandler(context, input);
+  await context.prisma.machine.update({
+    where: {
+      corporationId_id: {
+        corporationId: input.corporationId,
+        id: input.machineId,
+      },
+    },
+    data: {
+      loadVolumeM3: input.loadVolumeM3,
+      maxSupportedWeightT: input.maxSupportedWeightT,
+    },
+  });
+  return findMachineDetailHandler(context, input);
 }
 
 export async function appendMachineMeterReadingHandler(
@@ -563,40 +597,131 @@ export async function findAllocatedMachineIdsHandler(
 
 export async function allocateMachineHandler(
   context: HandlerContext,
-  input: { corporationId: string; companyId: string; machineId: string; projectId: string; operatorEmploymentId: string; effectiveFrom: Date },
+  input: {
+    corporationId: string;
+    companyId: string;
+    machineId: string;
+    projectId: string;
+    operatorEmploymentId: string;
+    effectiveFrom: Date;
+  },
 ) {
   await lockMachine(context, input);
-  const [machine, ownership, project, reading, allocation, operator] = await Promise.all([
-    context.prisma.machine.findFirst({ where: { id: input.machineId, corporationId: input.corporationId, isActive: true }, select: { id: true } }),
-    context.prisma.machineOwnershipPeriod.findFirst({ where: { corporationId: input.corporationId, companyId: input.companyId, machineId: input.machineId, effectiveTo: null }, select: { id: true } }),
-    context.prisma.project.findFirst({ where: { id: input.projectId, corporationId: input.corporationId, companyId: input.companyId, status: { in: ["PLANNED", "ACTIVE"] } }, select: { id: true } }),
-    context.prisma.machineMeterReading.findFirst({ where: { corporationId: input.corporationId, companyId: input.companyId, machineId: input.machineId, status: "CONFIRMED" }, orderBy: { readingSequence: "desc" }, select: { id: true, value: true } }),
-    context.prisma.projectMachineAllocation.findFirst({ where: { corporationId: input.corporationId, machineId: input.machineId, effectiveTo: null }, select: { id: true } }),
-    context.prisma.projectEmployeeAllocation.findFirst({
-      where: {
+  const [machine, ownership, project, reading, allocation, operator] =
+    await Promise.all([
+      context.prisma.machine.findFirst({
+        where: {
+          id: input.machineId,
+          corporationId: input.corporationId,
+          isActive: true,
+        },
+        select: { id: true },
+      }),
+      context.prisma.machineOwnershipPeriod.findFirst({
+        where: {
+          corporationId: input.corporationId,
+          companyId: input.companyId,
+          machineId: input.machineId,
+          effectiveTo: null,
+        },
+        select: { id: true },
+      }),
+      context.prisma.project.findFirst({
+        where: {
+          id: input.projectId,
+          corporationId: input.corporationId,
+          companyId: input.companyId,
+          status: { in: ["PLANNED", "ACTIVE"] },
+        },
+        select: { id: true },
+      }),
+      context.prisma.machineMeterReading.findFirst({
+        where: {
+          corporationId: input.corporationId,
+          companyId: input.companyId,
+          machineId: input.machineId,
+          status: "CONFIRMED",
+        },
+        orderBy: { readingSequence: "desc" },
+        select: { id: true, value: true },
+      }),
+      context.prisma.projectMachineAllocation.findFirst({
+        where: {
+          corporationId: input.corporationId,
+          machineId: input.machineId,
+          effectiveTo: null,
+        },
+        select: { id: true },
+      }),
+      context.prisma.projectEmployeeAllocation.findFirst({
+        where: {
+          corporationId: input.corporationId,
+          companyId: input.companyId,
+          projectId: input.projectId,
+          employmentId: input.operatorEmploymentId,
+          effectiveTo: null,
+          employmentJobRolePeriod: {
+            employment: {
+              state: "ACTIVE",
+              isActive: true,
+              periods: { some: { effectiveTo: null } },
+            },
+          },
+        },
+        select: { id: true },
+      }),
+    ]);
+  if (!machine || !ownership || !reading)
+    throw new AppError({
+      code: "MACHINE_ALLOCATION_UNAVAILABLE",
+      message: "Machine is unavailable for allocation",
+      statusCode: 409,
+    });
+  if (!project)
+    throw new AppError({
+      code: "MACHINE_ALLOCATION_PROJECT_UNAVAILABLE",
+      message: "Project is unavailable for machine allocation",
+      statusCode: 409,
+    });
+  if (!operator)
+    throw new AppError({
+      code: "MACHINE_ALLOCATION_UNAVAILABLE",
+      message: "Machine operator must be allocated to the project",
+      statusCode: 409,
+    });
+  if (allocation)
+    throw new AppError({
+      code: "MACHINE_ALLOCATION_UNAVAILABLE",
+      message: "Machine is unavailable for allocation",
+      statusCode: 409,
+    });
+  try {
+    return await context.prisma.projectMachineAllocation.create({
+      data: {
         corporationId: input.corporationId,
         companyId: input.companyId,
         projectId: input.projectId,
-        employmentId: input.operatorEmploymentId,
-        effectiveTo: null,
-        employmentJobRolePeriod: {
-          employment: { state: "ACTIVE", isActive: true, periods: { some: { effectiveTo: null } } },
-        },
+        machineId: input.machineId,
+        startMeterReadingId: reading.id,
+        operatorEmploymentId: input.operatorEmploymentId,
+        effectiveFrom: input.effectiveFrom,
       },
-      select: { id: true },
-    }),
-  ]);
-  if (!machine || !ownership || !reading) throw new AppError({ code: "MACHINE_ALLOCATION_UNAVAILABLE", message: "Machine is unavailable for allocation", statusCode: 409 });
-  if (!project) throw new AppError({ code: "MACHINE_ALLOCATION_PROJECT_UNAVAILABLE", message: "Project is unavailable for machine allocation", statusCode: 409 });
-  if (!operator) throw new AppError({ code: "MACHINE_ALLOCATION_UNAVAILABLE", message: "Machine operator must be allocated to the project", statusCode: 409 });
-  if (allocation) throw new AppError({ code: "MACHINE_ALLOCATION_UNAVAILABLE", message: "Machine is unavailable for allocation", statusCode: 409 });
-  try {
-    return await context.prisma.projectMachineAllocation.create({
-      data: { corporationId: input.corporationId, companyId: input.companyId, projectId: input.projectId, machineId: input.machineId, startMeterReadingId: reading.id, operatorEmploymentId: input.operatorEmploymentId, effectiveFrom: input.effectiveFrom },
-      select: { id: true, projectId: true, machineId: true, startMeterReadingId: true, operatorEmploymentId: true, effectiveFrom: true },
+      select: {
+        id: true,
+        projectId: true,
+        machineId: true,
+        startMeterReadingId: true,
+        operatorEmploymentId: true,
+        effectiveFrom: true,
+      },
     });
   } catch (error) {
-    if (isUniqueError(error)) throw new AppError({ code: "MACHINE_ALLOCATION_UNAVAILABLE", message: "Machine is unavailable for allocation", statusCode: 409 });
+    if (isUniqueError(error))
+      throw new AppError({
+        code: "MACHINE_ALLOCATION_UNAVAILABLE",
+        message: "Machine is unavailable for allocation",
+        statusCode: 409,
+      });
     throw error;
   }
 }

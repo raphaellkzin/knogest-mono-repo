@@ -23,6 +23,7 @@ vi.mock("../projects.actions", () => ({
   saveProjectQuantityBaselineAction: vi.fn(),
   saveProjectReadinessAction: vi.fn(),
   saveProjectWorkFrontMobilizationAction: vi.fn(),
+  saveProjectWorkFrontServicesAction: vi.fn(),
   startProjectWorkFrontAction: vi.fn(),
   updateProjectWorkFrontAction: vi.fn(),
 }));
@@ -68,6 +69,7 @@ import {
   saveProjectQuantityBaselineAction,
   saveProjectReadinessAction,
   saveProjectWorkFrontMobilizationAction,
+  saveProjectWorkFrontServicesAction,
   updateProjectWorkFrontAction,
 } from "../projects.actions";
 import { toast } from "sonner";
@@ -212,6 +214,7 @@ const projectSnapshot: ProjectDetailSnapshot = {
         total: "1234.00",
         allocated: "0.00",
         unallocated: "1234.00",
+        produced: "0.000",
       },
     ],
   },
@@ -707,7 +710,7 @@ describe("Project detail planning metrics", () => {
     expect(saveReadiness).not.toHaveBeenCalled();
   });
 
-  it("shows integer quantities and saves a separate baseline revision", async () => {
+  it("shows three-decimal quantities and saves a separate baseline revision", async () => {
     const saveBaseline = vi.mocked(saveProjectQuantityBaselineAction);
     saveBaseline.mockResolvedValue({
       kind: "success",
@@ -724,12 +727,11 @@ describe("Project detail planning metrics", () => {
     const targetInput = within(modal).getAllByLabelText(
       /Total de referência/u,
     )[0] as HTMLInputElement;
-    expect(targetInput.value).toBe("1.234");
-    expect(targetInput.value).not.toBe("1.234,00");
+    expect(targetInput.value).toBe("1.234,000");
 
     await user.clear(targetInput);
-    await user.type(targetInput, "1234567");
-    expect(targetInput.value).toBe("1.234.567");
+    await user.type(targetInput, "1234567000");
+    expect(targetInput.value).toBe("1.234.567,000");
 
     await user.click(
       within(modal).getByRole("button", { name: "Salvar quantitativos" }),
@@ -737,7 +739,7 @@ describe("Project detail planning metrics", () => {
 
     await waitFor(() =>
       expect(saveBaseline).toHaveBeenCalledWith(projectSnapshot.id, {
-        items: [{ serviceCode: "cut", unitCode: "M3", total: "1234567.00" }],
+        items: [{ serviceCode: "cut", unitCode: "M3", total: "1234567.000" }],
       }),
     );
     expect(saveProjectReadinessAction).not.toHaveBeenCalled();
@@ -808,7 +810,7 @@ describe("Project work fronts", () => {
     );
     await user.type(
       within(modal).getByLabelText("Quantidade para Corte"),
-      "250",
+      "250000",
     );
     await user.click(
       within(modal).getByRole("button", { name: /^Cadastrar frente$/u }),
@@ -823,7 +825,7 @@ describe("Project work fronts", () => {
         plannedEndDate: null,
         requiresEmployees: true,
         requiresMachines: true,
-        services: [{ serviceCode: "cut", unitCode: "M3", quantity: "250.00" }],
+        services: [{ serviceCode: "cut", unitCode: "M3", quantity: "250.000" }],
       }),
     );
   });
@@ -853,7 +855,7 @@ describe("Project work fronts", () => {
     );
     await user.type(
       within(modal).getByLabelText("Quantidade para Corte"),
-      "250",
+      "250000",
     );
     await user.click(
       within(modal).getByRole("button", { name: /^Cadastrar frente$/u }),
@@ -877,14 +879,14 @@ describe("Project work fronts", () => {
       "Frente acima do saldo",
     );
     const quantityInput = within(modal).getByLabelText("Quantidade para Corte");
-    await user.type(quantityInput, "1235");
+    await user.type(quantityInput, "1235000");
 
     expect(
       within(modal).getByText("Quantitativo acima do saldo disponível."),
     ).toBeTruthy();
     expect(
       within(modal).getByText(
-        "Solicitado 1.235 M3; saldo disponível 1.234 M3.",
+        "Solicitado 1.235,000 M3; saldo disponível 1.234,000 M3.",
       ),
     ).toBeTruthy();
     expect(quantityInput.getAttribute("aria-invalid")).toBe("true");
@@ -916,7 +918,7 @@ describe("Project work fronts", () => {
     );
     await user.type(
       within(modal).getByLabelText("Quantidade para Corte"),
-      "1234",
+      "1234000",
     );
     await user.click(
       within(modal).getByRole("button", { name: /^Cadastrar frente$/u }),
@@ -931,7 +933,9 @@ describe("Project work fronts", () => {
         plannedEndDate: null,
         requiresEmployees: true,
         requiresMachines: true,
-        services: [{ serviceCode: "cut", unitCode: "M3", quantity: "1234.00" }],
+        services: [
+          { serviceCode: "cut", unitCode: "M3", quantity: "1234.000" },
+        ],
       }),
     );
   });
@@ -949,7 +953,17 @@ describe("Project work fronts", () => {
       requiresMachines: true,
       status: "planned",
       actualStartedAt: null,
-      services: [{ serviceCode: "cut", unitCode: "M3", quantity: "250.00" }],
+      services: [
+        {
+          serviceCode: "cut",
+          unitCode: "M3",
+          quantity: "250.00",
+          produced: "0.000",
+          minimumQuantity: "0.000",
+          maximumQuantity: "1234.000",
+          hasProductions: false,
+        },
+      ],
       employeeAssignments: [],
       machineAssignments: [],
       mobilizationRecorded: false,
@@ -998,7 +1012,17 @@ describe("Project work fronts", () => {
       requiresMachines: true,
       status: "planned",
       actualStartedAt: null,
-      services: [{ serviceCode: "cut", unitCode: "M3", quantity: "250.00" }],
+      services: [
+        {
+          serviceCode: "cut",
+          unitCode: "M3",
+          quantity: "250.00",
+          produced: "0.000",
+          minimumQuantity: "0.000",
+          maximumQuantity: "1234.000",
+          hasProductions: false,
+        },
+      ],
       employeeAssignments: [],
       machineAssignments: [],
       mobilizationRecorded: false,
@@ -1019,6 +1043,7 @@ describe("Project work fronts", () => {
             total: "1234.00",
             allocated: "250.00",
             unallocated: "984.00",
+            produced: "0.000",
           },
         ],
       },
@@ -1034,7 +1059,7 @@ describe("Project work fronts", () => {
     await user.click(screen.getByRole("tab", { name: /Frentes/u }));
     await user.click(screen.getByRole("button", { name: "Editar frente" }));
     const modal = screen.getByRole("dialog");
-    expect(within(modal).getByText(/Saldo disponível: 1.234 M3/u)).toBeTruthy();
+    expect(within(modal).getByText(/máximo: 1.234,000 M3/u)).toBeTruthy();
     await user.click(
       within(modal).getByRole("checkbox", {
         name: "Exige máquinas mobilizadas",
@@ -1042,7 +1067,7 @@ describe("Project work fronts", () => {
     );
     const quantity = within(modal).getByLabelText("Quantidade para Corte");
     await user.clear(quantity);
-    await user.type(quantity, "1200");
+    await user.type(quantity, "1200000");
     await user.click(
       within(modal).getByRole("button", { name: "Salvar frente" }),
     );
@@ -1056,7 +1081,9 @@ describe("Project work fronts", () => {
         plannedEndDate: null,
         requiresEmployees: true,
         requiresMachines: false,
-        services: [{ serviceCode: "cut", unitCode: "M3", quantity: "1200.00" }],
+        services: [
+          { serviceCode: "cut", unitCode: "M3", quantity: "1200.000" },
+        ],
       }),
     );
   });
@@ -1126,7 +1153,17 @@ describe("Project active work-front mobilization", () => {
         requiresMachines: true,
         status: "planned",
         actualStartedAt: null,
-        services: [{ serviceCode: "cut", unitCode: "M3", quantity: "100.00" }],
+        services: [
+          {
+            serviceCode: "cut",
+            unitCode: "M3",
+            quantity: "100.00",
+            produced: "0.000",
+            minimumQuantity: "0.000",
+            maximumQuantity: "1234.000",
+            hasProductions: false,
+          },
+        ],
         employeeAssignments: [],
         machineAssignments: [],
         mobilizationRecorded: false,
@@ -1141,6 +1178,79 @@ describe("Project active work-front mobilization", () => {
       },
     ],
   };
+
+  it("keeps planning available and edits only an active front distribution", async () => {
+    const saveServices = vi.mocked(saveProjectWorkFrontServicesAction);
+    const projectWithProduction: ProjectDetailSnapshot = {
+      ...activeProject,
+      quantityBaseline: {
+        ...activeProject.quantityBaseline,
+        items: activeProject.quantityBaseline.items.map((item) => ({
+          ...item,
+          produced: "6.000",
+        })),
+      },
+      workFronts: activeProject.workFronts.map((front) => ({
+        ...front,
+        status: "active" as const,
+        actualStartedAt: "2026-07-20T13:00:00.000Z",
+        services: front.services.map((service) => ({
+          ...service,
+          quantity: "12.000",
+          produced: "6.000",
+          minimumQuantity: "6.000",
+          maximumQuantity: "1234.000",
+          hasProductions: true,
+        })),
+      })),
+    };
+    saveServices.mockResolvedValue({
+      kind: "success",
+      project: projectWithProduction,
+    });
+    const user = userEvent.setup();
+
+    renderProjectDetail(projectWithProduction);
+    expect(screen.getByRole("tab", { name: /Planejamento/u })).toBeTruthy();
+    await user.click(screen.getByRole("tab", { name: /Frentes/u }));
+    await user.click(
+      screen.getByRole("button", { name: "Editar distribuição" }),
+    );
+    const modal = screen.getByRole("dialog");
+    expect(
+      (within(modal).getByLabelText("Nome da frente") as HTMLInputElement)
+        .disabled,
+    ).toBe(true);
+    const quantity = within(modal).getByLabelText("Quantidade para Corte");
+    await user.clear(quantity);
+    await user.type(quantity, "5999");
+    expect(
+      within(modal).getByText("Quantitativo abaixo do produzido."),
+    ).toBeTruthy();
+    expect(
+      (
+        within(modal).getByRole("button", {
+          name: "Salvar distribuição",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    await user.clear(quantity);
+    await user.type(quantity, "6000");
+    await user.click(
+      within(modal).getByRole("button", { name: "Salvar distribuição" }),
+    );
+
+    await waitFor(() =>
+      expect(saveServices).toHaveBeenCalledWith(
+        projectWithProduction.id,
+        frontId,
+        {
+          services: [{ serviceCode: "cut", unitCode: "M3", quantity: "6.000" }],
+        },
+      ),
+    );
+    expect(updateProjectWorkFrontAction).not.toHaveBeenCalled();
+  });
 
   it("prepares a front separately and includes the machine operator", async () => {
     const saveMobilization = vi.mocked(saveProjectWorkFrontMobilizationAction);

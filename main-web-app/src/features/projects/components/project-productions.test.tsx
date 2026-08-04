@@ -73,6 +73,8 @@ const options: ProjectProductionOptions = {
           model: "320",
           meterType: "hour_meter",
           identifier: "EQ-01",
+          loadVolumeM3: "12.000",
+          maxSupportedWeightT: "20.000",
           operator: { id: employmentId, name: "João Operador" },
         },
       ],
@@ -127,7 +129,9 @@ describe("ProjectProductions", () => {
     );
     await user.click(screen.getByText("Escavadeira 01"));
     await user.selectOptions(screen.getByLabelText("Função"), "transport");
-    await user.type(screen.getByLabelText("Capacidade (m³)"), "12");
+    expect(
+      (screen.getByLabelText("Capacidade padrão") as HTMLInputElement).value,
+    ).toBe("12,000 m³");
     await user.click(
       screen.getByRole("button", { name: "Criar e registrar viagens" }),
     );
@@ -139,6 +143,9 @@ describe("ProjectProductions", () => {
           command: expect.objectContaining({
             entryMode: "trips",
             approveNow: false,
+            equipment: [
+              expect.objectContaining({ defaultTripCapacityM3: "12.000" }),
+            ],
           }),
         }),
       ),

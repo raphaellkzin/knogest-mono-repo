@@ -870,7 +870,11 @@ export function ProjectProductions({
                             {machine.identifier
                               ? ` · ${machine.identifier}`
                               : ""}{" "}
-                            · Operador: {machine.operator.name}
+                            · Operador: {machine.operator.name} · Volume padrão:{" "}
+                            {formatQuantity(machine.loadVolumeM3)} m³
+                            {machine.maxSupportedWeightT
+                              ? ` · Peso máx.: ${formatQuantity(machine.maxSupportedWeightT)} t`
+                              : ""}
                           </span>
                         </span>
                       </label>
@@ -912,14 +916,13 @@ export function ProjectProductions({
                             />
                           </Field>
                           {item.role === "transport" && (
-                            <DecimalField
-                              label="Capacidade (m³)"
-                              value={item.capacityM3}
-                              disabled={!editable}
-                              onChange={(capacityM3) =>
-                                updateEquipment(machine.id, { capacityM3 })
-                              }
-                            />
+                            <Field label="Capacidade padrão">
+                              <Input
+                                value={`${item.capacityM3 || displayDecimal(machine.loadVolumeM3)} m³`}
+                                readOnly
+                                disabled
+                              />
+                            </Field>
                           )}
                           <DecimalField
                             label={
@@ -1313,7 +1316,13 @@ function machineDrafts(options: ProjectProductionOptions, frontId: string) {
   return Object.fromEntries(
     (
       options.workFronts.find((front) => front.id === frontId)?.machines ?? []
-    ).map((machine) => [machine.id, emptyEquipmentDraft()]),
+    ).map((machine) => [
+      machine.id,
+      {
+        ...emptyEquipmentDraft(),
+        capacityM3: displayDecimal(machine.loadVolumeM3),
+      },
+    ]),
   );
 }
 

@@ -13,6 +13,7 @@ import {
   projectWorkFrontCommandSchema,
   projectWorkFrontMobilizationCommandSchema,
   projectWorkFrontParamsSchema,
+  projectWorkFrontServicesCommandSchema,
 } from "./projects.dto";
 import { ProjectsService, type ProjectScope } from "./projects.service";
 
@@ -507,6 +508,18 @@ const projectWorkFrontMobilizationOpenApiSchema = {
   },
 } as const;
 
+const projectWorkFrontServicesCommandOpenApiSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["services"],
+  properties: {
+    services: {
+      ...projectWorkFrontCommandOpenApiSchema.properties.services,
+      minItems: 0,
+    },
+  },
+} as const;
+
 const projectEmployeeMobilizationOpenApiSchema = {
   type: "object",
   additionalProperties: false,
@@ -595,10 +608,73 @@ const projectDetailSchema = {
     actualStartedAt: { type: "string", format: "date-time", nullable: true },
     createdAt: { type: "string", format: "date-time" },
     baseline: { type: "object", nullable: true, additionalProperties: true },
-    quantityBaseline: { type: "object", additionalProperties: true },
+    quantityBaseline: {
+      type: "object",
+      additionalProperties: false,
+      required: ["revision", "createdAt", "reason", "items"],
+      properties: {
+        revision: { type: "integer", nullable: true },
+        createdAt: { type: "string", format: "date-time", nullable: true },
+        reason: { type: "string", nullable: true },
+        items: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: [
+              "serviceCode",
+              "unitCode",
+              "total",
+              "allocated",
+              "unallocated",
+              "produced",
+            ],
+            properties: {
+              serviceCode: { type: "string" },
+              unitCode: { type: "string" },
+              total: { type: "string" },
+              allocated: { type: "string" },
+              unallocated: { type: "string" },
+              produced: { type: "string" },
+            },
+          },
+        },
+      },
+    },
     workFronts: {
       type: "array",
-      items: { type: "object", additionalProperties: true },
+      items: {
+        type: "object",
+        additionalProperties: true,
+        required: ["services"],
+        properties: {
+          services: {
+            type: "array",
+            items: {
+              type: "object",
+              additionalProperties: false,
+              required: [
+                "serviceCode",
+                "unitCode",
+                "quantity",
+                "produced",
+                "minimumQuantity",
+                "maximumQuantity",
+                "hasProductions",
+              ],
+              properties: {
+                serviceCode: { type: "string" },
+                unitCode: { type: "string" },
+                quantity: { type: "string" },
+                produced: { type: "string" },
+                minimumQuantity: { type: "string" },
+                maximumQuantity: { type: "string" },
+                hasProductions: { type: "boolean" },
+              },
+            },
+          },
+        },
+      },
     },
     readiness: {
       type: "object",
@@ -1108,6 +1184,52 @@ export async function v1ProjectsController(app: FastifyInstance) {
         return jsonResponse.success({
           reply,
           data: await service.updateWorkFront(
+            scope(request),
+            params.data.projectId,
+            params.data.frontId,
+            body.data,
+          ),
+        });
+      } catch (error) {
+        return jsonResponse.fromError({ reply, error });
+      }
+    },
+  );
+
+  app.put<{ Params: { projectId: string; frontId: string } }>(
+    "/projects/:projectId/fronts/:frontId/services",
+    {
+      preHandler: app.requireCompanyScope,
+      schema: {
+        tags: ["Projects"],
+        summary: "Replace the service distribution of a Project work front",
+        security: [{ bearerAuth: [] }],
+        body: projectWorkFrontServicesCommandOpenApiSchema,
+        response: {
+          200: successSchema(projectDetailSchema),
+          400: errorSchema,
+          404: errorSchema,
+          409: errorSchema,
+          422: errorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const params = projectWorkFrontParamsSchema.safeParse(request.params);
+      const body = projectWorkFrontServicesCommandSchema.safeParse(
+        request.body,
+      );
+      if (!params.success || !body.success)
+        return jsonResponse.error({
+          reply,
+          statusCode: 400,
+          code: "VALIDATION_ERROR",
+          message: "Invalid work front services command",
+        });
+      try {
+        return jsonResponse.success({
+          reply,
+          data: await service.saveWorkFrontServices(
             scope(request),
             params.data.projectId,
             params.data.frontId,

@@ -50,6 +50,21 @@ function decimal(scale: number, integral: number, positive = false) {
     .refine((value) => !positive || !/^0+\.0+$/u.test(value));
 }
 
+function decimalWithUpToScale(
+  scale: number,
+  integral: number,
+  positive = false,
+) {
+  const pattern = new RegExp(
+    `^\\d{1,${integral}}(?:\\.\\d{1,${scale}})?$`,
+    "u",
+  );
+  return z
+    .string()
+    .regex(pattern)
+    .refine((value) => !positive || !/^0+(?:\.0+)?$/u.test(value));
+}
+
 const coordinate = (min: number, max: number) =>
   z
     .string()
@@ -488,7 +503,7 @@ export const projectQuantityBaselineRevisionCommandSchema = z
           .object({
             serviceCode: earthworksServiceCodeSchema,
             unitCode: unitCodeSchema,
-            total: decimal(2, 16, true),
+            total: decimalWithUpToScale(3, 15, true),
           })
           .strict(),
       )
@@ -510,7 +525,7 @@ const workFrontServiceSchema = z
   .object({
     serviceCode: earthworksServiceCodeSchema,
     unitCode: unitCodeSchema,
-    quantity: decimal(2, 16, true),
+    quantity: decimalWithUpToScale(3, 15, true),
   })
   .strict();
 
@@ -549,6 +564,19 @@ export const projectWorkFrontCommandSchema = z
         code: "custom",
         path: ["requiresEmployees"],
         message: "At least one resource requirement must be enabled",
+      });
+  });
+
+export const projectWorkFrontServicesCommandSchema = z
+  .object({ services: z.array(workFrontServiceSchema).max(20) })
+  .strict()
+  .superRefine((command, context) => {
+    const codes = command.services.map((item) => item.serviceCode);
+    if (new Set(codes).size !== codes.length)
+      context.addIssue({
+        code: "custom",
+        path: ["services"],
+        message: "Duplicate service code",
       });
   });
 
@@ -694,7 +722,7 @@ export const projectReadinessCommandSchema = z
         z
           .object({
             metricCode: productionMetricCodeSchema,
-            targetTotal: decimal(2, 16, true),
+            targetTotal: decimalWithUpToScale(3, 15, true),
           })
           .strict(),
       )
@@ -865,6 +893,9 @@ export type ProjectQuantityBaselineRevisionCommand = z.infer<
 >;
 export type ProjectWorkFrontCommand = z.infer<
   typeof projectWorkFrontCommandSchema
+>;
+export type ProjectWorkFrontServicesCommand = z.infer<
+  typeof projectWorkFrontServicesCommandSchema
 >;
 export type ProjectWorkFrontMobilizationCommand = z.infer<
   typeof projectWorkFrontMobilizationCommandSchema

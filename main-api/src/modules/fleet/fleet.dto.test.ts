@@ -5,6 +5,7 @@ import {
   correctMachineMeterReadingSchema,
   createMachineSchema,
   listMachinesQuerySchema,
+  updateMachineLoadSpecificationSchema,
 } from "./fleet.dto";
 
 describe("fleet DTOs", () => {
@@ -92,6 +93,27 @@ describe("fleet DTOs", () => {
     expect(listMachinesQuerySchema.parse({ type: "WHITE_LINE" })).toMatchObject(
       { type: "WHITE_LINE" },
     );
+  });
+
+  it("accepts nullable positive load specifications with up to three decimals", () => {
+    expect(
+      updateMachineLoadSpecificationSchema.parse({
+        loadVolumeM3: "12.345",
+        maxSupportedWeightT: null,
+      }),
+    ).toEqual({ loadVolumeM3: "12.345", maxSupportedWeightT: null });
+    expect(() =>
+      updateMachineLoadSpecificationSchema.parse({
+        loadVolumeM3: "0",
+        maxSupportedWeightT: null,
+      }),
+    ).toThrow();
+    expect(() =>
+      updateMachineLoadSpecificationSchema.parse({
+        loadVolumeM3: "1.2345",
+        maxSupportedWeightT: null,
+      }),
+    ).toThrow();
   });
 
   it("validates append and correction commands as explicit decimal-string commands", () => {
